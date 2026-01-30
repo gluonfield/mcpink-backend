@@ -10,17 +10,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/augustdev/autoclip/internal/authz"
 	model1 "github.com/augustdev/autoclip/internal/graph/model"
 )
 
 // CreateAPIKey is the resolver for the createAPIKey field.
 func (r *mutationResolver) CreateAPIKey(ctx context.Context, name string) (*model1.CreateAPIKeyResult, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := r.AuthService.GenerateAPIKey(ctx, userID, name)
+	result, err := r.AuthService.GenerateAPIKey(ctx, authz.For(ctx).GetUserID(), name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create API key: %w", err)
 	}
@@ -38,17 +34,12 @@ func (r *mutationResolver) CreateAPIKey(ctx context.Context, name string) (*mode
 
 // RevokeAPIKey is the resolver for the revokeAPIKey field.
 func (r *mutationResolver) RevokeAPIKey(ctx context.Context, id string) (bool, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return false, err
-	}
-
 	var keyID int64
 	if _, err := fmt.Sscanf(id, "%d", &keyID); err != nil {
 		return false, fmt.Errorf("invalid key ID: %w", err)
 	}
 
-	if err := r.AuthService.RevokeAPIKey(ctx, userID, keyID); err != nil {
+	if err := r.AuthService.RevokeAPIKey(ctx, authz.For(ctx).GetUserID(), keyID); err != nil {
 		return false, fmt.Errorf("failed to revoke API key: %w", err)
 	}
 
@@ -57,12 +48,7 @@ func (r *mutationResolver) RevokeAPIKey(ctx context.Context, id string) (bool, e
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	user, err := r.AuthService.GetUserByID(ctx, userID)
+	user, err := r.AuthService.GetUserByID(ctx, authz.For(ctx).GetUserID())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
@@ -82,12 +68,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
 
 // MyAPIKeys is the resolver for the myAPIKeys field.
 func (r *queryResolver) MyAPIKeys(ctx context.Context) ([]*model1.APIKey, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	keys, err := r.AuthService.ListAPIKeys(ctx, userID)
+	keys, err := r.AuthService.ListAPIKeys(ctx, authz.For(ctx).GetUserID())
 	if err != nil {
 		return nil, fmt.Errorf("failed to list API keys: %w", err)
 	}

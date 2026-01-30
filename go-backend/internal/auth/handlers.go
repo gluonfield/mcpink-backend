@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -138,7 +139,7 @@ func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.GetUserByID(r.Context(), userID)
+	user, err := h.service.GetUserByID(r.Context(), strconv.FormatInt(userID, 10))
 	if err != nil {
 		h.logger.Error("failed to get user", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)

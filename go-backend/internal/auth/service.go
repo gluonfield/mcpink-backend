@@ -141,7 +141,9 @@ func (s *Service) ValidateJWT(tokenString string) (int64, error) {
 	return 0, fmt.Errorf("invalid token")
 }
 
-func (s *Service) GenerateAPIKey(ctx context.Context, userID int64, name string) (*APIKeyResult, error) {
+func (s *Service) GenerateAPIKey(ctx context.Context, userID string, name string) (*APIKeyResult, error) {
+	uid, _ := strconv.ParseInt(userID, 10, 64)
+
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %w", err)
@@ -157,7 +159,7 @@ func (s *Service) GenerateAPIKey(ctx context.Context, userID int64, name string)
 	prefix := fullKey[:16]
 
 	apiKey, err := s.apiKeysQ.CreateAPIKey(ctx, apikeys.CreateAPIKeyParams{
-		UserID:    userID,
+		UserID:    uid,
 		Name:      name,
 		KeyHash:   string(keyHash),
 		KeyPrefix: prefix,
@@ -196,23 +198,26 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (int64, error)
 	return apiKey.UserID, nil
 }
 
-func (s *Service) RevokeAPIKey(ctx context.Context, userID, keyID int64) error {
+func (s *Service) RevokeAPIKey(ctx context.Context, userID string, keyID int64) error {
+	uid, _ := strconv.ParseInt(userID, 10, 64)
 	return s.apiKeysQ.RevokeAPIKey(ctx, apikeys.RevokeAPIKeyParams{
 		ID:     keyID,
-		UserID: userID,
+		UserID: uid,
 	})
 }
 
-func (s *Service) GetUserByID(ctx context.Context, userID int64) (*users.User, error) {
-	user, err := s.usersQ.GetUserByID(ctx, userID)
+func (s *Service) GetUserByID(ctx context.Context, userID string) (*users.User, error) {
+	uid, _ := strconv.ParseInt(userID, 10, 64)
+	user, err := s.usersQ.GetUserByID(ctx, uid)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
 	return &user, nil
 }
 
-func (s *Service) ListAPIKeys(ctx context.Context, userID int64) ([]apikeys.ListAPIKeysByUserIDRow, error) {
-	return s.apiKeysQ.ListAPIKeysByUserID(ctx, userID)
+func (s *Service) ListAPIKeys(ctx context.Context, userID string) ([]apikeys.ListAPIKeysByUserIDRow, error) {
+	uid, _ := strconv.ParseInt(userID, 10, 64)
+	return s.apiKeysQ.ListAPIKeysByUserID(ctx, uid)
 }
 
 func (s *Service) EncryptToken(token string) (string, error) {
