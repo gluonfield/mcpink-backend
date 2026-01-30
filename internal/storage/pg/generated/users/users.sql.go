@@ -14,7 +14,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (github_id, github_username, github_token, avatar_url)
 VALUES ($1, $2, $3, $4)
-RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url, flyio_token, flyio_org
+RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url
 `
 
 type CreateUserParams struct {
@@ -40,8 +40,6 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
-		&i.FlyioToken,
-		&i.FlyioOrg,
 	)
 	return i, err
 }
@@ -56,7 +54,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
 }
 
 const getUserByGitHubID = `-- name: GetUserByGitHubID :one
-SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url, flyio_token, flyio_org FROM users WHERE github_id = $1
+SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url FROM users WHERE github_id = $1
 `
 
 func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, error) {
@@ -70,14 +68,12 @@ func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, 
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
-		&i.FlyioToken,
-		&i.FlyioOrg,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url, flyio_token, flyio_org FROM users WHERE id = $1
+SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
@@ -91,38 +87,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
-		&i.FlyioToken,
-		&i.FlyioOrg,
-	)
-	return i, err
-}
-
-const updateFlyioCredentials = `-- name: UpdateFlyioCredentials :one
-UPDATE users
-SET flyio_token = $2, flyio_org = $3, updated_at = NOW()
-WHERE id = $1
-RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url, flyio_token, flyio_org
-`
-
-type UpdateFlyioCredentialsParams struct {
-	ID         int64       `json:"id"`
-	FlyioToken pgtype.Text `json:"flyio_token"`
-	FlyioOrg   pgtype.Text `json:"flyio_org"`
-}
-
-func (q *Queries) UpdateFlyioCredentials(ctx context.Context, arg UpdateFlyioCredentialsParams) (User, error) {
-	row := q.db.QueryRow(ctx, updateFlyioCredentials, arg.ID, arg.FlyioToken, arg.FlyioOrg)
-	var i User
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.GithubToken,
-		&i.AvatarUrl,
-		&i.FlyioToken,
-		&i.FlyioOrg,
 	)
 	return i, err
 }
@@ -131,7 +95,7 @@ const updateGitHubToken = `-- name: UpdateGitHubToken :one
 UPDATE users
 SET github_token = $2, github_username = $3, avatar_url = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url, flyio_token, flyio_org
+RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url
 `
 
 type UpdateGitHubTokenParams struct {
@@ -157,8 +121,6 @@ func (q *Queries) UpdateGitHubToken(ctx context.Context, arg UpdateGitHubTokenPa
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
-		&i.FlyioToken,
-		&i.FlyioOrg,
 	)
 	return i, err
 }

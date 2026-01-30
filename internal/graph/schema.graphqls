@@ -7,7 +7,6 @@ type User {
   githubUsername: String!
   avatarUrl: String
   createdAt: Time!
-  hasFlyioCredentials: Boolean!
 }
 
 type APIKey {
@@ -31,6 +30,4 @@ type Query {
 type Mutation {
   createAPIKey(name: String!): CreateAPIKeyResult! @isAuthenticated
   revokeAPIKey(id: ID!): Boolean! @isAuthenticated
-  updateFlyioCredentials(token: String!, organization: String!): Boolean! @isAuthenticated
-  removeFlyioCredentials: Boolean! @isAuthenticated
 }

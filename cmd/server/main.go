@@ -5,7 +5,6 @@ import (
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/bootstrap"
 	"github.com/augustdev/autoclip/internal/github"
-	"github.com/augustdev/autoclip/internal/mcp"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"go.uber.org/fx"
 )
@@ -21,7 +20,6 @@ func main() {
 			github.NewOAuthService,
 			auth.NewService,
 			auth.NewHandlers,
-			mcp.NewHandlers,
 			authz.NewAPIKeyValidator,
 			bootstrap.NewResolver,
 			bootstrap.NewTokenValidator,

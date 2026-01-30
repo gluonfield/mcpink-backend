@@ -215,18 +215,6 @@ func (s *Service) ListAPIKeys(ctx context.Context, userID int64) ([]apikeys.List
 	return s.apiKeysQ.ListAPIKeysByUserID(ctx, userID)
 }
 
-func (s *Service) UpdateFlyioCredentials(ctx context.Context, userID int64, encryptedToken, org string) (*users.User, error) {
-	user, err := s.usersQ.UpdateFlyioCredentials(ctx, users.UpdateFlyioCredentialsParams{
-		ID:         userID,
-		FlyioToken: pgtype.Text{String: encryptedToken, Valid: encryptedToken != ""},
-		FlyioOrg:   pgtype.Text{String: org, Valid: org != ""},
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to update flyio credentials: %w", err)
-	}
-	return &user, nil
-}
-
 func (s *Service) EncryptToken(token string) (string, error) {
 	return s.encryptToken(token)
 }

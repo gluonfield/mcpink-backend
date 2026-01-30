@@ -13,7 +13,6 @@ type Querier interface {
 	DeleteUser(ctx context.Context, id int64) error
 	GetUserByGitHubID(ctx context.Context, githubID int64) (User, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
-	UpdateFlyioCredentials(ctx context.Context, arg UpdateFlyioCredentialsParams) (User, error)
 	UpdateGitHubToken(ctx context.Context, arg UpdateGitHubTokenParams) (User, error)
 }
 

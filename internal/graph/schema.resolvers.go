@@ -55,41 +55,6 @@ func (r *mutationResolver) RevokeAPIKey(ctx context.Context, id string) (bool, e
 	return true, nil
 }
 
-// UpdateFlyioCredentials is the resolver for the updateFlyioCredentials field.
-func (r *mutationResolver) UpdateFlyioCredentials(ctx context.Context, token string, organization string) (bool, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	encryptedToken, err := r.AuthService.EncryptToken(token)
-	if err != nil {
-		return false, fmt.Errorf("failed to encrypt token: %w", err)
-	}
-
-	_, err = r.AuthService.UpdateFlyioCredentials(ctx, userID, encryptedToken, organization)
-	if err != nil {
-		return false, fmt.Errorf("failed to update credentials: %w", err)
-	}
-
-	return true, nil
-}
-
-// RemoveFlyioCredentials is the resolver for the removeFlyioCredentials field.
-func (r *mutationResolver) RemoveFlyioCredentials(ctx context.Context) (bool, error) {
-	userID, err := getUserIDFromContext(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	_, err = r.AuthService.UpdateFlyioCredentials(ctx, userID, "", "")
-	if err != nil {
-		return false, fmt.Errorf("failed to remove credentials: %w", err)
-	}
-
-	return true, nil
-}
-
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
 	userID, err := getUserIDFromContext(ctx)
@@ -107,14 +72,11 @@ func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
 		avatarURL = &user.AvatarUrl.String
 	}
 
-	hasFlyioCredentials := user.FlyioToken.Valid && user.FlyioToken.String != ""
-
 	return &model1.User{
-		ID:                  fmt.Sprintf("%d", user.ID),
-		GithubUsername:      user.GithubUsername,
-		AvatarURL:           avatarURL,
-		CreatedAt:           user.CreatedAt.Time,
-		HasFlyioCredentials: hasFlyioCredentials,
+		ID:             fmt.Sprintf("%d", user.ID),
+		GithubUsername: user.GithubUsername,
+		AvatarURL:      avatarURL,
+		CreatedAt:      user.CreatedAt.Time,
 	}, nil
 }
 

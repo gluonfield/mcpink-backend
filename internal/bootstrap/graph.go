@@ -65,6 +65,7 @@ func NewGraphQLRouter(
 	corsMiddleware := cors.New(cors.Options{
 		AllowCredentials: true,
 		AllowedOrigins:   []string{authConfig.FrontendURL},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept"},
 		Debug:            false,
 	}).Handler

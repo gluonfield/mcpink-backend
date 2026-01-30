@@ -63,10 +63,8 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateAPIKey           func(childComplexity int, name string) int
-		RemoveFlyioCredentials func(childComplexity int) int
-		RevokeAPIKey           func(childComplexity int, id string) int
-		UpdateFlyioCredentials func(childComplexity int, token string, organization string) int
+		CreateAPIKey func(childComplexity int, name string) int
+		RevokeAPIKey func(childComplexity int, id string) int
 	}
 
 	Query struct {
@@ -75,19 +73,16 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		AvatarURL           func(childComplexity int) int
-		CreatedAt           func(childComplexity int) int
-		GithubUsername      func(childComplexity int) int
-		HasFlyioCredentials func(childComplexity int) int
-		ID                  func(childComplexity int) int
+		AvatarURL      func(childComplexity int) int
+		CreatedAt      func(childComplexity int) int
+		GithubUsername func(childComplexity int) int
+		ID             func(childComplexity int) int
 	}
 }
 
 type MutationResolver interface {
 	CreateAPIKey(ctx context.Context, name string) (*model.CreateAPIKeyResult, error)
 	RevokeAPIKey(ctx context.Context, id string) (bool, error)
-	UpdateFlyioCredentials(ctx context.Context, token string, organization string) (bool, error)
-	RemoveFlyioCredentials(ctx context.Context) (bool, error)
 }
 type QueryResolver interface {
 	Me(ctx context.Context) (*model.User, error)
@@ -168,12 +163,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreateAPIKey(childComplexity, args["name"].(string)), true
-	case "Mutation.removeFlyioCredentials":
-		if e.complexity.Mutation.RemoveFlyioCredentials == nil {
-			break
-		}
-
-		return e.complexity.Mutation.RemoveFlyioCredentials(childComplexity), true
 	case "Mutation.revokeAPIKey":
 		if e.complexity.Mutation.RevokeAPIKey == nil {
 			break
@@ -185,17 +174,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.RevokeAPIKey(childComplexity, args["id"].(string)), true
-	case "Mutation.updateFlyioCredentials":
-		if e.complexity.Mutation.UpdateFlyioCredentials == nil {
-			break
-		}
-
-		args, err := ec.field_Mutation_updateFlyioCredentials_args(ctx, rawArgs)
-		if err != nil {
-			return 0, false
-		}
-
-		return e.complexity.Mutation.UpdateFlyioCredentials(childComplexity, args["token"].(string), args["organization"].(string)), true
 
 	case "Query.me":
 		if e.complexity.Query.Me == nil {
@@ -228,12 +206,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.GithubUsername(childComplexity), true
-	case "User.hasFlyioCredentials":
-		if e.complexity.User.HasFlyioCredentials == nil {
-			break
-		}
-
-		return e.complexity.User.HasFlyioCredentials(childComplexity), true
 	case "User.id":
 		if e.complexity.User.ID == nil {
 			break
@@ -383,22 +355,6 @@ func (ec *executionContext) field_Mutation_revokeAPIKey_args(ctx context.Context
 		return nil, err
 	}
 	args["id"] = arg0
-	return args, nil
-}
-
-func (ec *executionContext) field_Mutation_updateFlyioCredentials_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
-	var err error
-	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "token", ec.unmarshalNString2string)
-	if err != nil {
-		return nil, err
-	}
-	args["token"] = arg0
-	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "organization", ec.unmarshalNString2string)
-	if err != nil {
-		return nil, err
-	}
-	args["organization"] = arg1
 	return args, nil
 }
 
@@ -794,102 +750,6 @@ func (ec *executionContext) fieldContext_Mutation_revokeAPIKey(ctx context.Conte
 	return fc, nil
 }
 
-func (ec *executionContext) _Mutation_updateFlyioCredentials(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Mutation_updateFlyioCredentials,
-		func(ctx context.Context) (any, error) {
-			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Mutation().UpdateFlyioCredentials(ctx, fc.Args["token"].(string), fc.Args["organization"].(string))
-		},
-		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
-			directive0 := next
-
-			directive1 := func(ctx context.Context) (any, error) {
-				if ec.directives.IsAuthenticated == nil {
-					var zeroVal bool
-					return zeroVal, errors.New("directive isAuthenticated is not implemented")
-				}
-				return ec.directives.IsAuthenticated(ctx, nil, directive0)
-			}
-
-			next = directive1
-			return next
-		},
-		ec.marshalNBoolean2bool,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_Mutation_updateFlyioCredentials(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	defer func() {
-		if r := recover(); r != nil {
-			err = ec.Recover(ctx, r)
-			ec.Error(ctx, err)
-		}
-	}()
-	ctx = graphql.WithFieldContext(ctx, fc)
-	if fc.Args, err = ec.field_Mutation_updateFlyioCredentials_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
-		ec.Error(ctx, err)
-		return fc, err
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Mutation_removeFlyioCredentials(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Mutation_removeFlyioCredentials,
-		func(ctx context.Context) (any, error) {
-			return ec.resolvers.Mutation().RemoveFlyioCredentials(ctx)
-		},
-		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
-			directive0 := next
-
-			directive1 := func(ctx context.Context) (any, error) {
-				if ec.directives.IsAuthenticated == nil {
-					var zeroVal bool
-					return zeroVal, errors.New("directive isAuthenticated is not implemented")
-				}
-				return ec.directives.IsAuthenticated(ctx, nil, directive0)
-			}
-
-			next = directive1
-			return next
-		},
-		ec.marshalNBoolean2bool,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_Mutation_removeFlyioCredentials(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Mutation",
-		Field:      field,
-		IsMethod:   true,
-		IsResolver: true,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
 func (ec *executionContext) _Query_me(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -935,8 +795,6 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 				return ec.fieldContext_User_avatarUrl(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_User_createdAt(ctx, field)
-			case "hasFlyioCredentials":
-				return ec.fieldContext_User_hasFlyioCredentials(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1217,35 +1075,6 @@ func (ec *executionContext) fieldContext_User_createdAt(_ context.Context, field
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _User_hasFlyioCredentials(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_User_hasFlyioCredentials,
-		func(ctx context.Context) (any, error) {
-			return obj.HasFlyioCredentials, nil
-		},
-		nil,
-		ec.marshalNBoolean2bool,
-		true,
-		true,
-	)
-}
-
-func (ec *executionContext) fieldContext_User_hasFlyioCredentials(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "User",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -2838,20 +2667,6 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "updateFlyioCredentials":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_updateFlyioCredentials(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "removeFlyioCredentials":
-			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
-				return ec._Mutation_removeFlyioCredentials(ctx, field)
-			})
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2991,11 +2806,6 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			out.Values[i] = ec._User_avatarUrl(ctx, field, obj)
 		case "createdAt":
 			out.Values[i] = ec._User_createdAt(ctx, field, obj)
-			if out.Values[i] == graphql.Null {
-				out.Invalids++
-			}
-		case "hasFlyioCredentials":
-			out.Values[i] = ec._User_hasFlyioCredentials(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

@@ -19,17 +19,6 @@ type ApiKey struct {
 	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
 }
 
-type DeploymentProvider struct {
-	ID             int64              `json:"id"`
-	UserID         int64              `json:"user_id"`
-	ProviderType   string             `json:"provider_type"`
-	EncryptedToken string             `json:"encrypted_token"`
-	Organization   pgtype.Text        `json:"organization"`
-	Metadata       []byte             `json:"metadata"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-}
-
 type User struct {
 	ID             int64              `json:"id"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
@@ -38,6 +27,4 @@ type User struct {
 	GithubUsername string             `json:"github_username"`
 	GithubToken    string             `json:"github_token"`
 	AvatarUrl      pgtype.Text        `json:"avatar_url"`
-	FlyioToken     pgtype.Text        `json:"flyio_token"`
-	FlyioOrg       pgtype.Text        `json:"flyio_org"`
 }

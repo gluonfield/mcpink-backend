@@ -26,9 +26,8 @@ type Query struct {
 }
 
 type User struct {
-	ID                  string    `json:"id"`
-	GithubUsername      string    `json:"githubUsername"`
-	AvatarURL           *string   `json:"avatarUrl,omitempty"`
-	CreatedAt           time.Time `json:"createdAt"`
-	HasFlyioCredentials bool      `json:"hasFlyioCredentials"`
+	ID             string    `json:"id"`
+	GithubUsername string    `json:"githubUsername"`
+	AvatarURL      *string   `json:"avatarUrl,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
 }
