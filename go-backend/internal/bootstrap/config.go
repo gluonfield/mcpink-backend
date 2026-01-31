@@ -25,6 +25,8 @@ func NewConfig() (Config, error) {
 		GitHub     github_oauth.Config
 		GitHubApp  githubapp.Config
 		Auth       auth.Config
+		Temporal   TemporalClientConfig
+		NATS       NATSConfig
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -37,6 +39,8 @@ func NewConfig() (Config, error) {
 		GitHub:     cfg.GitHub,
 		GitHubApp:  cfg.GitHubApp,
 		Auth:       cfg.Auth,
+		Temporal:   cfg.Temporal,
+		NATS:       cfg.NATS,
 	}, nil
 }
 
@@ -48,6 +52,8 @@ type Config struct {
 	GitHub     github_oauth.Config
 	GitHubApp  githubapp.Config
 	Auth       auth.Config
+	Temporal   TemporalClientConfig
+	NATS       NATSConfig
 }
 
 func InitConfig() error {
@@ -67,4 +73,9 @@ func InitConfig() error {
 	}
 
 	return nil
+}
+
+type NATSConfig struct {
+	URL   string
+	Token string
 }

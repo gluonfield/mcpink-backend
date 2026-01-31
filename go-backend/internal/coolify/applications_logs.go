@@ -7,25 +7,18 @@ import (
 	"strconv"
 )
 
-// LogEntry represents a single log entry from an application.
 type LogEntry struct {
 	Timestamp string `json:"timestamp,omitempty"`
 	Message   string `json:"message,omitempty"`
-	Stream    string `json:"stream,omitempty"` // stdout or stderr
+	Stream    string `json:"stream,omitempty"`
 }
 
-// GetLogsOptions represents the options for retrieving application logs.
 type GetLogsOptions struct {
-	// Since returns logs since this many seconds ago (e.g., 3600 for last hour)
-	Since int
-	// Tail returns only the last N lines (default: 100)
-	Tail int
-	// Timestamps includes timestamps in the output
+	Since      int
+	Tail       int
 	Timestamps bool
 }
 
-// GetLogs retrieves the logs for an application.
-// See: https://coolify.io/docs/api-reference/api/operations/get-application-logs-by-uuid
 func (s *ApplicationsService) GetLogs(ctx context.Context, uuid string, opts *GetLogsOptions) ([]LogEntry, error) {
 	if uuid == "" {
 		return nil, fmt.Errorf("coolify: uuid is required")

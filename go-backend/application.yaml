@@ -37,3 +37,13 @@ openrouter:
 
 openai:
   apikey: ""
+
+temporal:
+  enabled: true
+  address: "localhost:7233"
+  namespace: "default"
+  cloudapikey: ""
+
+nats:
+  url: "nats://localhost:4222"
+  token: ""

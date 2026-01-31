@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/bootstrap"
@@ -12,6 +14,7 @@ import (
 
 func main() {
 	fx.New(
+		fx.StopTimeout(1*time.Minute),
 		fx.Provide(
 			bootstrap.NewLogger,
 			bootstrap.NewConfig,

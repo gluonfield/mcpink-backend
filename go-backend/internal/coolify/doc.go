@@ -33,9 +33,8 @@ Create a client and deploy an application from a private GitHub repository:
 		BuildPack:       coolify.BuildPackNixpacks,
 		PortsExposes:    "3000",
 
-		// Optional fields - use helper functions for pointers
-		InstantDeploy:       coolify.Bool(true),  // Deploy immediately
-		IsAutoDeployEnabled: coolify.Bool(true),  // Auto-deploy on push (default: true)
+		InstantDeploy:       helpers.Ptr(true),
+		IsAutoDeployEnabled: helpers.Ptr(true),
 		LimitsMemory:        "512m",
 		LimitsCPUs:          "0.5",
 	})

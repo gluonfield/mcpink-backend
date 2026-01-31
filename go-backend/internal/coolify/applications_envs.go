@@ -5,7 +5,6 @@ import (
 	"fmt"
 )
 
-// EnvVar represents an environment variable for an application.
 type EnvVar struct {
 	ID            int     `json:"id,omitempty"`
 	UUID          string  `json:"uuid,omitempty"`
@@ -21,8 +20,6 @@ type EnvVar struct {
 	UpdatedAt     string  `json:"updated_at,omitempty"`
 }
 
-// CreateEnvRequest represents the request body for creating an environment variable.
-// See: https://coolify.io/docs/api-reference/api/operations/create-env-by-application-uuid
 type CreateEnvRequest struct {
 	Key         string `json:"key"`
 	Value       string `json:"value"`
@@ -32,8 +29,6 @@ type CreateEnvRequest struct {
 	IsPreview   *bool  `json:"is_preview,omitempty"`
 }
 
-// UpdateEnvRequest represents the request body for updating an environment variable.
-// See: https://coolify.io/docs/api-reference/api/operations/update-env-by-application-uuid
 type UpdateEnvRequest struct {
 	Key         string `json:"key"`
 	Value       string `json:"value"`
@@ -43,19 +38,18 @@ type UpdateEnvRequest struct {
 	IsPreview   *bool  `json:"is_preview,omitempty"`
 }
 
-// BulkUpdateEnvsRequest represents the request body for bulk updating environment variables.
-// See: https://coolify.io/docs/api-reference/api/operations/update-envs-by-application-uuid
 type BulkUpdateEnvsRequest struct {
 	Data []CreateEnvRequest `json:"data"`
 }
 
-// CreateEnvResponse represents the response from creating an environment variable.
 type CreateEnvResponse struct {
 	UUID string `json:"uuid"`
 }
 
-// ListEnvs retrieves all environment variables for an application.
-// See: https://coolify.io/docs/api-reference/api/operations/list-envs-by-application-uuid
+type DeleteEnvRequest struct {
+	Key string `json:"key"`
+}
+
 func (s *ApplicationsService) ListEnvs(ctx context.Context, uuid string) ([]EnvVar, error) {
 	if uuid == "" {
 		return nil, fmt.Errorf("coolify: uuid is required")
@@ -68,8 +62,6 @@ func (s *ApplicationsService) ListEnvs(ctx context.Context, uuid string) ([]EnvV
 	return envs, nil
 }
 
-// CreateEnv creates a new environment variable for an application.
-// See: https://coolify.io/docs/api-reference/api/operations/create-env-by-application-uuid
 func (s *ApplicationsService) CreateEnv(ctx context.Context, uuid string, req *CreateEnvRequest) (*CreateEnvResponse, error) {
 	if uuid == "" {
 		return nil, fmt.Errorf("coolify: uuid is required")
@@ -88,8 +80,6 @@ func (s *ApplicationsService) CreateEnv(ctx context.Context, uuid string, req *C
 	return &resp, nil
 }
 
-// UpdateEnv updates an existing environment variable for an application.
-// See: https://coolify.io/docs/api-reference/api/operations/update-env-by-application-uuid
 func (s *ApplicationsService) UpdateEnv(ctx context.Context, uuid string, req *UpdateEnvRequest) error {
 	if uuid == "" {
 		return fmt.Errorf("coolify: uuid is required")
@@ -107,8 +97,6 @@ func (s *ApplicationsService) UpdateEnv(ctx context.Context, uuid string, req *U
 	return nil
 }
 
-// BulkUpdateEnvs updates multiple environment variables for an application at once.
-// See: https://coolify.io/docs/api-reference/api/operations/update-envs-by-application-uuid
 func (s *ApplicationsService) BulkUpdateEnvs(ctx context.Context, uuid string, req *BulkUpdateEnvsRequest) error {
 	if uuid == "" {
 		return fmt.Errorf("coolify: uuid is required")
@@ -123,13 +111,6 @@ func (s *ApplicationsService) BulkUpdateEnvs(ctx context.Context, uuid string, r
 	return nil
 }
 
-// DeleteEnvRequest represents the request body for deleting an environment variable.
-type DeleteEnvRequest struct {
-	Key string `json:"key"`
-}
-
-// DeleteEnv deletes an environment variable from an application.
-// See: https://coolify.io/docs/api-reference/api/operations/delete-env-by-application-uuid
 func (s *ApplicationsService) DeleteEnv(ctx context.Context, uuid string, req *DeleteEnvRequest) error {
 	if uuid == "" {
 		return fmt.Errorf("coolify: uuid is required")

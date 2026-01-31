@@ -204,7 +204,11 @@ type Config struct {
 
 ## Code Style
 
-- NEVER use comments unless documenting complex or non-standard implementations
+- NEVER add comments that restate what the code already says
+  - Bad: `// EnvVar represents an environment variable for an application.`
+  - Bad: `// NewClient creates a new client.`
+  - Good: No comment needed when the name is self-explanatory
+  - Good: Comment only when explaining WHY or non-obvious behavior
 - Use meaningful variable and function names that are self-documenting
 - Keep functions small and focused
 - Follow standard Go conventions
