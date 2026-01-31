@@ -6,23 +6,22 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/augustdev/autoclip/internal/github"
+	"github.com/augustdev/autoclip/internal/github_oauth"
 )
 
 type Handlers struct {
 	service     *Service
-	githubOAuth *github.OAuthService
+	githubOAuth *github_oauth.OAuthService
 	config      Config
 	logger      *slog.Logger
 }
 
 func NewHandlers(
 	service *Service,
-	githubOAuth *github.OAuthService,
+	githubOAuth *github_oauth.OAuthService,
 	config Config,
 	logger *slog.Logger,
 ) *Handlers {
@@ -139,7 +138,7 @@ func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.GetUserByID(r.Context(), strconv.FormatInt(userID, 10))
+	user, err := h.service.GetUserByID(r.Context(), userID)
 	if err != nil {
 		h.logger.Error("failed to get user", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -152,7 +151,7 @@ func (h *Handlers) HandleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"id": %d, "githubUsername": "%s", "avatarUrl": "%s"}`,
+	fmt.Fprintf(w, `{"id": "%s", "githubUsername": "%s", "avatarUrl": "%s"}`,
 		user.ID, user.GithubUsername, avatarURL)
 }
 

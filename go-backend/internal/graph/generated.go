@@ -42,9 +42,11 @@ type Config struct {
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	User() UserResolver
 }
 
 type DirectiveRoot struct {
+	HasRole         func(ctx context.Context, obj any, next graphql.Resolver, role model.Role) (res any, err error)
 	IsAuthenticated func(ctx context.Context, obj any, next graphql.Resolver) (res any, err error)
 }
 
@@ -73,10 +75,11 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		AvatarURL      func(childComplexity int) int
-		CreatedAt      func(childComplexity int) int
-		GithubUsername func(childComplexity int) int
-		ID             func(childComplexity int) int
+		AvatarURL             func(childComplexity int) int
+		CreatedAt             func(childComplexity int) int
+		GithubUsername        func(childComplexity int) int
+		HasGithubAppInstalled func(childComplexity int) int
+		ID                    func(childComplexity int) int
 	}
 }
 
@@ -87,6 +90,9 @@ type MutationResolver interface {
 type QueryResolver interface {
 	Me(ctx context.Context) (*model.User, error)
 	MyAPIKeys(ctx context.Context) ([]*model.APIKey, error)
+}
+type UserResolver interface {
+	HasGithubAppInstalled(ctx context.Context, obj *model.User) (bool, error)
 }
 
 type executableSchema struct {
@@ -206,6 +212,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.GithubUsername(childComplexity), true
+	case "User.hasGithubAppInstalled":
+		if e.complexity.User.HasGithubAppInstalled == nil {
+			break
+		}
+
+		return e.complexity.User.HasGithubAppInstalled(childComplexity), true
 	case "User.id":
 		if e.complexity.User.ID == nil {
 			break
@@ -335,6 +347,17 @@ var parsedSchema = gqlparser.MustLoadSchema(sources...)
 // endregion ************************** generated!.gotpl **************************
 
 // region    ***************************** args.gotpl *****************************
+
+func (ec *executionContext) dir_hasRole_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "role", ec.unmarshalNRole2githubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐRole)
+	if err != nil {
+		return nil, err
+	}
+	args["role"] = arg0
+	return args, nil
+}
 
 func (ec *executionContext) field_Mutation_createAPIKey_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
@@ -795,6 +818,8 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 				return ec.fieldContext_User_avatarUrl(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_User_createdAt(ctx, field)
+			case "hasGithubAppInstalled":
+				return ec.fieldContext_User_hasGithubAppInstalled(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1075,6 +1100,35 @@ func (ec *executionContext) fieldContext_User_createdAt(_ context.Context, field
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_hasGithubAppInstalled(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_hasGithubAppInstalled,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.User().HasGithubAppInstalled(ctx, obj)
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_hasGithubAppInstalled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
 		},
 	}
 	return fc, nil
@@ -2795,20 +2849,56 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 		case "id":
 			out.Values[i] = ec._User_id(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "githubUsername":
 			out.Values[i] = ec._User_githubUsername(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "avatarUrl":
 			out.Values[i] = ec._User_avatarUrl(ctx, field, obj)
 		case "createdAt":
 			out.Values[i] = ec._User_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
-				out.Invalids++
+				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "hasGithubAppInstalled":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_hasGithubAppInstalled(ctx, field, obj)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -3265,6 +3355,16 @@ func (ec *executionContext) marshalNID2string(ctx context.Context, sel ast.Selec
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNRole2githubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐRole(ctx context.Context, v any) (model.Role, error) {
+	var res model.Role
+	err := res.UnmarshalGQL(v)
+	return res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalNRole2githubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐRole(ctx context.Context, sel ast.SelectionSet, v model.Role) graphql.Marshaler {
+	return v
 }
 
 func (ec *executionContext) unmarshalNString2string(ctx context.Context, v any) (string, error) {

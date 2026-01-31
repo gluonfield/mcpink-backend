@@ -12,13 +12,13 @@ import (
 )
 
 const createAPIKey = `-- name: CreateAPIKey :one
-INSERT INTO api_keys (user_id, name, key_hash, key_prefix)
-VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, name, key_hash, key_prefix, last_used_at, created_at, revoked_at
+INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix)
+VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4)
+RETURNING name, key_hash, key_prefix, last_used_at, created_at, revoked_at, user_id, id
 `
 
 type CreateAPIKeyParams struct {
-	UserID    int64  `json:"user_id"`
+	UserID    string `json:"user_id"`
 	Name      string `json:"name"`
 	KeyHash   string `json:"key_hash"`
 	KeyPrefix string `json:"key_prefix"`
@@ -33,20 +33,20 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 	)
 	var i ApiKey
 	err := row.Scan(
-		&i.ID,
-		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.UserID,
+		&i.ID,
 	)
 	return i, err
 }
 
 const getAPIKeyByPrefix = `-- name: GetAPIKeyByPrefix :one
-SELECT id, user_id, name, key_hash, key_prefix, last_used_at, created_at, revoked_at FROM api_keys
+SELECT name, key_hash, key_prefix, last_used_at, created_at, revoked_at, user_id, id FROM api_keys
 WHERE key_prefix = $1 AND revoked_at IS NULL
 `
 
@@ -54,21 +54,21 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, keyPrefix string) (ApiK
 	row := q.db.QueryRow(ctx, getAPIKeyByPrefix, keyPrefix)
 	var i ApiKey
 	err := row.Scan(
-		&i.ID,
-		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.UserID,
+		&i.ID,
 	)
 	return i, err
 }
 
 const getAPIKeyWithUser = `-- name: GetAPIKeyWithUser :one
 SELECT
-    ak.id, ak.user_id, ak.name, ak.key_hash, ak.key_prefix, ak.last_used_at, ak.created_at, ak.revoked_at,
+    ak.name, ak.key_hash, ak.key_prefix, ak.last_used_at, ak.created_at, ak.revoked_at, ak.user_id, ak.id,
     u.github_id,
     u.github_username,
     u.avatar_url
@@ -78,14 +78,14 @@ WHERE ak.key_prefix = $1 AND ak.revoked_at IS NULL
 `
 
 type GetAPIKeyWithUserRow struct {
-	ID             int64              `json:"id"`
-	UserID         int64              `json:"user_id"`
 	Name           string             `json:"name"`
 	KeyHash        string             `json:"key_hash"`
 	KeyPrefix      string             `json:"key_prefix"`
 	LastUsedAt     pgtype.Timestamptz `json:"last_used_at"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	RevokedAt      pgtype.Timestamptz `json:"revoked_at"`
+	UserID         string             `json:"user_id"`
+	ID             string             `json:"id"`
 	GithubID       int64              `json:"github_id"`
 	GithubUsername string             `json:"github_username"`
 	AvatarUrl      pgtype.Text        `json:"avatar_url"`
@@ -95,14 +95,14 @@ func (q *Queries) GetAPIKeyWithUser(ctx context.Context, keyPrefix string) (GetA
 	row := q.db.QueryRow(ctx, getAPIKeyWithUser, keyPrefix)
 	var i GetAPIKeyWithUserRow
 	err := row.Scan(
-		&i.ID,
-		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.UserID,
+		&i.ID,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.AvatarUrl,
@@ -118,15 +118,15 @@ ORDER BY created_at DESC
 `
 
 type ListAPIKeysByUserIDRow struct {
-	ID         int64              `json:"id"`
-	UserID     int64              `json:"user_id"`
+	ID         string             `json:"id"`
+	UserID     string             `json:"user_id"`
 	Name       string             `json:"name"`
 	KeyPrefix  string             `json:"key_prefix"`
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
-func (q *Queries) ListAPIKeysByUserID(ctx context.Context, userID int64) ([]ListAPIKeysByUserIDRow, error) {
+func (q *Queries) ListAPIKeysByUserID(ctx context.Context, userID string) ([]ListAPIKeysByUserIDRow, error) {
 	rows, err := q.db.Query(ctx, listAPIKeysByUserID, userID)
 	if err != nil {
 		return nil, err
@@ -158,8 +158,8 @@ UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND user_id = $2
 `
 
 type RevokeAPIKeyParams struct {
-	ID     int64 `json:"id"`
-	UserID int64 `json:"user_id"`
+	ID     string `json:"id"`
+	UserID string `json:"user_id"`
 }
 
 func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) error {
@@ -171,7 +171,7 @@ const updateAPIKeyLastUsed = `-- name: UpdateAPIKeyLastUsed :exec
 UPDATE api_keys SET last_used_at = NOW() WHERE id = $1
 `
 
-func (q *Queries) UpdateAPIKeyLastUsed(ctx context.Context, id int64) error {
+func (q *Queries) UpdateAPIKeyLastUsed(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, updateAPIKeyLastUsed, id)
 	return err
 }

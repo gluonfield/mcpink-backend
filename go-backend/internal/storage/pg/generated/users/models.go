@@ -9,22 +9,23 @@ import (
 )
 
 type ApiKey struct {
-	ID         int64              `json:"id"`
-	UserID     int64              `json:"user_id"`
 	Name       string             `json:"name"`
 	KeyHash    string             `json:"key_hash"`
 	KeyPrefix  string             `json:"key_prefix"`
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	UserID     string             `json:"user_id"`
+	ID         string             `json:"id"`
 }
 
 type User struct {
-	ID             int64              `json:"id"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	GithubID       int64              `json:"github_id"`
-	GithubUsername string             `json:"github_username"`
-	GithubToken    string             `json:"github_token"`
-	AvatarUrl      pgtype.Text        `json:"avatar_url"`
+	CreatedAt               pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+	GithubID                int64              `json:"github_id"`
+	GithubUsername          string             `json:"github_username"`
+	GithubToken             string             `json:"github_token"`
+	AvatarUrl               pgtype.Text        `json:"avatar_url"`
+	GithubAppInstallationID pgtype.Int8        `json:"github_app_installation_id"`
+	ID                      string             `json:"id"`
 }

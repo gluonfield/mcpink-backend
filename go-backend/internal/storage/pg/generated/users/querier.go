@@ -9,10 +9,12 @@ import (
 )
 
 type Querier interface {
+	ClearGitHubAppInstallation(ctx context.Context, id string) (User, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
-	DeleteUser(ctx context.Context, id int64) error
+	DeleteUser(ctx context.Context, id string) error
 	GetUserByGitHubID(ctx context.Context, githubID int64) (User, error)
-	GetUserByID(ctx context.Context, id int64) (User, error)
+	GetUserByID(ctx context.Context, id string) (User, error)
+	SetGitHubAppInstallation(ctx context.Context, arg SetGitHubAppInstallationParams) (User, error)
 	UpdateGitHubToken(ctx context.Context, arg UpdateGitHubTokenParams) (User, error)
 }
 

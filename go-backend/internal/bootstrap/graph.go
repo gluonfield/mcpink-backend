@@ -2,7 +2,6 @@ package bootstrap
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -14,6 +13,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
+	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/go-chi/chi/v5"
@@ -33,11 +33,13 @@ func NewResolver(
 	pgdb *pg.DB,
 	logger *slog.Logger,
 	authService *auth.Service,
+	githubAppService *githubapp.Service,
 ) *graph.Resolver {
 	return &graph.Resolver{
-		Db:          pgdb,
-		Logger:      logger,
-		AuthService: authService,
+		Db:               pgdb,
+		Logger:           logger,
+		AuthService:      authService,
+		GitHubAppService: githubAppService,
 	}
 }
 
@@ -120,7 +122,7 @@ func NewGraphQLRouter(
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("%d", userID), nil
+		return userID, nil
 	}
 
 	authMiddleware := authz.MiddlewareWithConfig(srv, tokenValidator.ValidateToken, logger, &authz.MiddlewareConfig{

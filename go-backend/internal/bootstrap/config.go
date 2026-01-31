@@ -6,7 +6,8 @@ import (
 	"strings"
 
 	"github.com/augustdev/autoclip/internal/auth"
-	"github.com/augustdev/autoclip/internal/github"
+	"github.com/augustdev/autoclip/internal/github_oauth"
+	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
@@ -21,7 +22,8 @@ func NewConfig() (Config, error) {
 	var cfg struct {
 		GraphQLAPI GraphQLAPIConfig
 		Db         pg.DbConfig
-		GitHub     github.Config
+		GitHub     github_oauth.Config
+		GitHubApp  githubapp.Config
 		Auth       auth.Config
 	}
 
@@ -33,6 +35,7 @@ func NewConfig() (Config, error) {
 		GraphQLAPI: cfg.GraphQLAPI,
 		Db:         cfg.Db,
 		GitHub:     cfg.GitHub,
+		GitHubApp:  cfg.GitHubApp,
 		Auth:       cfg.Auth,
 	}, nil
 }
@@ -42,7 +45,8 @@ type Config struct {
 
 	GraphQLAPI GraphQLAPIConfig
 	Db         pg.DbConfig
-	GitHub     github.Config
+	GitHub     github_oauth.Config
+	GitHubApp  githubapp.Config
 	Auth       auth.Config
 }
 

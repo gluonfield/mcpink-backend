@@ -9,14 +9,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
-	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"golang.org/x/crypto/bcrypt"
 
-	"github.com/augustdev/autoclip/internal/github"
+	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
@@ -27,21 +26,21 @@ type Service struct {
 	db          *pg.DB
 	usersQ      users.Querier
 	apiKeysQ    apikeys.Querier
-	githubOAuth *github.OAuthService
+	githubOAuth *github_oauth.OAuthService
 }
 
 type Session struct {
 	Token  string
-	UserID int64
+	UserID string
 	User   *users.User
 }
 
 type APIKeyResult struct {
-	ID         int64
-	Name       string
-	Prefix     string
-	FullKey    string
-	CreatedAt  time.Time
+	ID        string
+	Name      string
+	Prefix    string
+	FullKey   string
+	CreatedAt time.Time
 }
 
 func NewService(
@@ -49,7 +48,7 @@ func NewService(
 	db *pg.DB,
 	usersQ users.Querier,
 	apiKeysQ apikeys.Querier,
-	githubOAuth *github.OAuthService,
+	githubOAuth *github_oauth.OAuthService,
 ) *Service {
 	return &Service{
 		config:      config,
@@ -111,7 +110,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 	}, nil
 }
 
-func (s *Service) ValidateJWT(tokenString string) (int64, error) {
+func (s *Service) ValidateJWT(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -120,30 +119,20 @@ func (s *Service) ValidateJWT(tokenString string) (int64, error) {
 	})
 
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse token: %w", err)
+		return "", fmt.Errorf("failed to parse token: %w", err)
 	}
 
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
-		switch sub := claims["sub"].(type) {
-		case string:
-			userID, err := strconv.ParseInt(sub, 10, 64)
-			if err != nil {
-				return 0, fmt.Errorf("invalid subject claim: %w", err)
-			}
-			return userID, nil
-		case float64:
-			return int64(sub), nil
-		default:
-			return 0, fmt.Errorf("invalid subject claim type")
+		if sub, ok := claims["sub"].(string); ok {
+			return sub, nil
 		}
+		return "", fmt.Errorf("invalid subject claim type")
 	}
 
-	return 0, fmt.Errorf("invalid token")
+	return "", fmt.Errorf("invalid token")
 }
 
 func (s *Service) GenerateAPIKey(ctx context.Context, userID string, name string) (*APIKeyResult, error) {
-	uid, _ := strconv.ParseInt(userID, 10, 64)
-
 	keyBytes := make([]byte, 32)
 	if _, err := rand.Read(keyBytes); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %w", err)
@@ -159,7 +148,7 @@ func (s *Service) GenerateAPIKey(ctx context.Context, userID string, name string
 	prefix := fullKey[:16]
 
 	apiKey, err := s.apiKeysQ.CreateAPIKey(ctx, apikeys.CreateAPIKeyParams{
-		UserID:    uid,
+		UserID:    userID,
 		Name:      name,
 		KeyHash:   string(keyHash),
 		KeyPrefix: prefix,
@@ -177,20 +166,20 @@ func (s *Service) GenerateAPIKey(ctx context.Context, userID string, name string
 	}, nil
 }
 
-func (s *Service) ValidateAPIKey(ctx context.Context, key string) (int64, error) {
+func (s *Service) ValidateAPIKey(ctx context.Context, key string) (string, error) {
 	if len(key) < 16 {
-		return 0, fmt.Errorf("invalid api key format")
+		return "", fmt.Errorf("invalid api key format")
 	}
 
 	prefix := key[:16]
 
 	apiKey, err := s.apiKeysQ.GetAPIKeyByPrefix(ctx, prefix)
 	if err != nil {
-		return 0, fmt.Errorf("api key not found")
+		return "", fmt.Errorf("api key not found")
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(apiKey.KeyHash), []byte(key)); err != nil {
-		return 0, fmt.Errorf("invalid api key")
+		return "", fmt.Errorf("invalid api key")
 	}
 
 	_ = s.apiKeysQ.UpdateAPIKeyLastUsed(ctx, apiKey.ID)
@@ -198,17 +187,15 @@ func (s *Service) ValidateAPIKey(ctx context.Context, key string) (int64, error)
 	return apiKey.UserID, nil
 }
 
-func (s *Service) RevokeAPIKey(ctx context.Context, userID string, keyID int64) error {
-	uid, _ := strconv.ParseInt(userID, 10, 64)
+func (s *Service) RevokeAPIKey(ctx context.Context, userID string, keyID string) error {
 	return s.apiKeysQ.RevokeAPIKey(ctx, apikeys.RevokeAPIKeyParams{
 		ID:     keyID,
-		UserID: uid,
+		UserID: userID,
 	})
 }
 
 func (s *Service) GetUserByID(ctx context.Context, userID string) (*users.User, error) {
-	uid, _ := strconv.ParseInt(userID, 10, 64)
-	user, err := s.usersQ.GetUserByID(ctx, uid)
+	user, err := s.usersQ.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
 	}
@@ -216,18 +203,25 @@ func (s *Service) GetUserByID(ctx context.Context, userID string) (*users.User, 
 }
 
 func (s *Service) ListAPIKeys(ctx context.Context, userID string) ([]apikeys.ListAPIKeysByUserIDRow, error) {
-	uid, _ := strconv.ParseInt(userID, 10, 64)
-	return s.apiKeysQ.ListAPIKeysByUserID(ctx, uid)
+	return s.apiKeysQ.ListAPIKeysByUserID(ctx, userID)
+}
+
+func (s *Service) SetGitHubAppInstallation(ctx context.Context, userID string, installationID int64) error {
+	_, err := s.usersQ.SetGitHubAppInstallation(ctx, users.SetGitHubAppInstallationParams{
+		ID:                      userID,
+		GithubAppInstallationID: pgtype.Int8{Int64: installationID, Valid: true},
+	})
+	return err
 }
 
 func (s *Service) EncryptToken(token string) (string, error) {
 	return s.encryptToken(token)
 }
 
-func (s *Service) generateJWT(userID int64) (string, error) {
+func (s *Service) generateJWT(userID string) (string, error) {
 	now := time.Now()
 	claims := jwt.RegisteredClaims{
-		Subject:   fmt.Sprintf("%d", userID),
+		Subject:   userID,
 		IssuedAt:  jwt.NewNumericDate(now),
 		ExpiresAt: jwt.NewNumericDate(now.Add(s.config.JWTExpiry)),
 	}

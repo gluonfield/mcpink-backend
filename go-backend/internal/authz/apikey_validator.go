@@ -28,5 +28,5 @@ func (v *APIKeyValidator) ValidateToken(tokenString string) (string, []string, e
 		return "", nil, fmt.Errorf("invalid api key: %w", err)
 	}
 
-	return fmt.Sprintf("%d", userID), []string{"user"}, nil
+	return userID, []string{"user"}, nil
 }

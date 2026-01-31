@@ -5,8 +5,8 @@ SELECT * FROM users WHERE id = $1;
 SELECT * FROM users WHERE github_id = $1;
 
 -- name: CreateUser :one
-INSERT INTO users (github_id, github_username, github_token, avatar_url)
-VALUES ($1, $2, $3, $4)
+INSERT INTO users (id, github_id, github_username, github_token, avatar_url)
+VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4)
 RETURNING *;
 
 -- name: UpdateGitHubToken :one
@@ -17,3 +17,15 @@ RETURNING *;
 
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1;
+
+-- name: SetGitHubAppInstallation :one
+UPDATE users
+SET github_app_installation_id = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: ClearGitHubAppInstallation :one
+UPDATE users
+SET github_app_installation_id = NULL, updated_at = NOW()
+WHERE id = $1
+RETURNING *;

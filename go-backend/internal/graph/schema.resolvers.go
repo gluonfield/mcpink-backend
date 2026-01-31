@@ -23,7 +23,7 @@ func (r *mutationResolver) CreateAPIKey(ctx context.Context, name string) (*mode
 
 	return &model1.CreateAPIKeyResult{
 		APIKey: &model1.APIKey{
-			ID:        fmt.Sprintf("%d", result.ID),
+			ID:        result.ID,
 			Name:      result.Name,
 			Prefix:    result.Prefix,
 			CreatedAt: result.CreatedAt,
@@ -34,12 +34,7 @@ func (r *mutationResolver) CreateAPIKey(ctx context.Context, name string) (*mode
 
 // RevokeAPIKey is the resolver for the revokeAPIKey field.
 func (r *mutationResolver) RevokeAPIKey(ctx context.Context, id string) (bool, error) {
-	var keyID int64
-	if _, err := fmt.Sscanf(id, "%d", &keyID); err != nil {
-		return false, fmt.Errorf("invalid key ID: %w", err)
-	}
-
-	if err := r.AuthService.RevokeAPIKey(ctx, authz.For(ctx).GetUserID(), keyID); err != nil {
+	if err := r.AuthService.RevokeAPIKey(ctx, authz.For(ctx).GetUserID(), id); err != nil {
 		return false, fmt.Errorf("failed to revoke API key: %w", err)
 	}
 
@@ -59,7 +54,7 @@ func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
 	}
 
 	return &model1.User{
-		ID:             fmt.Sprintf("%d", user.ID),
+		ID:             user.ID,
 		GithubUsername: user.GithubUsername,
 		AvatarURL:      avatarURL,
 		CreatedAt:      user.CreatedAt.Time,
@@ -82,7 +77,7 @@ func (r *queryResolver) MyAPIKeys(ctx context.Context) ([]*model1.APIKey, error)
 		}
 
 		result[i] = &model1.APIKey{
-			ID:         fmt.Sprintf("%d", key.ID),
+			ID:         key.ID,
 			Name:       key.Name,
 			Prefix:     key.KeyPrefix,
 			LastUsedAt: lastUsedAt,
@@ -93,11 +88,52 @@ func (r *queryResolver) MyAPIKeys(ctx context.Context) ([]*model1.APIKey, error)
 	return result, nil
 }
 
+// HasGithubAppInstalled is the resolver for the hasGithubAppInstalled field.
+func (r *userResolver) HasGithubAppInstalled(ctx context.Context, obj *model1.User) (bool, error) {
+	userID := authz.For(ctx).GetUserID()
+
+	// Get user from database to check current installation status
+	user, err := r.AuthService.GetUserByID(ctx, userID)
+	if err != nil {
+		return false, fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// If we already have an installation ID cached, return true
+	if user.GithubAppInstallationID.Valid {
+		return true, nil
+	}
+
+	// Check with GitHub API if the user has installed the app
+	installationID, err := r.GitHubAppService.GetUserInstallation(ctx, user.GithubUsername)
+	if err != nil {
+		r.Logger.Error("failed to check GitHub App installation", "error", err, "username", user.GithubUsername)
+		return false, nil // Return false on error, don't block the user
+	}
+
+	if installationID == 0 {
+		// User has not installed the app
+		return false, nil
+	}
+
+	// User has installed the app, cache the installation ID in the database
+	err = r.AuthService.SetGitHubAppInstallation(ctx, userID, installationID)
+	if err != nil {
+		r.Logger.Error("failed to save GitHub App installation ID", "error", err)
+		// Still return true since the app is installed
+	}
+
+	return true, nil
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// User returns UserResolver implementation.
+func (r *Resolver) User() UserResolver { return &userResolver{r} }
+
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type userResolver struct{ *Resolver }

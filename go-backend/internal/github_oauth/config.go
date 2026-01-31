@@ -1,4 +1,4 @@
-package github
+package github_oauth
 
 type Config struct {
 	ClientID     string

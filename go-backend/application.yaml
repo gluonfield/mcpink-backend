@@ -16,7 +16,12 @@ github:
   clientsecret: ""
   callbackurl: "http://localhost:8081/auth/github/callback"
   scopes:
-    - repo
+    - read:user
+    - user:email
+
+githubapp:
+  appid: 2764764
+  privatekey: ""
 
 auth:
   jwtsecret: ""

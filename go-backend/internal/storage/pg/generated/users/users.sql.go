@@ -11,10 +11,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearGitHubAppInstallation = `-- name: ClearGitHubAppInstallation :one
+UPDATE users
+SET github_app_installation_id = NULL, updated_at = NOW()
+WHERE id = $1
+RETURNING created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id
+`
+
+func (q *Queries) ClearGitHubAppInstallation(ctx context.Context, id string) (User, error) {
+	row := q.db.QueryRow(ctx, clearGitHubAppInstallation, id)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.GithubToken,
+		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
-INSERT INTO users (github_id, github_username, github_token, avatar_url)
-VALUES ($1, $2, $3, $4)
-RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url
+INSERT INTO users (id, github_id, github_username, github_token, avatar_url)
+VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4)
+RETURNING created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id
 `
 
 type CreateUserParams struct {
@@ -33,13 +56,14 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	)
 	var i User
 	err := row.Scan(
-		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
 	)
 	return i, err
 }
@@ -48,45 +72,75 @@ const deleteUser = `-- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1
 `
 
-func (q *Queries) DeleteUser(ctx context.Context, id int64) error {
+func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 	_, err := q.db.Exec(ctx, deleteUser, id)
 	return err
 }
 
 const getUserByGitHubID = `-- name: GetUserByGitHubID :one
-SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url FROM users WHERE github_id = $1
+SELECT created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id FROM users WHERE github_id = $1
 `
 
 func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByGitHubID, githubID)
 	var i User
 	err := row.Scan(
-		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, created_at, updated_at, github_id, github_username, github_token, avatar_url FROM users WHERE id = $1
+SELECT created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id FROM users WHERE id = $1
 `
 
-func (q *Queries) GetUserByID(ctx context.Context, id int64) (User, error) {
+func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
-		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
+	)
+	return i, err
+}
+
+const setGitHubAppInstallation = `-- name: SetGitHubAppInstallation :one
+UPDATE users
+SET github_app_installation_id = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id
+`
+
+type SetGitHubAppInstallationParams struct {
+	ID                      string      `json:"id"`
+	GithubAppInstallationID pgtype.Int8 `json:"github_app_installation_id"`
+}
+
+func (q *Queries) SetGitHubAppInstallation(ctx context.Context, arg SetGitHubAppInstallationParams) (User, error) {
+	row := q.db.QueryRow(ctx, setGitHubAppInstallation, arg.ID, arg.GithubAppInstallationID)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.GithubToken,
+		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
 	)
 	return i, err
 }
@@ -95,11 +149,11 @@ const updateGitHubToken = `-- name: UpdateGitHubToken :one
 UPDATE users
 SET github_token = $2, github_username = $3, avatar_url = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING id, created_at, updated_at, github_id, github_username, github_token, avatar_url
+RETURNING created_at, updated_at, github_id, github_username, github_token, avatar_url, github_app_installation_id, id
 `
 
 type UpdateGitHubTokenParams struct {
-	ID             int64       `json:"id"`
+	ID             string      `json:"id"`
 	GithubToken    string      `json:"github_token"`
 	GithubUsername string      `json:"github_username"`
 	AvatarUrl      pgtype.Text `json:"avatar_url"`
@@ -114,13 +168,14 @@ func (q *Queries) UpdateGitHubToken(ctx context.Context, arg UpdateGitHubTokenPa
 	)
 	var i User
 	err := row.Scan(
-		&i.ID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.GithubToken,
 		&i.AvatarUrl,
+		&i.GithubAppInstallationID,
+		&i.ID,
 	)
 	return i, err
 }

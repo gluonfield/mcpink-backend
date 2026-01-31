@@ -4,7 +4,8 @@ import (
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/bootstrap"
-	"github.com/augustdev/autoclip/internal/github"
+	"github.com/augustdev/autoclip/internal/github_oauth"
+	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"go.uber.org/fx"
 )
@@ -17,7 +18,8 @@ func main() {
 			pg.NewDatabase,
 			pg.NewUserQueries,
 			pg.NewAPIKeyQueries,
-			github.NewOAuthService,
+			github_oauth.NewOAuthService,
+			githubapp.NewService,
 			auth.NewService,
 			auth.NewHandlers,
 			authz.NewAPIKeyValidator,

@@ -1,4 +1,15 @@
 directive @isAuthenticated on FIELD_DEFINITION
+directive @hasRole(role: Role!) on FIELD_DEFINITION
+directive @goField(
+  forceResolver: Boolean
+  name: String
+  omittable: Boolean
+) on INPUT_FIELD_DEFINITION | FIELD_DEFINITION
+
+enum Role {
+  ADMIN
+  USER
+}
 
 scalar Time
 
@@ -7,6 +18,7 @@ type User {
   githubUsername: String!
   avatarUrl: String
   createdAt: Time!
+  hasGithubAppInstalled: Boolean! @goField(forceResolver: true)
 }
 
 type APIKey {
