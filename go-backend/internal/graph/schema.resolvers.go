@@ -88,41 +88,64 @@ func (r *queryResolver) MyAPIKeys(ctx context.Context) ([]*model1.APIKey, error)
 	return result, nil
 }
 
-// HasGithubAppInstalled is the resolver for the hasGithubAppInstalled field.
-func (r *userResolver) HasGithubAppInstalled(ctx context.Context, obj *model1.User) (bool, error) {
+// RecheckGithubAppInstallation is the resolver for the recheckGithubAppInstallation field.
+func (r *mutationResolver) RecheckGithubAppInstallation(ctx context.Context) (*string, error) {
 	userID := authz.For(ctx).GetUserID()
 
-	// Get user from database to check current installation status
 	user, err := r.AuthService.GetUserByID(ctx, userID)
 	if err != nil {
-		return false, fmt.Errorf("failed to get user: %w", err)
-	}
-
-	// If we already have an installation ID cached, return true
-	if user.GithubAppInstallationID.Valid {
-		return true, nil
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
 	// Check with GitHub API if the user has installed the app
 	installationID, err := r.GitHubAppService.GetUserInstallation(ctx, user.GithubUsername)
 	if err != nil {
 		r.Logger.Error("failed to check GitHub App installation", "error", err, "username", user.GithubUsername)
-		return false, nil // Return false on error, don't block the user
+		return nil, nil
 	}
 
 	if installationID == 0 {
-		// User has not installed the app
-		return false, nil
+		// User has uninstalled - clear cached value
+		if user.GithubAppInstallationID.Valid {
+			_ = r.AuthService.ClearGitHubAppInstallation(ctx, userID)
+		}
+		return nil, nil
 	}
 
-	// User has installed the app, cache the installation ID in the database
-	err = r.AuthService.SetGitHubAppInstallation(ctx, userID, installationID)
+	// Update cache with new value
+	if !user.GithubAppInstallationID.Valid || user.GithubAppInstallationID.Int64 != installationID {
+		_ = r.AuthService.SetGitHubAppInstallation(ctx, userID, installationID)
+	}
+
+	id := fmt.Sprintf("%d", installationID)
+	return &id, nil
+}
+
+// GithubAppInstallationID is the resolver for the githubAppInstallationId field.
+func (r *userResolver) GithubAppInstallationID(ctx context.Context, obj *model1.User) (*string, error) {
+	userID := authz.For(ctx).GetUserID()
+
+	user, err := r.AuthService.GetUserByID(ctx, userID)
 	if err != nil {
-		r.Logger.Error("failed to save GitHub App installation ID", "error", err)
-		// Still return true since the app is installed
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	return true, nil
+	// Return cached value if present
+	if user.GithubAppInstallationID.Valid {
+		id := fmt.Sprintf("%d", user.GithubAppInstallationID.Int64)
+		return &id, nil
+	}
+
+	return nil, nil
+}
+
+// GithubScopes is the resolver for the githubScopes field.
+func (r *userResolver) GithubScopes(ctx context.Context, obj *model1.User) ([]string, error) {
+	user, err := r.AuthService.GetUserByID(ctx, authz.For(ctx).GetUserID())
+	if err != nil {
+		return []string{}, nil
+	}
+	return user.GithubScopes, nil
 }
 
 // Mutation returns MutationResolver implementation.

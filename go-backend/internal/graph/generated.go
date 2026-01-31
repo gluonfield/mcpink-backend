@@ -65,8 +65,9 @@ type ComplexityRoot struct {
 	}
 
 	Mutation struct {
-		CreateAPIKey func(childComplexity int, name string) int
-		RevokeAPIKey func(childComplexity int, id string) int
+		CreateAPIKey                 func(childComplexity int, name string) int
+		RecheckGithubAppInstallation func(childComplexity int) int
+		RevokeAPIKey                 func(childComplexity int, id string) int
 	}
 
 	Query struct {
@@ -75,24 +76,27 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		AvatarURL             func(childComplexity int) int
-		CreatedAt             func(childComplexity int) int
-		GithubUsername        func(childComplexity int) int
-		HasGithubAppInstalled func(childComplexity int) int
-		ID                    func(childComplexity int) int
+		AvatarURL               func(childComplexity int) int
+		CreatedAt               func(childComplexity int) int
+		GithubAppInstallationID func(childComplexity int) int
+		GithubScopes            func(childComplexity int) int
+		GithubUsername          func(childComplexity int) int
+		ID                      func(childComplexity int) int
 	}
 }
 
 type MutationResolver interface {
 	CreateAPIKey(ctx context.Context, name string) (*model.CreateAPIKeyResult, error)
 	RevokeAPIKey(ctx context.Context, id string) (bool, error)
+	RecheckGithubAppInstallation(ctx context.Context) (*string, error)
 }
 type QueryResolver interface {
 	Me(ctx context.Context) (*model.User, error)
 	MyAPIKeys(ctx context.Context) ([]*model.APIKey, error)
 }
 type UserResolver interface {
-	HasGithubAppInstalled(ctx context.Context, obj *model.User) (bool, error)
+	GithubAppInstallationID(ctx context.Context, obj *model.User) (*string, error)
+	GithubScopes(ctx context.Context, obj *model.User) ([]string, error)
 }
 
 type executableSchema struct {
@@ -169,6 +173,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.CreateAPIKey(childComplexity, args["name"].(string)), true
+	case "Mutation.recheckGithubAppInstallation":
+		if e.complexity.Mutation.RecheckGithubAppInstallation == nil {
+			break
+		}
+
+		return e.complexity.Mutation.RecheckGithubAppInstallation(childComplexity), true
 	case "Mutation.revokeAPIKey":
 		if e.complexity.Mutation.RevokeAPIKey == nil {
 			break
@@ -206,18 +216,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.CreatedAt(childComplexity), true
+	case "User.githubAppInstallationId":
+		if e.complexity.User.GithubAppInstallationID == nil {
+			break
+		}
+
+		return e.complexity.User.GithubAppInstallationID(childComplexity), true
+	case "User.githubScopes":
+		if e.complexity.User.GithubScopes == nil {
+			break
+		}
+
+		return e.complexity.User.GithubScopes(childComplexity), true
 	case "User.githubUsername":
 		if e.complexity.User.GithubUsername == nil {
 			break
 		}
 
 		return e.complexity.User.GithubUsername(childComplexity), true
-	case "User.hasGithubAppInstalled":
-		if e.complexity.User.HasGithubAppInstalled == nil {
-			break
-		}
-
-		return e.complexity.User.HasGithubAppInstalled(childComplexity), true
 	case "User.id":
 		if e.complexity.User.ID == nil {
 			break
@@ -773,6 +789,48 @@ func (ec *executionContext) fieldContext_Mutation_revokeAPIKey(ctx context.Conte
 	return fc, nil
 }
 
+func (ec *executionContext) _Mutation_recheckGithubAppInstallation(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Mutation_recheckGithubAppInstallation,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Mutation().RecheckGithubAppInstallation(ctx)
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.IsAuthenticated == nil {
+					var zeroVal *string
+					return zeroVal, errors.New("directive isAuthenticated is not implemented")
+				}
+				return ec.directives.IsAuthenticated(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Mutation_recheckGithubAppInstallation(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Mutation",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query_me(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -818,8 +876,10 @@ func (ec *executionContext) fieldContext_Query_me(_ context.Context, field graph
 				return ec.fieldContext_User_avatarUrl(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_User_createdAt(ctx, field)
-			case "hasGithubAppInstalled":
-				return ec.fieldContext_User_hasGithubAppInstalled(ctx, field)
+			case "githubAppInstallationId":
+				return ec.fieldContext_User_githubAppInstallationId(ctx, field)
+			case "githubScopes":
+				return ec.fieldContext_User_githubScopes(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -1105,30 +1165,59 @@ func (ec *executionContext) fieldContext_User_createdAt(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _User_hasGithubAppInstalled(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+func (ec *executionContext) _User_githubAppInstallationId(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_User_hasGithubAppInstalled,
+		ec.fieldContext_User_githubAppInstallationId,
 		func(ctx context.Context) (any, error) {
-			return ec.resolvers.User().HasGithubAppInstalled(ctx, obj)
+			return ec.resolvers.User().GithubAppInstallationID(ctx, obj)
 		},
 		nil,
-		ec.marshalNBoolean2bool,
+		ec.marshalOString2ᚖstring,
 		true,
-		true,
+		false,
 	)
 }
 
-func (ec *executionContext) fieldContext_User_hasGithubAppInstalled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_User_githubAppInstallationId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "User",
 		Field:      field,
 		IsMethod:   true,
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type Boolean does not have child fields")
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_githubScopes(ctx context.Context, field graphql.CollectedField, obj *model.User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_githubScopes,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.User().GithubScopes(ctx, obj)
+		},
+		nil,
+		ec.marshalNString2ᚕstringᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_githubScopes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -2721,6 +2810,10 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "recheckGithubAppInstallation":
+			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
+				return ec._Mutation_recheckGithubAppInstallation(ctx, field)
+			})
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -2863,7 +2956,40 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
-		case "hasGithubAppInstalled":
+		case "githubAppInstallationId":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._User_githubAppInstallationId(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "githubScopes":
 			field := field
 
 			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
@@ -2872,7 +2998,7 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 						ec.Error(ctx, ec.Recover(ctx, r))
 					}
 				}()
-				res = ec._User_hasGithubAppInstalled(ctx, field, obj)
+				res = ec._User_githubScopes(ctx, field, obj)
 				if res == graphql.Null {
 					atomic.AddUint32(&fs.Invalids, 1)
 				}
@@ -3381,6 +3507,36 @@ func (ec *executionContext) marshalNString2string(ctx context.Context, sel ast.S
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) unmarshalNString2ᚕstringᚄ(ctx context.Context, v any) ([]string, error) {
+	var vSlice []any
+	vSlice = graphql.CoerceList(v)
+	var err error
+	res := make([]string, len(vSlice))
+	for i := range vSlice {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithIndex(i))
+		res[i], err = ec.unmarshalNString2string(ctx, vSlice[i])
+		if err != nil {
+			return nil, err
+		}
+	}
+	return res, nil
+}
+
+func (ec *executionContext) marshalNString2ᚕstringᚄ(ctx context.Context, sel ast.SelectionSet, v []string) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	for i := range v {
+		ret[i] = ec.marshalNString2string(ctx, sel, v[i])
+	}
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
 }
 
 func (ec *executionContext) unmarshalNTime2timeᚐTime(ctx context.Context, v any) (time.Time, error) {

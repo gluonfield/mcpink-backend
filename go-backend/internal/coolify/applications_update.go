@@ -1,0 +1,286 @@
+package coolify
+
+import (
+	"context"
+	"fmt"
+)
+
+// UpdateApplicationRequest represents the request body for updating an application.
+// See: https://coolify.io/docs/api-reference/api/operations/update-application-by-uuid
+type UpdateApplicationRequest struct {
+	// Basic settings
+	Name        *string `json:"name,omitempty"`
+	Description *string `json:"description,omitempty"`
+	Domains     *string `json:"domains,omitempty"`
+
+	// Git settings
+	GitRepository *string `json:"git_repository,omitempty"`
+	GitBranch     *string `json:"git_branch,omitempty"`
+	GitCommitSHA  *string `json:"git_commit_sha,omitempty"`
+
+	// Build settings
+	BuildPack        *BuildPack `json:"build_pack,omitempty"`
+	StaticImage      *string    `json:"static_image,omitempty"`
+	InstallCommand   *string    `json:"install_command,omitempty"`
+	BuildCommand     *string    `json:"build_command,omitempty"`
+	StartCommand     *string    `json:"start_command,omitempty"`
+	BaseDirectory    *string    `json:"base_directory,omitempty"`
+	PublishDirectory *string    `json:"publish_directory,omitempty"`
+
+	// Docker settings
+	DockerRegistryImageName *string `json:"docker_registry_image_name,omitempty"`
+	DockerRegistryImageTag  *string `json:"docker_registry_image_tag,omitempty"`
+	Dockerfile              *string `json:"dockerfile,omitempty"`
+	DockerfileLocation      *string `json:"dockerfile_location,omitempty"`
+
+	// Docker Compose settings
+	DockerComposeLocation           *string `json:"docker_compose_location,omitempty"`
+	DockerComposeCustomStartCommand *string `json:"docker_compose_custom_start_command,omitempty"`
+	DockerComposeCustomBuildCommand *string `json:"docker_compose_custom_build_command,omitempty"`
+
+	// Ports
+	PortsExposes  *string `json:"ports_exposes,omitempty"`
+	PortsMappings *string `json:"ports_mappings,omitempty"`
+
+	// Static/SPA settings
+	IsStatic *bool `json:"is_static,omitempty"`
+	IsSPA    *bool `json:"is_spa,omitempty"`
+
+	// Auto-deploy settings
+	IsAutoDeployEnabled *bool `json:"is_auto_deploy_enabled,omitempty"`
+	IsForceHTTPSEnabled *bool `json:"is_force_https_enabled,omitempty"`
+
+	// Health check settings
+	HealthCheckEnabled      *bool   `json:"health_check_enabled,omitempty"`
+	HealthCheckPath         *string `json:"health_check_path,omitempty"`
+	HealthCheckPort         *string `json:"health_check_port,omitempty"`
+	HealthCheckHost         *string `json:"health_check_host,omitempty"`
+	HealthCheckMethod       *string `json:"health_check_method,omitempty"`
+	HealthCheckReturnCode   *int    `json:"health_check_return_code,omitempty"`
+	HealthCheckScheme       *string `json:"health_check_scheme,omitempty"`
+	HealthCheckResponseText *string `json:"health_check_response_text,omitempty"`
+	HealthCheckInterval     *int    `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout      *int    `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries      *int    `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod  *int    `json:"health_check_start_period,omitempty"`
+
+	// Resource limits
+	LimitsMemory            *string `json:"limits_memory,omitempty"`
+	LimitsMemorySwap        *string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int    `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation *string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUs              *string `json:"limits_cpus,omitempty"`
+	LimitsCPUSet            *string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int    `json:"limits_cpu_shares,omitempty"`
+
+	// Docker options
+	CustomLabels           *string `json:"custom_labels,omitempty"`
+	CustomDockerRunOptions *string `json:"custom_docker_run_options,omitempty"`
+
+	// Deployment commands
+	PostDeploymentCommand          *string `json:"post_deployment_command,omitempty"`
+	PostDeploymentCommandContainer *string `json:"post_deployment_command_container,omitempty"`
+	PreDeploymentCommand           *string `json:"pre_deployment_command,omitempty"`
+	PreDeploymentCommandContainer  *string `json:"pre_deployment_command_container,omitempty"`
+
+	// Webhook secrets
+	ManualWebhookSecretGitHub    *string `json:"manual_webhook_secret_github,omitempty"`
+	ManualWebhookSecretGitLab    *string `json:"manual_webhook_secret_gitlab,omitempty"`
+	ManualWebhookSecretBitbucket *string `json:"manual_webhook_secret_bitbucket,omitempty"`
+	ManualWebhookSecretGitea     *string `json:"manual_webhook_secret_gitea,omitempty"`
+
+	// Redirect settings
+	Redirect *RedirectType `json:"redirect,omitempty"`
+
+	// Watch paths
+	WatchPaths *string `json:"watch_paths,omitempty"`
+
+	// Build server
+	UseBuildServer *bool `json:"use_build_server,omitempty"`
+
+	// HTTP Basic Auth
+	IsHTTPBasicAuthEnabled *bool   `json:"is_http_basic_auth_enabled,omitempty"`
+	HTTPBasicAuthUsername  *string `json:"http_basic_auth_username,omitempty"`
+	HTTPBasicAuthPassword  *string `json:"http_basic_auth_password,omitempty"`
+
+	// Network settings
+	ConnectToDockerNetwork *bool `json:"connect_to_docker_network,omitempty"`
+
+	// Domain settings
+	ForceDomainOverride *bool `json:"force_domain_override,omitempty"`
+	AutogenerateDomain  *bool `json:"autogenerate_domain,omitempty"`
+
+	// Label escaping
+	IsContainerLabelEscapeEnabled *bool `json:"is_container_label_escape_enabled,omitempty"`
+}
+
+// Update updates an application by its UUID.
+// See: https://coolify.io/docs/api-reference/api/operations/update-application-by-uuid
+func (s *ApplicationsService) Update(ctx context.Context, uuid string, req *UpdateApplicationRequest) (*Application, error) {
+	if uuid == "" {
+		return nil, fmt.Errorf("coolify: uuid is required")
+	}
+	if req == nil {
+		return nil, fmt.Errorf("coolify: request is required")
+	}
+
+	var app Application
+	if err := s.client.do(ctx, "PATCH", "/api/v1/applications/"+uuid, nil, req, &app); err != nil {
+		return nil, fmt.Errorf("failed to update application: %w", err)
+	}
+	return &app, nil
+}
+
+// CreatePublicRequest represents the request body for creating an application
+// from a public Git repository.
+// See: https://coolify.io/docs/api-reference/api/operations/create-public-application
+type CreatePublicRequest struct {
+	// Required fields
+	ProjectUUID     string    `json:"project_uuid"`
+	ServerUUID      string    `json:"server_uuid"`
+	EnvironmentName string    `json:"environment_name,omitempty"` // Required: one of environment_name or environment_uuid
+	EnvironmentUUID string    `json:"environment_uuid,omitempty"` // Required: one of environment_name or environment_uuid
+	GitRepository   string    `json:"git_repository"`
+	GitBranch       string    `json:"git_branch"`
+	PortsExposes    string    `json:"ports_exposes"`
+	BuildPack       BuildPack `json:"build_pack"`
+
+	// Optional fields - same as CreatePrivateGitHubAppRequest but without github_app_uuid
+	DestinationUUID         string `json:"destination_uuid,omitempty"`
+	Name                    string `json:"name,omitempty"`
+	Description             string `json:"description,omitempty"`
+	Domains                 string `json:"domains,omitempty"`
+	GitCommitSHA            string `json:"git_commit_sha,omitempty"`
+	DockerRegistryImageName string `json:"docker_registry_image_name,omitempty"`
+	DockerRegistryImageTag  string `json:"docker_registry_image_tag,omitempty"`
+
+	// Static/SPA settings
+	IsStatic    *bool  `json:"is_static,omitempty"`
+	IsSPA       *bool  `json:"is_spa,omitempty"`
+	StaticImage string `json:"static_image,omitempty"`
+
+	// Auto-deploy settings
+	IsAutoDeployEnabled  *bool `json:"is_auto_deploy_enabled,omitempty"`
+	IsForceHTTPSEnabled  *bool `json:"is_force_https_enabled,omitempty"`
+	InstantDeploy        *bool `json:"instant_deploy,omitempty"`
+
+	// Build commands
+	InstallCommand string `json:"install_command,omitempty"`
+	BuildCommand   string `json:"build_command,omitempty"`
+	StartCommand   string `json:"start_command,omitempty"`
+
+	// Directory settings
+	BaseDirectory    string `json:"base_directory,omitempty"`
+	PublishDirectory string `json:"publish_directory,omitempty"`
+
+	// Port mappings
+	PortsMappings string `json:"ports_mappings,omitempty"`
+
+	// Health check settings
+	HealthCheckEnabled      *bool  `json:"health_check_enabled,omitempty"`
+	HealthCheckPath         string `json:"health_check_path,omitempty"`
+	HealthCheckPort         string `json:"health_check_port,omitempty"`
+	HealthCheckHost         string `json:"health_check_host,omitempty"`
+	HealthCheckMethod       string `json:"health_check_method,omitempty"`
+	HealthCheckReturnCode   *int   `json:"health_check_return_code,omitempty"`
+	HealthCheckScheme       string `json:"health_check_scheme,omitempty"`
+	HealthCheckResponseText string `json:"health_check_response_text,omitempty"`
+	HealthCheckInterval     *int   `json:"health_check_interval,omitempty"`
+	HealthCheckTimeout      *int   `json:"health_check_timeout,omitempty"`
+	HealthCheckRetries      *int   `json:"health_check_retries,omitempty"`
+	HealthCheckStartPeriod  *int   `json:"health_check_start_period,omitempty"`
+
+	// Resource limits
+	LimitsMemory            string `json:"limits_memory,omitempty"`
+	LimitsMemorySwap        string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int   `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUs              string `json:"limits_cpus,omitempty"`
+	LimitsCPUSet            string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int   `json:"limits_cpu_shares,omitempty"`
+
+	// Docker options
+	CustomLabels           string `json:"custom_labels,omitempty"`
+	CustomDockerRunOptions string `json:"custom_docker_run_options,omitempty"`
+
+	// Deployment commands
+	PostDeploymentCommand          string `json:"post_deployment_command,omitempty"`
+	PostDeploymentCommandContainer string `json:"post_deployment_command_container,omitempty"`
+	PreDeploymentCommand           string `json:"pre_deployment_command,omitempty"`
+	PreDeploymentCommandContainer  string `json:"pre_deployment_command_container,omitempty"`
+
+	// Webhook secrets
+	ManualWebhookSecretGitHub    string `json:"manual_webhook_secret_github,omitempty"`
+	ManualWebhookSecretGitLab    string `json:"manual_webhook_secret_gitlab,omitempty"`
+	ManualWebhookSecretBitbucket string `json:"manual_webhook_secret_bitbucket,omitempty"`
+	ManualWebhookSecretGitea     string `json:"manual_webhook_secret_gitea,omitempty"`
+
+	// Redirect settings
+	Redirect RedirectType `json:"redirect,omitempty"`
+
+	// Dockerfile settings
+	Dockerfile         string `json:"dockerfile,omitempty"`
+	DockerfileLocation string `json:"dockerfile_location,omitempty"`
+
+	// Docker Compose settings
+	DockerComposeLocation           string                `json:"docker_compose_location,omitempty"`
+	DockerComposeCustomStartCommand string                `json:"docker_compose_custom_start_command,omitempty"`
+	DockerComposeCustomBuildCommand string                `json:"docker_compose_custom_build_command,omitempty"`
+	DockerComposeDomains            []DockerComposeDomain `json:"docker_compose_domains,omitempty"`
+
+	// Watch paths
+	WatchPaths string `json:"watch_paths,omitempty"`
+
+	// Build server
+	UseBuildServer *bool `json:"use_build_server,omitempty"`
+
+	// HTTP Basic Auth
+	IsHTTPBasicAuthEnabled *bool  `json:"is_http_basic_auth_enabled,omitempty"`
+	HTTPBasicAuthUsername  string `json:"http_basic_auth_username,omitempty"`
+	HTTPBasicAuthPassword  string `json:"http_basic_auth_password,omitempty"`
+
+	// Network settings
+	ConnectToDockerNetwork *bool `json:"connect_to_docker_network,omitempty"`
+
+	// Domain settings
+	ForceDomainOverride *bool `json:"force_domain_override,omitempty"`
+	AutogenerateDomain  *bool `json:"autogenerate_domain,omitempty"`
+
+	// Label escaping
+	IsContainerLabelEscapeEnabled *bool `json:"is_container_label_escape_enabled,omitempty"`
+}
+
+// CreatePublic creates a new application from a public Git repository.
+// See: https://coolify.io/docs/api-reference/api/operations/create-public-application
+func (s *ApplicationsService) CreatePublic(ctx context.Context, req *CreatePublicRequest) (*CreateApplicationResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("coolify: request is required")
+	}
+	if req.ProjectUUID == "" {
+		return nil, fmt.Errorf("coolify: project_uuid is required")
+	}
+	if req.ServerUUID == "" {
+		return nil, fmt.Errorf("coolify: server_uuid is required")
+	}
+	if req.EnvironmentName == "" && req.EnvironmentUUID == "" {
+		return nil, fmt.Errorf("coolify: environment_name or environment_uuid is required")
+	}
+	if req.GitRepository == "" {
+		return nil, fmt.Errorf("coolify: git_repository is required")
+	}
+	if req.GitBranch == "" {
+		return nil, fmt.Errorf("coolify: git_branch is required")
+	}
+	if req.PortsExposes == "" {
+		return nil, fmt.Errorf("coolify: ports_exposes is required")
+	}
+	if req.BuildPack == "" {
+		return nil, fmt.Errorf("coolify: build_pack is required")
+	}
+
+	var resp CreateApplicationResponse
+	if err := s.client.do(ctx, "POST", "/api/v1/applications/public", nil, req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to create public application: %w", err)
+	}
+	return &resp, nil
+}

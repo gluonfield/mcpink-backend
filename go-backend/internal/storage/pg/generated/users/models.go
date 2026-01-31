@@ -28,4 +28,5 @@ type User struct {
 	AvatarUrl               pgtype.Text        `json:"avatar_url"`
 	GithubAppInstallationID pgtype.Int8        `json:"github_app_installation_id"`
 	ID                      string             `json:"id"`
+	GithubScopes            []string           `json:"github_scopes"`
 }

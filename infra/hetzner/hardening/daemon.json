@@ -1,0 +1,20 @@
+{
+  "metrics-addr": "127.0.0.1:9323",
+  "no-new-privileges": true,
+  "live-restore": true,
+  "userland-proxy": false,
+  "log-driver": "json-file",
+  "log-opts": {
+    "max-size": "10m",
+    "max-file": "3"
+  },
+  "default-runtime": "runsc",
+  "runtimes": {
+    "runsc": {
+      "path": "/usr/local/bin/runsc"
+    },
+    "runc": {
+      "path": "/usr/bin/runc"
+    }
+  }
+}

@@ -30,11 +30,12 @@ type Query struct {
 }
 
 type User struct {
-	ID                    string    `json:"id"`
-	GithubUsername        string    `json:"githubUsername"`
-	AvatarURL             *string   `json:"avatarUrl,omitempty"`
-	CreatedAt             time.Time `json:"createdAt"`
-	HasGithubAppInstalled bool      `json:"hasGithubAppInstalled"`
+	ID                      string    `json:"id"`
+	GithubUsername          string    `json:"githubUsername"`
+	AvatarURL               *string   `json:"avatarUrl,omitempty"`
+	CreatedAt               time.Time `json:"createdAt"`
+	GithubAppInstallationID *string   `json:"githubAppInstallationId,omitempty"`
+	GithubScopes            []string  `json:"githubScopes"`
 }
 
 type Role string

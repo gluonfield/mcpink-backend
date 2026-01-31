@@ -323,6 +323,17 @@ Once you have:
 
 > Note: "Storage Box mounted via CIFS" can work for backups/archives, but CIFS mounts are commonly reported as brittle for container hot paths (stale mounts, permissions, disconnects). Treat it as **backup storage**, not a live registry datastore.
 
+### Registry via Coolify API
+
+When deploying via API, specify the registry image directly:
+```json
+{
+  "docker_registry_image_name": "ghcr.io/user/app:latest"
+}
+```
+
+Coolify can pull from any registry configured in its settings (Docker Hub, GHCR, custom registries).
+
 ---
 
 ## Ops Manual
@@ -392,74 +403,82 @@ DNS strategy (simplest):
 
 ## Security Configuration
 
-### Baseline (do this immediately)
+### Coolify Native Resource Limits
 
-1. **Resource caps** (per service):
-   - memory limit (hard OOM)
-   - CPU limits
-   - disk/volume budgets
+Coolify supports container resource limits via API:
 
-2. **Egress restrictions on run servers**
-   - Block cloud metadata service
-   - Block SMTP (spam prevention)
-   - Apply via `DOCKER-USER` chain so it affects containers
+| Setting | Coolify Field | Example |
+|---------|---------------|---------|
+| Memory limit | `limits_memory` | `512m` |
+| Memory + swap | `limits_memory_swap` | `512m` |
+| CPU limit | `limits_cpus` | `0.5` |
+| CPU pinning | `limits_cpuset` | `0,1` |
+| Custom Docker options | `custom_docker_run_options` | `--cap-drop=ALL --pids-limit=256` |
 
-Example (host-level):
+### Host-Level Hardening
 
-```bash
-# Block metadata service (common credential-theft target)
-iptables -I DOCKER-USER -d 169.254.169.254 -j DROP
-
-# Block SMTP to reduce abuse/spam
-iptables -I DOCKER-USER -p tcp --dport 25 -j DROP
-```
-
-3. **Least-privilege container policy**
-   - no privileged containers
-   - no host mounts
-   - no Docker socket mounts
-   - drop capabilities where possible
-
-### gVisor (target state)
-
-gVisor provides an OCI runtime (`runsc`) that integrates with Docker and Kubernetes. ([gVisor][8])
-
-**Important integration note with Coolify:**
-
-- Coolify supports adding certain custom Docker run options, but `--runtime` is not listed among supported options in its "Custom Commands" documentation. ([Coolify][9])
-- The cleanest ways to use `runsc` are:
-  - set Docker daemon default runtime to `runsc` on run servers (test carefully), or
-  - deploy via Docker Compose with `runtime: runsc` (InkMCP generates compose; users don't supply it)
-
-gVisor is a security milestone; InkMCP should ship with baseline hardening first, then roll gVisor behind a feature flag after compatibility testing.
+See `infra/hetzner/hardening/` for complete setup scripts including:
+- Egress restrictions (iptables rules for metadata service, SMTP)
+- gVisor integration (`runsc` runtime)
+- Least-privilege container policies
 
 ---
 
-## Roadmap
+## Coolify API Integration
 
-### v0 — "It deploys"
+InkMCP deploys applications via Coolify's REST API.
 
-- Coolify + 1 run server
-- `deploy_app`, logs, env vars
-- Neon provisioning + BYO DB
-- credits + spend caps
+### Authentication
 
-### v1 — "3-plane architecture"
+All API requests require a Bearer token (Laravel Sanctum):
+```
+Authorization: Bearer <coolify-api-token>
+```
 
-- Factory + multiple run servers
-- shared registry
-- on-demand sleeping for `on_demand` HTTP services
+### Key Endpoints
 
-### v2 — "Hostile-code hardening"
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/v1/applications/dockerimage` | POST | Deploy from Docker image |
+| `/api/v1/applications/public` | POST | Deploy from public Git repo |
+| `/api/v1/applications/{uuid}` | PATCH | Update application settings |
+| `/api/v1/deploy` | POST | Trigger deployment |
 
-- gVisor rollout (runsc) behind a flag
-- stricter egress controls + abuse detection
-- stronger volume policies + backups
+### Deploying an Application
 
-### v3 — "Provider swap"
+```bash
+curl -X POST https://coolify.example.com/api/v1/applications/dockerimage \
+  -H "Authorization: Bearer $COOLIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_uuid": "abc123",
+    "server_uuid": "def456",
+    "environment_name": "production",
+    "docker_registry_image_name": "ghcr.io/user/app:latest",
+    "ports_exposes": "3000",
+    "limits_memory": "512m",
+    "limits_cpus": "0.5",
+    "custom_docker_run_options": "--cap-drop=ALL --pids-limit=256 --runtime=runsc",
+    "instant_deploy": true
+  }'
+```
 
-- introduce `K8sProvider` implementation
-- keep MCP contract stable
+### Persistent Storage
+
+Coolify supports two volume types:
+- **LocalPersistentVolume** - Docker named volume or host path bind mount
+- **LocalFileVolume** - Embed file content (for configs)
+
+For disk-backed user storage:
+```json
+{
+  "name": "user-data",
+  "mount_path": "/data",
+  "host_path": "/mnt/persistent/{project-id}"
+}
+```
+
+Host path volumes require cleanup when project is deleted (Coolify handles named volumes automatically).
 
 ---
 

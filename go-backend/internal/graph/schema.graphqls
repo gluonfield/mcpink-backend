@@ -18,7 +18,8 @@ type User {
   githubUsername: String!
   avatarUrl: String
   createdAt: Time!
-  hasGithubAppInstalled: Boolean! @goField(forceResolver: true)
+  githubAppInstallationId: String @goField(forceResolver: true)
+  githubScopes: [String!]! @goField(forceResolver: true)
 }
 
 type APIKey {
@@ -42,4 +43,5 @@ type Query {
 type Mutation {
   createAPIKey(name: String!): CreateAPIKeyResult! @isAuthenticated
   revokeAPIKey(id: ID!): Boolean! @isAuthenticated
+  recheckGithubAppInstallation: String @isAuthenticated
 }

@@ -30,7 +30,7 @@ auth:
   sessioncookiename: "deploy_session"
   sessioncookiesecure: false
   sessioncookiedomain: ""
-  frontendurl: "http://localhost:3000"
+  frontendurl: "http://localhost:5001"
 
 openrouter:
   apikey: ""

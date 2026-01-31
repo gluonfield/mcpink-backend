@@ -37,10 +37,18 @@ func NewOAuthService(config Config) *OAuthService {
 }
 
 func (s *OAuthService) GetAuthURL(state string) string {
+	return s.GetAuthURLWithScopes(state, nil)
+}
+
+func (s *OAuthService) GetAuthURLWithScopes(state string, additionalScopes []string) string {
 	params := url.Values{}
 	params.Add("client_id", s.config.ClientID)
 	params.Add("redirect_uri", s.config.CallbackURL)
-	params.Add("scope", strings.Join(s.config.Scopes, " "))
+
+	// Combine default scopes with any additional scopes
+	allScopes := append([]string{}, s.config.Scopes...)
+	allScopes = append(allScopes, additionalScopes...)
+	params.Add("scope", strings.Join(allScopes, " "))
 	params.Add("state", state)
 
 	return fmt.Sprintf("https://github.com/login/oauth/authorize?%s", params.Encode())
@@ -106,4 +114,22 @@ func (s *OAuthService) GetUser(ctx context.Context, accessToken string) (*GitHub
 	}
 
 	return &user, nil
+}
+
+// IsTokenValid checks if a GitHub token is still valid by making a lightweight API call.
+func (s *OAuthService) IsTokenValid(ctx context.Context, token string) bool {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/user", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	// 200 = valid, 401/403 = invalid
+	return resp.StatusCode == http.StatusOK
 }

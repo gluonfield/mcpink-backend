@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -75,23 +76,48 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 		return nil, fmt.Errorf("failed to encrypt token: %w", err)
 	}
 
+	// Parse scopes from GitHub response
+	newScopes := parseScopes(tokenResp.Scope)
+
 	user, err := s.usersQ.GetUserByGitHubID(ctx, ghUser.ID)
 	if err != nil {
+		// New user - just store the scopes we got
 		user, err = s.usersQ.CreateUser(ctx, users.CreateUserParams{
 			GithubID:       ghUser.ID,
 			GithubUsername: ghUser.Login,
 			GithubToken:    encryptedToken,
 			AvatarUrl:      pgtype.Text{String: ghUser.AvatarURL, Valid: ghUser.AvatarURL != ""},
+			GithubScopes:   newScopes,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create user: %w", err)
 		}
 	} else {
+		// Existing user - apply downgrade protection
+		finalToken := encryptedToken
+		finalScopes := newScopes
+
+		hasRepoScopeOld := contains(user.GithubScopes, "repo")
+		hasRepoScopeNew := contains(newScopes, "repo")
+
+		// Downgrade attempt: old has repo, new doesn't
+		if hasRepoScopeOld && !hasRepoScopeNew {
+			// Check if old token is still valid
+			oldTokenPlain, decryptErr := s.DecryptToken(user.GithubToken)
+			if decryptErr == nil && s.githubOAuth.IsTokenValid(ctx, oldTokenPlain) {
+				// Old token still works - keep it
+				finalToken = user.GithubToken
+				finalScopes = user.GithubScopes
+			}
+			// Otherwise accept the new weak token
+		}
+
 		user, err = s.usersQ.UpdateGitHubToken(ctx, users.UpdateGitHubTokenParams{
 			ID:             user.ID,
-			GithubToken:    encryptedToken,
+			GithubToken:    finalToken,
 			GithubUsername: ghUser.Login,
 			AvatarUrl:      pgtype.Text{String: ghUser.AvatarURL, Valid: ghUser.AvatarURL != ""},
+			GithubScopes:   finalScopes,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to update user: %w", err)
@@ -214,6 +240,11 @@ func (s *Service) SetGitHubAppInstallation(ctx context.Context, userID string, i
 	return err
 }
 
+func (s *Service) ClearGitHubAppInstallation(ctx context.Context, userID string) error {
+	_, err := s.usersQ.ClearGitHubAppInstallation(ctx, userID)
+	return err
+}
+
 func (s *Service) EncryptToken(token string) (string, error) {
 	return s.encryptToken(token)
 }
@@ -281,4 +312,22 @@ func (s *Service) DecryptToken(encrypted string) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+func parseScopes(scopeStr string) []string {
+	if scopeStr == "" {
+		return []string{}
+	}
+	return strings.FieldsFunc(scopeStr, func(r rune) bool {
+		return r == ' ' || r == ','
+	})
+}
+
+func contains(slice []string, item string) bool {
+	for _, s := range slice {
+		if s == item {
+			return true
+		}
+	}
+	return false
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -36,6 +37,7 @@ func NewHandlers(
 func (h *Handlers) RegisterRoutes(r chi.Router) {
 	r.Get("/auth/github", h.HandleGitHubLogin)
 	r.Get("/auth/github/callback", h.HandleGitHubCallback)
+	r.Get("/auth/githubapp/callback", h.HandleGitHubAppCallback)
 	r.Post("/auth/logout", h.HandleLogout)
 	r.Get("/auth/me", h.HandleMe)
 }
@@ -58,21 +60,49 @@ func (h *Handlers) HandleGitHubLogin(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	authURL := h.githubOAuth.GetAuthURL(state)
+	// Check for additional scopes (e.g., ?scope=repo)
+	additionalScope := r.URL.Query().Get("scope")
+	var additionalScopes []string
+	if additionalScope != "" {
+		additionalScopes = []string{additionalScope}
+		// Store redirect URL so we return to settings after OAuth
+		http.SetCookie(w, &http.Cookie{
+			Name:     "oauth_redirect",
+			Value:    "/settings/access",
+			Path:     "/",
+			MaxAge:   300,
+			HttpOnly: true,
+			Secure:   h.config.SessionCookieSecure,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+
+	authURL := h.githubOAuth.GetAuthURLWithScopes(state, additionalScopes)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
 func (h *Handlers) HandleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	state := r.URL.Query().Get("state")
+	errorParam := r.URL.Query().Get("error")
 
-	stateCookie, err := r.Cookie("oauth_state")
-	if err != nil || stateCookie.Value != state {
-		h.logger.Error("invalid state", "error", err)
-		http.Redirect(w, r, h.config.FrontendURL+"?error=invalid_state", http.StatusTemporaryRedirect)
-		return
+	// Helper to get redirect URL and clear the cookie
+	getRedirectURL := func() string {
+		redirectURL := h.config.FrontendURL
+		if redirectCookie, err := r.Cookie("oauth_redirect"); err == nil && redirectCookie.Value != "" {
+			redirectURL = h.config.FrontendURL + redirectCookie.Value
+			http.SetCookie(w, &http.Cookie{
+				Name:     "oauth_redirect",
+				Value:    "",
+				Path:     "/",
+				MaxAge:   -1,
+				HttpOnly: true,
+			})
+		}
+		return redirectURL
 	}
 
+	// Clear state cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     "oauth_state",
 		Value:    "",
@@ -81,16 +111,30 @@ func (h *Handlers) HandleGitHubCallback(w http.ResponseWriter, r *http.Request) 
 		HttpOnly: true,
 	})
 
+	// Handle user denied access
+	if errorParam == "access_denied" {
+		h.logger.Info("user denied oauth access")
+		http.Redirect(w, r, getRedirectURL(), http.StatusTemporaryRedirect)
+		return
+	}
+
+	stateCookie, err := r.Cookie("oauth_state")
+	if err != nil || stateCookie.Value != state {
+		h.logger.Error("invalid state", "error", err)
+		http.Redirect(w, r, getRedirectURL()+"?error=invalid_state", http.StatusTemporaryRedirect)
+		return
+	}
+
 	if code == "" {
 		h.logger.Error("no code in callback")
-		http.Redirect(w, r, h.config.FrontendURL+"?error=no_code", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, getRedirectURL()+"?error=no_code", http.StatusTemporaryRedirect)
 		return
 	}
 
 	session, err := h.service.HandleOAuthCallback(r.Context(), code)
 	if err != nil {
 		h.logger.Error("oauth callback failed", "error", err)
-		http.Redirect(w, r, h.config.FrontendURL+"?error=auth_failed", http.StatusTemporaryRedirect)
+		http.Redirect(w, r, getRedirectURL()+"?error=auth_failed", http.StatusTemporaryRedirect)
 		return
 	}
 
@@ -105,7 +149,54 @@ func (h *Handlers) HandleGitHubCallback(w http.ResponseWriter, r *http.Request) 
 		Domain:   h.config.SessionCookieDomain,
 	})
 
-	http.Redirect(w, r, h.config.FrontendURL, http.StatusTemporaryRedirect)
+	http.Redirect(w, r, getRedirectURL(), http.StatusTemporaryRedirect)
+}
+
+func (h *Handlers) HandleGitHubAppCallback(w http.ResponseWriter, r *http.Request) {
+	installationIDStr := r.URL.Query().Get("installation_id")
+	setupAction := r.URL.Query().Get("setup_action")
+
+	// Redirect URL for success/error
+	successURL := h.config.FrontendURL + "/githubapp/success"
+	errorURL := h.config.FrontendURL + "/settings/access?error=githubapp_failed"
+
+	if installationIDStr == "" || setupAction != "install" {
+		// Not an install action or missing installation_id
+		http.Redirect(w, r, successURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	installationID, err := strconv.ParseInt(installationIDStr, 10, 64)
+	if err != nil {
+		h.logger.Error("invalid installation_id", "error", err, "installation_id", installationIDStr)
+		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Get user from session cookie
+	cookie, err := r.Cookie(h.config.SessionCookieName)
+	if err != nil {
+		h.logger.Error("no session cookie for github app callback", "error", err)
+		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	userID, err := h.service.ValidateJWT(cookie.Value)
+	if err != nil {
+		h.logger.Error("invalid jwt in github app callback", "error", err)
+		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	// Save installation ID to database
+	if err := h.service.SetGitHubAppInstallation(r.Context(), userID, installationID); err != nil {
+		h.logger.Error("failed to save github app installation", "error", err, "user_id", userID, "installation_id", installationID)
+		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
+		return
+	}
+
+	h.logger.Info("github app installed", "user_id", userID, "installation_id", installationID)
+	http.Redirect(w, r, successURL, http.StatusTemporaryRedirect)
 }
 
 func (h *Handlers) HandleLogout(w http.ResponseWriter, r *http.Request) {
