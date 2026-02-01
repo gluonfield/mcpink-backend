@@ -26,53 +26,55 @@ func NewActivities(coolify *coolify.Client, appsQ apps.Querier, logger *slog.Log
 	}
 }
 
-func (a *Activities) CreateAppRecord(ctx context.Context, input CreateAppRecordInput) (*CreateAppRecordResult, error) {
+func (a *Activities) CreateAppRecord(ctx context.Context, input CreateAppRecordInput) error {
 	a.logger.Info("Creating app record",
+		"appID", input.AppID,
 		"userID", input.UserID,
 		"repo", input.Repo,
 		"workflowID", input.WorkflowID)
 
 	serverID := a.coolify.GetMuscleServer()
 
-	app, err := a.appsQ.CreateApp(ctx, apps.CreateAppParams{
-		UserID:     input.UserID,
-		Repo:       input.Repo,
-		Branch:     input.Branch,
-		ServerUuid: serverID,
-		Name:       &input.Name,
-		BuildPack:  input.BuildPack,
-		Port:       input.Port,
-		EnvVars:    input.EnvVars,
-		WorkflowID: input.WorkflowID,
+	_, err := a.appsQ.CreateApp(ctx, apps.CreateAppParams{
+		ID:            input.AppID,
+		UserID:        input.UserID,
+		Repo:          input.Repo,
+		Branch:        input.Branch,
+		ServerUuid:    serverID,
+		Name:          &input.Name,
+		BuildPack:     input.BuildPack,
+		Port:          input.Port,
+		EnvVars:       input.EnvVars,
+		WorkflowID:    input.WorkflowID,
+		WorkflowRunID: &input.WorkflowRunID,
 	})
 	if err != nil {
 		a.logger.Error("Failed to create app record",
+			"appID", input.AppID,
 			"userID", input.UserID,
 			"repo", input.Repo,
 			"error", err)
-		return nil, fmt.Errorf("failed to create app record: %w", err)
+		return fmt.Errorf("failed to create app record: %w", err)
 	}
 
 	a.logger.Info("Created app record",
-		"appID", app.ID,
+		"appID", input.AppID,
 		"workflowID", input.WorkflowID)
 
-	return &CreateAppRecordResult{AppID: app.ID}, nil
+	return nil
 }
 
 type CreateAppRecordInput struct {
-	UserID     string
-	WorkflowID string
-	Repo       string
-	Branch     string
-	Name       string
-	BuildPack  string
-	Port       string
-	EnvVars    []byte
-}
-
-type CreateAppRecordResult struct {
-	AppID string
+	AppID         string
+	UserID        string
+	WorkflowID    string
+	WorkflowRunID string
+	Repo          string
+	Branch        string
+	Name          string
+	BuildPack     string
+	Port          string
+	EnvVars       []byte
 }
 
 type CoolifyAppInput struct {

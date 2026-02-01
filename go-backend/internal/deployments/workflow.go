@@ -28,30 +28,34 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 
 	var activities *Activities
 
+	appID := input.AppID
+
 	// Step 1: Create app record in database
 	envVarsJSON, _ := json.Marshal(input.EnvVars)
+	workflowInfo := workflow.GetInfo(ctx)
 	createRecordInput := CreateAppRecordInput{
-		UserID:     input.UserID,
-		WorkflowID: workflow.GetInfo(ctx).WorkflowExecution.ID,
-		Repo:       input.Repo,
-		Branch:     input.Branch,
-		Name:       input.Name,
-		BuildPack:  input.BuildPack,
-		Port:       input.Port,
-		EnvVars:    envVarsJSON,
+		AppID:         appID,
+		UserID:        input.UserID,
+		WorkflowID:    workflowInfo.WorkflowExecution.ID,
+		WorkflowRunID: workflowInfo.WorkflowExecution.RunID,
+		Repo:          input.Repo,
+		Branch:        input.Branch,
+		Name:          input.Name,
+		BuildPack:     input.BuildPack,
+		Port:          input.Port,
+		EnvVars:       envVarsJSON,
 	}
 
-	var createRecordResult CreateAppRecordResult
-	err := workflow.ExecuteActivity(ctx, activities.CreateAppRecord, createRecordInput).Get(ctx, &createRecordResult)
+	err := workflow.ExecuteActivity(ctx, activities.CreateAppRecord, createRecordInput).Get(ctx, nil)
 	if err != nil {
 		logger.Error("Failed to create app record", "error", err)
 		return DeployWorkflowResult{
+			AppID:        appID,
 			Status:       string(BuildStatusFailed),
 			ErrorMessage: err.Error(),
 		}, err
 	}
 
-	appID := createRecordResult.AppID
 	logger.Info("Created app record", "appID", appID)
 
 	// Step 2: Create app in Coolify from private GitHub

@@ -21,10 +21,13 @@ type Server struct {
 func NewServer(authService *auth.Service, coolifyClient *coolify.Client, deployService *deployments.Service, logger *slog.Logger) *Server {
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
-			Name:    "deploy-mcp",
+			Name:    "Ink MCP",
+			Title:   "Ink MCP - deploy your apps and servers on the cloud",
 			Version: "1.0.0",
 		},
-		nil,
+		&mcp.ServerOptions{
+			Instructions: "This server has capabilities to deploy most single port apps NextJS, React, flask etc as well as many other servers and returns the URL of the deployed application. It can provision postgres endpoint too. 99% of apps should be deployable with this MCP.",
+		},
 	)
 
 	s := &Server{
@@ -51,6 +54,11 @@ func (s *Server) registerTools() {
 		Name:        "deploy",
 		Description: "Deploy an application from a GitHub repository",
 	}, s.handleDeploy)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "list_apps",
+		Description: "List all deployed applications",
+	}, s.handleListApps)
 }
 
 func (s *Server) Handler() http.Handler {

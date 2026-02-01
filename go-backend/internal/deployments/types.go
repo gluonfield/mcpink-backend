@@ -1,6 +1,7 @@
 package deployments
 
 type DeployWorkflowInput struct {
+	AppID         string
 	UserID        string
 	GitHubAppUUID string
 	Repo          string

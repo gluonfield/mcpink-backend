@@ -98,9 +98,42 @@ func (s *Server) handleDeploy(ctx context.Context, req *mcp.CallToolRequest, inp
 	}
 
 	output := DeployOutput{
-		Status:  "queued",
+		AppID:   result.AppID,
+		Name:    result.Name,
+		Status:  result.Status,
+		Repo:    result.Repo,
 		Message: fmt.Sprintf("Deployment started (workflow_id: %s)", result.WorkflowID),
 	}
 
 	return nil, output, nil
+}
+
+func (s *Server) handleListApps(ctx context.Context, req *mcp.CallToolRequest, input ListAppsInput) (*mcp.CallToolResult, ListAppsOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, ListAppsOutput{}, nil
+	}
+
+	apps, err := s.deployService.ListApps(ctx, user.ID, 100, 0)
+	if err != nil {
+		s.logger.Error("failed to list apps", "error", err)
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to list apps: %v", err)}}}, ListAppsOutput{}, nil
+	}
+
+	appInfos := make([]AppInfo, len(apps))
+	for i, app := range apps {
+		name := ""
+		if app.Name != nil {
+			name = *app.Name
+		}
+		appInfos[i] = AppInfo{
+			AppID:  app.ID,
+			Name:   name,
+			Status: app.BuildStatus,
+			Repo:   app.Repo,
+			URL:    app.Fqdn,
+		}
+	}
+
+	return nil, ListAppsOutput{Apps: appInfos}, nil
 }

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
+	"github.com/lithammer/shortuuid/v4"
 	"go.temporal.io/sdk/client"
 )
 
@@ -39,13 +40,19 @@ type CreateAppInput struct {
 }
 
 type CreateAppResult struct {
+	AppID      string
+	Name       string
+	Status     string
+	Repo       string
 	WorkflowID string
 }
 
 func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateAppResult, error) {
+	appID := shortuuid.New()
 	workflowID := fmt.Sprintf("deploy-%s-%s-%s", input.UserID, input.Repo, input.Branch)
 
 	workflowInput := DeployWorkflowInput{
+		AppID:         appID,
 		UserID:        input.UserID,
 		GitHubAppUUID: input.GitHubAppUUID,
 		Repo:          input.Repo,
@@ -74,6 +81,10 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 		"runID", run.GetRunID())
 
 	return &CreateAppResult{
+		AppID:      appID,
+		Name:       input.Name,
+		Status:     string(BuildStatusQueued),
+		Repo:       input.Repo,
 		WorkflowID: workflowID,
 	}, nil
 }

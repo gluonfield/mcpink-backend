@@ -34,12 +34,25 @@ type DeployInput struct {
 }
 
 type DeployOutput struct {
-	DeploymentUUID string  `json:"deployment_uuid"`
-	UUID           string  `json:"uuid"`
-	Name           string  `json:"name"`
-	Status         string  `json:"status"`
-	Message        string  `json:"message"`
-	FQDN           *string `json:"fqdn,omitempty"`
+	AppID   string `json:"app_id"`
+	Name    string `json:"name"`
+	Status  string `json:"status"`
+	Repo    string `json:"repo"`
+	Message string `json:"message"`
+}
+
+type ListAppsInput struct{}
+
+type ListAppsOutput struct {
+	Apps []AppInfo `json:"apps"`
+}
+
+type AppInfo struct {
+	AppID  string  `json:"app_id"`
+	Name   string  `json:"name"`
+	Status string  `json:"status"`
+	Repo   string  `json:"repo"`
+	URL    *string `json:"url,omitempty"`
 }
 
 const (

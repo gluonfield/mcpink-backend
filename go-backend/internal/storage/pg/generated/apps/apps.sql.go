@@ -22,27 +22,30 @@ func (q *Queries) CountAppsByUserID(ctx context.Context, userID string) (int64, 
 
 const createApp = `-- name: CreateApp :one
 INSERT INTO apps (
-    user_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, build_status
+    id, user_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, 'queued'
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'queued'
 )
 RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at
 `
 
 type CreateAppParams struct {
-	UserID     string  `json:"user_id"`
-	Repo       string  `json:"repo"`
-	Branch     string  `json:"branch"`
-	ServerUuid string  `json:"server_uuid"`
-	Name       *string `json:"name"`
-	BuildPack  string  `json:"build_pack"`
-	Port       string  `json:"port"`
-	EnvVars    []byte  `json:"env_vars"`
-	WorkflowID string  `json:"workflow_id"`
+	ID            string  `json:"id"`
+	UserID        string  `json:"user_id"`
+	Repo          string  `json:"repo"`
+	Branch        string  `json:"branch"`
+	ServerUuid    string  `json:"server_uuid"`
+	Name          *string `json:"name"`
+	BuildPack     string  `json:"build_pack"`
+	Port          string  `json:"port"`
+	EnvVars       []byte  `json:"env_vars"`
+	WorkflowID    string  `json:"workflow_id"`
+	WorkflowRunID *string `json:"workflow_run_id"`
 }
 
 func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, error) {
 	row := q.db.QueryRow(ctx, createApp,
+		arg.ID,
 		arg.UserID,
 		arg.Repo,
 		arg.Branch,
@@ -52,6 +55,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		arg.Port,
 		arg.EnvVars,
 		arg.WorkflowID,
+		arg.WorkflowRunID,
 	)
 	var i App
 	err := row.Scan(
