@@ -30,16 +30,16 @@ import (
 )
 
 type Service struct {
-	config        Config
-	db            *pg.DB
-	usersQ        users.Querier
-	apiKeysQ      apikeys.Querier
-	githubCredsQ  githubcreds.Querier
-	githubOAuth   *github_oauth.OAuthService
-	coolify       *coolify.Client
-	githubAppCfg  githubapp.Config
-	temporal      client.Client
-	logger        *slog.Logger
+	config       Config
+	db           *pg.DB
+	usersQ       users.Querier
+	apiKeysQ     apikeys.Querier
+	githubCredsQ githubcreds.Querier
+	githubOAuth  *github_oauth.OAuthService
+	coolify      *coolify.Client
+	githubAppCfg githubapp.Config
+	temporal     client.Client
+	logger       *slog.Logger
 }
 
 type Session struct {
@@ -68,16 +68,16 @@ func NewService(
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
-		config:        config,
-		db:            db,
-		usersQ:        usersQ,
-		apiKeysQ:      apiKeysQ,
-		githubCredsQ:  githubCredsQ,
-		githubOAuth:   githubOAuth,
-		coolify:       coolify,
-		githubAppCfg:  githubAppCfg,
-		temporal:      temporal,
-		logger:        logger,
+		config:       config,
+		db:           db,
+		usersQ:       usersQ,
+		apiKeysQ:     apiKeysQ,
+		githubCredsQ: githubCredsQ,
+		githubOAuth:  githubOAuth,
+		coolify:      coolify,
+		githubAppCfg: githubAppCfg,
+		temporal:     temporal,
+		logger:       logger,
 	}
 }
 
@@ -304,27 +304,32 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		return "", nil
 	}
 
-	// Update installation ID in DB
-	if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
-		UserID:                  userID,
-		GithubAppInstallationID: helpers.Ptr(installationID),
-	}); err != nil {
-		return "", fmt.Errorf("failed to set github app installation: %w", err)
-	}
-
 	// Update existing Coolify source if we have one
 	if user.CoolifyGithubAppUuid != nil && *user.CoolifyGithubAppUuid != "" {
+		s.logger.Info("updating coolify source", "uuid", *user.CoolifyGithubAppUuid, "installation_id", installationID)
 		err := s.coolify.Sources.UpdateGitHubApp(ctx, *user.CoolifyGithubAppUuid, &coolify.UpdateGitHubAppSourceRequest{
 			InstallationID: installationID,
 		})
 		if err == nil {
+			s.logger.Info("coolify source updated successfully", "uuid", *user.CoolifyGithubAppUuid)
+
+			// Only mark the installation as active in our DB after Coolify accepts the update.
+			if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
+				UserID:                  userID,
+				GithubAppInstallationID: helpers.Ptr(installationID),
+			}); err != nil {
+				return "", fmt.Errorf("failed to set github app installation: %w", err)
+			}
 			return *user.CoolifyGithubAppUuid, nil
 		}
-		// Update failed (source may have been deleted externally), create new one below
-		_, _ = s.usersQ.ClearCoolifyGitHubAppUUID(ctx, userID)
+		// Don't create a new source - existing apps would break
+		// Return the error so caller knows sync failed
+		s.logger.Error("failed to update coolify source", "uuid", *user.CoolifyGithubAppUuid, "error", err)
+		return "", fmt.Errorf("failed to update coolify source: %w", err)
 	}
 
 	// Create new Coolify source (first time or if previous was deleted externally)
+	s.logger.Info("creating new coolify source", "user_id", userID, "installation_id", installationID)
 	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
 	req := &coolify.CreateGitHubAppSourceRequest{
 		Name:           sourceName,
@@ -351,6 +356,14 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		CoolifyGithubAppUuid: helpers.Ptr(source.UUID),
 	}); err != nil {
 		return "", fmt.Errorf("failed to save coolify source uuid: %w", err)
+	}
+
+	// Mark the installation as active in our DB after Coolify source exists.
+	if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
+		UserID:                  userID,
+		GithubAppInstallationID: helpers.Ptr(installationID),
+	}); err != nil {
+		return "", fmt.Errorf("failed to set github app installation: %w", err)
 	}
 
 	return source.UUID, nil

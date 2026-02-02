@@ -44,6 +44,38 @@ type deploymentLogEntry struct {
 	Order     int     `json:"order"`
 }
 
+func parseDeploymentLogs(raw string) ([]LogEntry, error) {
+	if raw == "" {
+		return []LogEntry{}, nil
+	}
+
+	var rawLogs []deploymentLogEntry
+	if err := json.Unmarshal([]byte(raw), &rawLogs); err != nil {
+		return nil, fmt.Errorf("failed to parse deployment logs: %w", err)
+	}
+
+	// Filter out hidden entries and sort by order
+	visible := make([]deploymentLogEntry, 0, len(rawLogs))
+	for _, log := range rawLogs {
+		if !log.Hidden && log.Output != "" {
+			visible = append(visible, log)
+		}
+	}
+	sort.Slice(visible, func(i, j int) bool {
+		return visible[i].Order < visible[j].Order
+	})
+
+	entries := make([]LogEntry, 0, len(visible))
+	for _, log := range visible {
+		entries = append(entries, LogEntry{
+			Timestamp: log.Timestamp,
+			Message:   log.Output,
+			Stream:    log.Type,
+		})
+	}
+	return entries, nil
+}
+
 type GetLogsOptions struct {
 	Lines int
 }
@@ -73,6 +105,36 @@ func (s *ApplicationsService) GetRuntimeLogs(ctx context.Context, uuid string, l
 	return entries, nil
 }
 
+func (s *ApplicationsService) GetDeployment(ctx context.Context, appUUID, deploymentUUID string) (*Deployment, error) {
+	if appUUID == "" {
+		return nil, fmt.Errorf("coolify: appUUID is required")
+	}
+	if deploymentUUID == "" {
+		return nil, fmt.Errorf("coolify: deploymentUUID is required")
+	}
+
+	var resp deploymentsResponse
+	if err := s.client.do(ctx, "GET", "/api/v1/deployments/applications/"+appUUID, nil, nil, &resp); err != nil {
+		return nil, fmt.Errorf("failed to get deployments: %w", err)
+	}
+
+	for _, d := range resp.Deployments {
+		if d.DeploymentUUID == deploymentUUID {
+			return &d, nil
+		}
+	}
+
+	return nil, fmt.Errorf("deployment %s not found for app %s", deploymentUUID, appUUID)
+}
+
+func (s *ApplicationsService) GetDeploymentLogsForUUID(ctx context.Context, appUUID, deploymentUUID string) ([]LogEntry, error) {
+	deployment, err := s.GetDeployment(ctx, appUUID, deploymentUUID)
+	if err != nil {
+		return nil, err
+	}
+	return parseDeploymentLogs(deployment.Logs)
+}
+
 func (s *ApplicationsService) GetDeploymentLogs(ctx context.Context, uuid string) ([]LogEntry, error) {
 	if uuid == "" {
 		return nil, fmt.Errorf("coolify: uuid is required")
@@ -91,29 +153,5 @@ func (s *ApplicationsService) GetDeploymentLogs(ctx context.Context, uuid string
 		return []LogEntry{}, nil
 	}
 
-	var rawLogs []deploymentLogEntry
-	if err := json.Unmarshal([]byte(resp.Deployments[0].Logs), &rawLogs); err != nil {
-		return nil, fmt.Errorf("failed to parse deployment logs: %w", err)
-	}
-
-	// Filter out hidden entries and sort by order
-	visible := make([]deploymentLogEntry, 0, len(rawLogs))
-	for _, log := range rawLogs {
-		if !log.Hidden && log.Output != "" {
-			visible = append(visible, log)
-		}
-	}
-	sort.Slice(visible, func(i, j int) bool {
-		return visible[i].Order < visible[j].Order
-	})
-
-	entries := make([]LogEntry, 0, len(visible))
-	for _, log := range visible {
-		entries = append(entries, LogEntry{
-			Timestamp: log.Timestamp,
-			Message:   log.Output,
-			Stream:    log.Type,
-		})
-	}
-	return entries, nil
+	return parseDeploymentLogs(resp.Deployments[0].Logs)
 }

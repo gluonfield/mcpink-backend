@@ -156,12 +156,14 @@ func (h *Handlers) HandleGitHubAppCallback(w http.ResponseWriter, r *http.Reques
 	installationIDStr := r.URL.Query().Get("installation_id")
 	setupAction := r.URL.Query().Get("setup_action")
 
+	h.logger.Info("github app callback received", "installation_id", installationIDStr, "setup_action", setupAction, "url", r.URL.String())
+
 	// Redirect URL for success/error
 	successURL := h.config.FrontendURL + "/githubapp/success"
 	errorURL := h.config.FrontendURL + "/settings/access?error=githubapp_failed"
 
-	if installationIDStr == "" || setupAction != "install" {
-		// Not an install action or missing installation_id
+	if installationIDStr == "" || (setupAction != "install" && setupAction != "update") {
+		h.logger.Info("github app callback skipped", "reason", "not install/update or missing installation_id", "installation_id", installationIDStr, "setup_action", setupAction)
 		http.Redirect(w, r, successURL, http.StatusTemporaryRedirect)
 		return
 	}

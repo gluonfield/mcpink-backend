@@ -109,6 +109,13 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 	}
 
 	serverID := a.coolify.GetMuscleServer()
+
+	// Static build pack uses nginx:alpine which serves on port 80
+	port := input.Port
+	if input.BuildPack == "static" {
+		port = "80"
+	}
+
 	req := &coolify.CreatePrivateGitHubAppRequest{
 		ProjectUUID:            cfg.ProjectUUID,
 		ServerUUID:             serverID,
@@ -116,7 +123,7 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 		GitHubAppUUID:          gitHubAppUUID,
 		GitRepository:          input.Repo,
 		GitBranch:              input.Branch,
-		PortsExposes:           input.Port,
+		PortsExposes:           port,
 		BuildPack:              coolify.BuildPack(input.BuildPack),
 		Name:                   input.Name,
 		CustomDockerRunOptions: "--runtime=runsc",
@@ -228,6 +235,7 @@ func (a *Activities) StartApp(ctx context.Context, input StartAppInput) (*StartA
 type WaitForRunningInput struct {
 	AppID          string
 	CoolifyAppUUID string
+	DeploymentUUID string
 }
 
 type WaitForRunningResult struct {
@@ -240,9 +248,10 @@ const (
 )
 
 func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInput) (*WaitForRunningResult, error) {
-	a.logger.Info("Waiting for app to be running",
+	a.logger.Info("Waiting for deployment to complete",
 		"appID", input.AppID,
 		"coolifyUUID", input.CoolifyAppUUID,
+		"deploymentUUID", input.DeploymentUUID,
 		"timeout", pollTimeout)
 
 	deadline := time.Now().Add(pollTimeout)
@@ -254,29 +263,40 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 		default:
 		}
 
-		app, err := a.coolify.Applications.Get(ctx, input.CoolifyAppUUID)
+		deployment, err := a.coolify.Applications.GetDeployment(ctx, input.CoolifyAppUUID, input.DeploymentUUID)
 		if err != nil {
-			a.logger.Warn("Failed to get application status, will retry",
+			a.logger.Warn("Failed to get deployment status, will retry",
 				"coolifyUUID", input.CoolifyAppUUID,
+				"deploymentUUID", input.DeploymentUUID,
 				"error", err)
 			activity.RecordHeartbeat(ctx, fmt.Sprintf("API error: %v", err))
 			time.Sleep(pollInterval)
 			continue
 		}
 
-		fqdn := ""
-		if app.FQDN != nil {
-			fqdn = *app.FQDN
-		}
-
-		a.logger.Debug("Application status",
+		a.logger.Debug("Deployment status",
 			"coolifyUUID", input.CoolifyAppUUID,
-			"status", app.Status)
+			"deploymentUUID", input.DeploymentUUID,
+			"status", deployment.Status)
 
-		activity.RecordHeartbeat(ctx, app.Status)
+		activity.RecordHeartbeat(ctx, deployment.Status)
 
-		if strings.HasPrefix(app.Status, "running") {
-			// Extract short commit hash (first 7 chars) from Coolify response
+		switch deployment.Status {
+		case "finished":
+			// Deployment complete - get app info for FQDN and commit hash
+			app, err := a.coolify.Applications.Get(ctx, input.CoolifyAppUUID)
+			if err != nil {
+				a.logger.Error("Failed to get application after deployment",
+					"coolifyUUID", input.CoolifyAppUUID,
+					"error", err)
+				return nil, fmt.Errorf("failed to get application after deployment: %w", err)
+			}
+
+			fqdn := ""
+			if app.FQDN != nil {
+				fqdn = *app.FQDN
+			}
+
 			var commitHash *string
 			if app.GitCommitSHA != "" && len(app.GitCommitSHA) >= 7 {
 				short := app.GitCommitSHA[:7]
@@ -295,17 +315,46 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 				return nil, fmt.Errorf("failed to update app to running: %w", err)
 			}
 
-			a.logger.Info("Application is running",
+			a.logger.Info("Deployment completed successfully",
 				"appID", input.AppID,
 				"coolifyUUID", input.CoolifyAppUUID,
+				"deploymentUUID", input.DeploymentUUID,
 				"fqdn", fqdn,
 				"commitHash", commitHash)
 
 			return &WaitForRunningResult{FQDN: fqdn}, nil
-		}
 
-		if strings.HasPrefix(app.Status, "error") || app.Status == "failed" {
-			errMsg := fmt.Sprintf("application failed with status: %s", app.Status)
+		case "failed", "cancelled_by_user":
+			errMsg := fmt.Sprintf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
+
+			// Attach a small, readable log snippet to help debug (frequently contains git/auth failures).
+			if logs, logErr := a.coolify.Applications.GetDeploymentLogsForUUID(ctx, input.CoolifyAppUUID, input.DeploymentUUID); logErr == nil && len(logs) > 0 {
+				const maxLines = 25
+				start := 0
+				if len(logs) > maxLines {
+					start = len(logs) - maxLines
+				}
+
+				var b strings.Builder
+				for _, entry := range logs[start:] {
+					line := strings.TrimSpace(entry.Message)
+					if line == "" {
+						continue
+					}
+					// Keep each line compact (avoid flooding DB/errors).
+					if len(line) > 300 {
+						line = line[:300] + "…"
+					}
+					b.WriteString(line)
+					b.WriteString("\n")
+				}
+
+				snippet := strings.TrimSpace(b.String())
+				if snippet != "" {
+					errMsg = errMsg + "\n" + snippet
+				}
+			}
+
 			_, dbErr := a.appsQ.UpdateAppFailed(ctx, apps.UpdateAppFailedParams{
 				ID:           input.AppID,
 				ErrorMessage: &errMsg,
@@ -315,13 +364,16 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 					"appID", input.AppID,
 					"error", dbErr)
 			}
-			return nil, fmt.Errorf("application failed with status: %s", app.Status)
+			return nil, fmt.Errorf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
+
+		case "queued", "in_progress":
+			// Still in progress, keep polling
 		}
 
 		time.Sleep(pollInterval)
 	}
 
-	return nil, fmt.Errorf("app not running after %v, will retry", pollTimeout)
+	return nil, fmt.Errorf("deployment not finished after %v, will retry", pollTimeout)
 }
 
 type UpdateAppFailedInput struct {
@@ -372,7 +424,15 @@ func (a *Activities) DeployApp(ctx context.Context, input DeployAppInput) (*Depl
 
 	deploymentUUID := ""
 	if len(resp.Deployments) > 0 {
-		deploymentUUID = resp.Deployments[0].DeploymentUUID
+		// Prefer a matching resource UUID (Coolify returns multiple deployments in some cases).
+		for i := range resp.Deployments {
+			if resp.Deployments[i].ResourceUUID == input.CoolifyAppUUID && resp.Deployments[i].DeploymentUUID != "" {
+				deploymentUUID = resp.Deployments[i].DeploymentUUID
+			}
+		}
+		if deploymentUUID == "" {
+			deploymentUUID = resp.Deployments[len(resp.Deployments)-1].DeploymentUUID
+		}
 	}
 
 	a.logger.Info("Deployed Coolify application",

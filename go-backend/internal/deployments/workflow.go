@@ -137,6 +137,7 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 	waitInput := WaitForRunningInput{
 		AppID:          appID,
 		CoolifyAppUUID: createAppResult.CoolifyAppUUID,
+		DeploymentUUID: startAppResult.DeploymentUUID,
 	}
 
 	var waitResult WaitForRunningResult
@@ -238,6 +239,7 @@ func RedeployToCoolifyWorkflow(ctx workflow.Context, input RedeployWorkflowInput
 	waitInput := WaitForRunningInput{
 		AppID:          input.AppID,
 		CoolifyAppUUID: input.CoolifyAppUUID,
+		DeploymentUUID: deployResult.DeploymentUUID,
 	}
 
 	var waitResult WaitForRunningResult

@@ -21,6 +21,17 @@ type GitHubPushRepository struct {
 	FullName string `json:"full_name"`
 }
 
+type GitHubInstallationPayload struct {
+	Action       string `json:"action"`
+	Installation struct {
+		ID int64 `json:"id"`
+	} `json:"installation"`
+	Sender struct {
+		ID    int64  `json:"id"`
+		Login string `json:"login"`
+	} `json:"sender"`
+}
+
 type WebhookResponse struct {
 	Message     string           `json:"message"`
 	Deployments []DeploymentInfo `json:"deployments,omitempty"`
@@ -32,22 +43,9 @@ type DeploymentInfo struct {
 }
 
 func (h *Handlers) HandleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
-	h.logger.Info("received GitHub webhook",
-		"method", r.Method,
-		"event", r.Header.Get("X-GitHub-Event"),
-		"delivery", r.Header.Get("X-GitHub-Delivery"),
-		"signature_present", r.Header.Get("X-Hub-Signature-256") != "")
-
-	// Only handle push events
 	eventType := r.Header.Get("X-GitHub-Event")
-	if eventType != "push" {
-		h.logger.Info("ignoring non-push event", "event", eventType)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(WebhookResponse{Message: "ignored event type: " + eventType})
-		return
-	}
 
-	// Read body
+	// Read body first so we can log it
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		h.logger.Error("failed to read request body", "error", err)
@@ -55,19 +53,82 @@ func (h *Handlers) HandleGitHubWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify signature
+	h.logger.Info("received GitHub webhook",
+		"method", r.Method,
+		"event", eventType,
+		"delivery", r.Header.Get("X-GitHub-Delivery"),
+		"signature_present", r.Header.Get("X-Hub-Signature-256") != "")
+
+	// Verify signature first
 	signature := r.Header.Get("X-Hub-Signature-256")
-	h.logger.Info("verifying webhook signature",
-		"signature", signature,
-		"body_length", len(body))
 	if !h.verifySignature(body, signature) {
-		h.logger.Warn("invalid webhook signature",
-			"signature", signature)
+		h.logger.Warn("invalid webhook signature", "signature", signature)
 		http.Error(w, "invalid signature", http.StatusUnauthorized)
 		return
 	}
-	h.logger.Info("webhook signature verified")
 
+	switch eventType {
+	case "installation":
+		h.handleInstallationWebhook(w, r, body)
+		return
+	case "push":
+		h.handlePushWebhook(w, r, body)
+		return
+	default:
+		h.logger.Info("ignoring unhandled event", "event", eventType)
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(WebhookResponse{Message: "ignored event type: " + eventType})
+		return
+	}
+}
+
+func (h *Handlers) handleInstallationWebhook(w http.ResponseWriter, r *http.Request, body []byte) {
+	var payload GitHubInstallationPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		h.logger.Error("failed to parse installation payload", "error", err)
+		http.Error(w, "failed to parse payload", http.StatusBadRequest)
+		return
+	}
+
+	h.logger.Info("processing installation webhook",
+		"action", payload.Action,
+		"installation_id", payload.Installation.ID,
+		"sender_id", payload.Sender.ID,
+		"sender_login", payload.Sender.Login)
+
+	// Find user by GitHub ID
+	creds, err := h.githubCredsQ.GetGitHubCredsByGitHubID(r.Context(), payload.Sender.ID)
+	if err != nil {
+		h.logger.Warn("no user found for github id", "github_id", payload.Sender.ID)
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(WebhookResponse{Message: "no user found"})
+		return
+	}
+
+	var installationID int64
+	if payload.Action == "created" {
+		installationID = payload.Installation.ID
+	} else if payload.Action == "deleted" {
+		installationID = 0
+	} else {
+		h.logger.Info("ignoring installation action", "action", payload.Action)
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(WebhookResponse{Message: "ignored action: " + payload.Action})
+		return
+	}
+
+	if _, err := h.authService.SyncGitHubAppInstallation(r.Context(), creds.UserID, installationID, payload.Sender.Login); err != nil {
+		h.logger.Error("failed to sync installation", "error", err, "user_id", creds.UserID)
+		http.Error(w, "failed to sync", http.StatusInternalServerError)
+		return
+	}
+
+	h.logger.Info("installation synced", "user_id", creds.UserID, "installation_id", installationID)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(WebhookResponse{Message: "installation synced"})
+}
+
+func (h *Handlers) handlePushWebhook(w http.ResponseWriter, r *http.Request, body []byte) {
 	// Parse payload
 	var payload GitHubPushPayload
 	if err := json.Unmarshal(body, &payload); err != nil {

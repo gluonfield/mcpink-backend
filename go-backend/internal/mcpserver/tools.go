@@ -89,8 +89,11 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 	}
 
-	// Default port is 3000
+	// Default port based on buildpack
 	port := strconv.Itoa(DefaultPort)
+	if buildPack == "static" {
+		port = "80"
+	}
 	if input.Port > 0 {
 		port = strconv.Itoa(input.Port)
 	}
