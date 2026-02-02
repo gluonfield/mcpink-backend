@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (User, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteUser(ctx context.Context, id string) error
 	GetUserByGitHubID(ctx context.Context, githubID int64) (User, error)

@@ -9,6 +9,28 @@ import (
 	"context"
 )
 
+const clearCoolifyGitHubAppUUID = `-- name: ClearCoolifyGitHubAppUUID :one
+UPDATE users
+SET coolify_github_app_uuid = NULL, updated_at = NOW()
+WHERE id = $1
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid
+`
+
+func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (User, error) {
+	row := q.db.QueryRow(ctx, clearCoolifyGitHubAppUUID, id)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.AvatarUrl,
+		&i.ID,
+		&i.CoolifyGithubAppUuid,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, github_id, github_username, avatar_url)
 VALUES ($1, $2, $3, $4)

@@ -283,32 +283,47 @@ func (s *Service) ListAPIKeys(ctx context.Context, userID string) ([]apikeys.Lis
 	return s.apiKeysQ.ListAPIKeysByUserID(ctx, userID)
 }
 
-func (s *Service) SetGitHubAppInstallation(ctx context.Context, userID string, installationID int64) error {
-	_, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
-		UserID:                  userID,
-		GithubAppInstallationID: helpers.Ptr(installationID),
-	})
-	return err
-}
-
-func (s *Service) ClearGitHubAppInstallation(ctx context.Context, userID string) error {
-	_, err := s.githubCredsQ.ClearGitHubAppInstallation(ctx, userID)
-	return err
-}
-
-func (s *Service) CreateCoolifyGitHubAppSource(ctx context.Context, userID string, installationID int64, githubUsername string) (string, error) {
-	// Delete old Coolify source if exists
+// SyncGitHubAppInstallation synchronizes all GitHub App installation state atomically.
+// - If installationID > 0: updates installation ID and creates/recreates Coolify source
+// - If installationID == 0: clears installation ID and deletes Coolify source
+// Returns the Coolify source UUID (empty string if uninstalled).
+func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, installationID int64, githubUsername string) (string, error) {
 	user, err := s.usersQ.GetUserByID(ctx, userID)
-	if err == nil && user.CoolifyGithubAppUuid != nil {
+	if err != nil {
+		return "", fmt.Errorf("failed to get user: %w", err)
+	}
+
+	// Delete existing Coolify source if any
+	if user.CoolifyGithubAppUuid != nil && *user.CoolifyGithubAppUuid != "" {
 		if err := s.coolify.Sources.DeleteGitHubApp(ctx, *user.CoolifyGithubAppUuid); err != nil {
-			s.logger.Warn("failed to delete old coolify source (may already be deleted)", "uuid", *user.CoolifyGithubAppUuid, "error", err)
+			s.logger.Warn("failed to delete coolify source (may already be deleted)", "uuid", *user.CoolifyGithubAppUuid, "error", err)
 		} else {
-			s.logger.Info("deleted old coolify source", "uuid", *user.CoolifyGithubAppUuid)
+			s.logger.Info("deleted coolify source", "uuid", *user.CoolifyGithubAppUuid)
+		}
+		if _, err := s.usersQ.ClearCoolifyGitHubAppUUID(ctx, userID); err != nil {
+			s.logger.Warn("failed to clear coolify uuid from db", "error", err)
 		}
 	}
 
-	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
+	// Handle uninstall case
+	if installationID == 0 {
+		if _, err := s.githubCredsQ.ClearGitHubAppInstallation(ctx, userID); err != nil {
+			return "", fmt.Errorf("failed to clear github app installation: %w", err)
+		}
+		s.logger.Info("github app uninstalled", "user_id", userID)
+		return "", nil
+	}
 
+	// Update installation ID
+	if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
+		UserID:                  userID,
+		GithubAppInstallationID: helpers.Ptr(installationID),
+	}); err != nil {
+		return "", fmt.Errorf("failed to set github app installation: %w", err)
+	}
+
+	// Create new Coolify source
+	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
 	req := &coolify.CreateGitHubAppSourceRequest{
 		Name:           sourceName,
 		APIUrl:         "https://api.github.com",
@@ -326,17 +341,17 @@ func (s *Service) CreateCoolifyGitHubAppSource(ctx context.Context, userID strin
 
 	source, err := s.coolify.Sources.CreateGitHubApp(ctx, req)
 	if err != nil {
-		return "", fmt.Errorf("failed to create coolify github app source: %w", err)
+		return "", fmt.Errorf("failed to create coolify source: %w", err)
 	}
 
-	_, err = s.usersQ.SetCoolifyGitHubAppUUID(ctx, users.SetCoolifyGitHubAppUUIDParams{
+	if _, err := s.usersQ.SetCoolifyGitHubAppUUID(ctx, users.SetCoolifyGitHubAppUUIDParams{
 		ID:                   userID,
 		CoolifyGithubAppUuid: helpers.Ptr(source.UUID),
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to save coolify github app uuid: %w", err)
+	}); err != nil {
+		return "", fmt.Errorf("failed to save coolify source uuid: %w", err)
 	}
 
+	s.logger.Info("github app synced", "user_id", userID, "installation_id", installationID, "coolify_uuid", source.UUID)
 	return source.UUID, nil
 }
 

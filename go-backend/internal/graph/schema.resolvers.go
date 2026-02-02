@@ -62,25 +62,20 @@ func (r *mutationResolver) RecheckGithubAppInstallation(ctx context.Context) (*s
 		return nil, nil
 	}
 
-	if installationID == 0 {
-		// User has uninstalled - clear cached value
-		if creds.GithubAppInstallationID != nil {
-			_ = r.AuthService.ClearGitHubAppInstallation(ctx, userID)
-		}
-		return nil, nil
+	// Only sync if installation state changed
+	storedID := int64(0)
+	if creds.GithubAppInstallationID != nil {
+		storedID = *creds.GithubAppInstallationID
 	}
 
-	// Update cache with new value
-	if creds.GithubAppInstallationID == nil || *creds.GithubAppInstallationID != installationID {
-		_ = r.AuthService.SetGitHubAppInstallation(ctx, userID, installationID)
-
-		// Create Coolify GitHub App source if not already created
-		if user.CoolifyGithubAppUuid == nil || *user.CoolifyGithubAppUuid == "" {
-			_, err := r.AuthService.CreateCoolifyGitHubAppSource(ctx, userID, installationID, user.GithubUsername)
-			if err != nil {
-				r.Logger.Error("failed to create coolify github app source", "error", err, "user_id", userID)
-			}
+	if storedID != installationID {
+		if _, err := r.AuthService.SyncGitHubAppInstallation(ctx, userID, installationID, user.GithubUsername); err != nil {
+			r.Logger.Error("failed to sync github app installation", "error", err, "user_id", userID)
 		}
+	}
+
+	if installationID == 0 {
+		return nil, nil
 	}
 
 	id := fmt.Sprintf("%d", installationID)

@@ -23,3 +23,9 @@ UPDATE users
 SET coolify_github_app_uuid = $2, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: ClearCoolifyGitHubAppUUID :one
+UPDATE users
+SET coolify_github_app_uuid = NULL, updated_at = NOW()
+WHERE id = $1
+RETURNING *;

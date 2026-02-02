@@ -188,30 +188,21 @@ func (h *Handlers) HandleGitHubAppCallback(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// Save installation ID to database
-	if err := h.service.SetGitHubAppInstallation(r.Context(), userID, installationID); err != nil {
-		h.logger.Error("failed to save github app installation", "error", err, "user_id", userID, "installation_id", installationID)
-		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
-		return
-	}
-
 	// Get user to retrieve github username for the source name
 	user, err := h.service.GetUserByID(r.Context(), userID)
 	if err != nil {
-		h.logger.Error("failed to get user for coolify source creation", "error", err, "user_id", userID)
+		h.logger.Error("failed to get user for github app sync", "error", err, "user_id", userID)
 		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
 		return
 	}
 
-	// Create Coolify GitHub App source for this user
-	coolifyUUID, err := h.service.CreateCoolifyGitHubAppSource(r.Context(), userID, installationID, user.GithubUsername)
-	if err != nil {
-		h.logger.Error("failed to create coolify github app source", "error", err, "user_id", userID, "installation_id", installationID)
+	// Sync GitHub App installation (updates DB + creates Coolify source)
+	if _, err := h.service.SyncGitHubAppInstallation(r.Context(), userID, installationID, user.GithubUsername); err != nil {
+		h.logger.Error("failed to sync github app installation", "error", err, "user_id", userID, "installation_id", installationID)
 		http.Redirect(w, r, errorURL, http.StatusTemporaryRedirect)
 		return
 	}
 
-	h.logger.Info("github app installed", "user_id", userID, "installation_id", installationID, "coolify_uuid", coolifyUUID)
 	http.Redirect(w, r, successURL, http.StatusTemporaryRedirect)
 }
 
