@@ -122,6 +122,17 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 		CustomDockerRunOptions: "--runtime=runsc",
 	}
 
+	a.logger.Debug("Coolify create app request",
+		"projectUUID", cfg.ProjectUUID,
+		"serverUUID", serverID,
+		"environmentName", cfg.EnvironmentName,
+		"gitHubAppUUID", gitHubAppUUID,
+		"gitRepository", input.Repo,
+		"gitBranch", input.Branch,
+		"portsExposes", input.Port,
+		"buildPack", input.BuildPack,
+		"name", input.Name)
+
 	resp, err := a.coolify.Applications.CreatePrivateGitHubApp(ctx, req)
 	if err != nil {
 		a.logger.Error("Failed to create Coolify application",

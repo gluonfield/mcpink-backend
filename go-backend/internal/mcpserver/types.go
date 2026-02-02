@@ -156,14 +156,6 @@ type GetGitHubPushTokenOutput struct {
 	ExpiresInMinutes int    `json:"expires_in_minutes"`
 }
 
-type DebugGitHubAppInput struct{}
-
-type DebugGitHubAppOutput struct {
-	InstallationID      int64             `json:"installation_id"`
-	RepositorySelection string            `json:"repository_selection"`
-	Permissions         map[string]string `json:"permissions"`
-}
-
 type GetAppDetailsInput struct {
 	Name            string `json:"name" jsonschema:"App name (required)"`
 	Project         string `json:"project,omitempty" jsonschema:"Project name (default: user's default project)"`

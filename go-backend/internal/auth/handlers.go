@@ -68,7 +68,7 @@ func (h *Handlers) HandleGitHubLogin(w http.ResponseWriter, r *http.Request) {
 		// Store redirect URL so we return to settings after OAuth
 		http.SetCookie(w, &http.Cookie{
 			Name:     "oauth_redirect",
-			Value:    "/settings/access",
+			Value:    "/auth/callback",
 			Path:     "/",
 			MaxAge:   300,
 			HttpOnly: true,

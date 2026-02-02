@@ -1,0 +1,30 @@
+extend type Query {
+  listResources(first: Int, after: String): ResourceConnection! @isAuthenticated
+  resourceDetails(id: ID!): Resource @isAuthenticated
+}
+
+type ResourceConnection {
+  nodes: [Resource!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type Resource {
+  id: ID!
+  name: String!
+  type: String!
+  provider: String!
+  region: String!
+  status: String!
+  metadata: ResourceMetadata
+  projectId: ID
+  project: Project @goField(forceResolver: true)
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type ResourceMetadata {
+  size: String
+  hostname: String
+  group: String
+}

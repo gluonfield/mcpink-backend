@@ -79,6 +79,9 @@ func (c *Client) GetMuscleServer() string {
 
 func (e *Error) Error() string {
 	if e.Message != "" {
+		if e.Body != "" && e.Body != fmt.Sprintf(`{"message":"%s"}`, e.Message) {
+			return fmt.Sprintf("coolify: %s (status %d): %s", e.Message, e.StatusCode, e.Body)
+		}
 		return fmt.Sprintf("coolify: %s (status %d)", e.Message, e.StatusCode)
 	}
 	return fmt.Sprintf("coolify: request failed with status %d: %s", e.StatusCode, e.Body)

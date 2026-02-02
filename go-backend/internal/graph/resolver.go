@@ -9,6 +9,7 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 )
 
 type Resolver struct {
@@ -19,4 +20,5 @@ type Resolver struct {
 	CoolifyClient    *coolify.Client
 	AppQueries       apps.Querier
 	ProjectQueries   projects.Querier
+	ResourceQueries  resources.Querier
 }

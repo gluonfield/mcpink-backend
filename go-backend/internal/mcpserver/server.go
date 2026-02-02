@@ -29,7 +29,7 @@ func NewServer(authService *auth.Service, coolifyClient *coolify.Client, deployS
 		&mcp.Implementation{
 			Name:    "Ink MCP",
 			Title:   "Ink MCP - deploy your apps and servers on the cloud",
-			Version: "1.0.0",
+			Version: "0.1.0",
 		},
 		&mcp.ServerOptions{
 			Instructions: "This server has capabilities to deploy most single port apps NextJS, React, flask etc as well as many other servers and returns the URL of the deployed application. It can provision sqlite databases too. 99% of apps should be deployable with this MCP.",
@@ -85,7 +85,7 @@ func (s *Server) registerTools() {
 	}, s.handleListResources)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "get_resource_details",
+		Name:        "get_resource",
 		Description: "Get detailed information about a resource including connection URL and auth token",
 	}, s.handleGetResourceDetails)
 
@@ -96,18 +96,13 @@ func (s *Server) registerTools() {
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "create_github_repo",
-		Description: "Create a new GitHub repository and return a temporary access token for pushing code. Requires GitHub App to be installed.",
+		Description: "Create a new GitHub repository and return a temporary access token for pushing code. Requires OAuth `repo` scope. This tool should only be used if `gh` cli is not installed or configured.",
 	}, s.handleCreateGitHubRepo)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "github_get_push_token",
-		Description: "Get a temporary access token for pushing to an existing GitHub repository. Requires GitHub App to be installed and have access to the repository.",
+		Description: "Get a temporary access token for pushing to an existing GitHub repository. Requires GitHub App to be installed and have access to the repository. This tool should only be used if `git` is not configured.",
 	}, s.handleGetGitHubPushToken)
-
-	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "debug_github_app",
-		Description: "Debug GitHub App installation - shows permissions and repository selection mode",
-	}, s.handleDebugGitHubApp)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "get_app_details",

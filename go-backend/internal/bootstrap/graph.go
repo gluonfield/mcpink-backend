@@ -21,6 +21,7 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 	"github.com/augustdev/autoclip/internal/turso"
 	"github.com/augustdev/autoclip/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -44,6 +45,7 @@ func NewResolver(
 	coolifyClient *coolify.Client,
 	appQueries apps.Querier,
 	projectQueries projects.Querier,
+	resourceQueries resources.Querier,
 ) *graph.Resolver {
 	return &graph.Resolver{
 		Db:               pgdb,
@@ -53,6 +55,7 @@ func NewResolver(
 		CoolifyClient:    coolifyClient,
 		AppQueries:       appQueries,
 		ProjectQueries:   projectQueries,
+		ResourceQueries:  resourceQueries,
 	}
 }
 

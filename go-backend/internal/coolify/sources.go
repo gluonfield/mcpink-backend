@@ -38,3 +38,7 @@ func (s *SourcesService) CreateGitHubApp(ctx context.Context, req *CreateGitHubA
 	}
 	return &result, nil
 }
+
+func (s *SourcesService) DeleteGitHubApp(ctx context.Context, uuid string) error {
+	return s.client.do(ctx, http.MethodDelete, "/api/v1/github-apps/"+uuid, nil, nil, nil)
+}

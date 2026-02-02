@@ -297,6 +297,16 @@ func (s *Service) ClearGitHubAppInstallation(ctx context.Context, userID string)
 }
 
 func (s *Service) CreateCoolifyGitHubAppSource(ctx context.Context, userID string, installationID int64, githubUsername string) (string, error) {
+	// Delete old Coolify source if exists
+	user, err := s.usersQ.GetUserByID(ctx, userID)
+	if err == nil && user.CoolifyGithubAppUuid != nil {
+		if err := s.coolify.Sources.DeleteGitHubApp(ctx, *user.CoolifyGithubAppUuid); err != nil {
+			s.logger.Warn("failed to delete old coolify source (may already be deleted)", "uuid", *user.CoolifyGithubAppUuid, "error", err)
+		} else {
+			s.logger.Info("deleted old coolify source", "uuid", *user.CoolifyGithubAppUuid)
+		}
+	}
+
 	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
 
 	req := &coolify.CreateGitHubAppSourceRequest{

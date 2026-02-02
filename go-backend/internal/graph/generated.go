@@ -42,6 +42,7 @@ type Config struct {
 type ResolverRoot interface {
 	Mutation() MutationResolver
 	Query() QueryResolver
+	Resource() ResourceResolver
 	User() UserResolver
 }
 
@@ -126,12 +127,40 @@ type ComplexityRoot struct {
 	}
 
 	Query struct {
-		AppDetails     func(childComplexity int, id string) int
-		ListApps       func(childComplexity int, first *int32, after *string) int
-		ListProjects   func(childComplexity int, first *int32, after *string) int
-		Me             func(childComplexity int) int
-		MyAPIKeys      func(childComplexity int) int
-		ProjectDetails func(childComplexity int, id string) int
+		AppDetails      func(childComplexity int, id string) int
+		ListApps        func(childComplexity int, first *int32, after *string) int
+		ListProjects    func(childComplexity int, first *int32, after *string) int
+		ListResources   func(childComplexity int, first *int32, after *string) int
+		Me              func(childComplexity int) int
+		MyAPIKeys       func(childComplexity int) int
+		ProjectDetails  func(childComplexity int, id string) int
+		ResourceDetails func(childComplexity int, id string) int
+	}
+
+	Resource struct {
+		CreatedAt func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Metadata  func(childComplexity int) int
+		Name      func(childComplexity int) int
+		Project   func(childComplexity int) int
+		ProjectID func(childComplexity int) int
+		Provider  func(childComplexity int) int
+		Region    func(childComplexity int) int
+		Status    func(childComplexity int) int
+		Type      func(childComplexity int) int
+		UpdatedAt func(childComplexity int) int
+	}
+
+	ResourceConnection struct {
+		Nodes      func(childComplexity int) int
+		PageInfo   func(childComplexity int) int
+		TotalCount func(childComplexity int) int
+	}
+
+	ResourceMetadata struct {
+		Group    func(childComplexity int) int
+		Hostname func(childComplexity int) int
+		Size     func(childComplexity int) int
 	}
 
 	User struct {
@@ -157,6 +186,11 @@ type QueryResolver interface {
 	AppDetails(ctx context.Context, id string) (*model.App, error)
 	ListProjects(ctx context.Context, first *int32, after *string) (*model.ProjectConnection, error)
 	ProjectDetails(ctx context.Context, id string) (*model.Project, error)
+	ListResources(ctx context.Context, first *int32, after *string) (*model.ResourceConnection, error)
+	ResourceDetails(ctx context.Context, id string) (*model.Resource, error)
+}
+type ResourceResolver interface {
+	Project(ctx context.Context, obj *model.Resource) (*model.Project, error)
 }
 type UserResolver interface {
 	GithubAppInstallationID(ctx context.Context, obj *model.User) (*string, error)
@@ -504,6 +538,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.ListProjects(childComplexity, args["first"].(*int32), args["after"].(*string)), true
+	case "Query.listResources":
+		if e.complexity.Query.ListResources == nil {
+			break
+		}
+
+		args, err := ec.field_Query_listResources_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.ListResources(childComplexity, args["first"].(*int32), args["after"].(*string)), true
 	case "Query.me":
 		if e.complexity.Query.Me == nil {
 			break
@@ -527,6 +572,122 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Query.ProjectDetails(childComplexity, args["id"].(string)), true
+	case "Query.resourceDetails":
+		if e.complexity.Query.ResourceDetails == nil {
+			break
+		}
+
+		args, err := ec.field_Query_resourceDetails_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Query.ResourceDetails(childComplexity, args["id"].(string)), true
+
+	case "Resource.createdAt":
+		if e.complexity.Resource.CreatedAt == nil {
+			break
+		}
+
+		return e.complexity.Resource.CreatedAt(childComplexity), true
+	case "Resource.id":
+		if e.complexity.Resource.ID == nil {
+			break
+		}
+
+		return e.complexity.Resource.ID(childComplexity), true
+	case "Resource.metadata":
+		if e.complexity.Resource.Metadata == nil {
+			break
+		}
+
+		return e.complexity.Resource.Metadata(childComplexity), true
+	case "Resource.name":
+		if e.complexity.Resource.Name == nil {
+			break
+		}
+
+		return e.complexity.Resource.Name(childComplexity), true
+	case "Resource.project":
+		if e.complexity.Resource.Project == nil {
+			break
+		}
+
+		return e.complexity.Resource.Project(childComplexity), true
+	case "Resource.projectId":
+		if e.complexity.Resource.ProjectID == nil {
+			break
+		}
+
+		return e.complexity.Resource.ProjectID(childComplexity), true
+	case "Resource.provider":
+		if e.complexity.Resource.Provider == nil {
+			break
+		}
+
+		return e.complexity.Resource.Provider(childComplexity), true
+	case "Resource.region":
+		if e.complexity.Resource.Region == nil {
+			break
+		}
+
+		return e.complexity.Resource.Region(childComplexity), true
+	case "Resource.status":
+		if e.complexity.Resource.Status == nil {
+			break
+		}
+
+		return e.complexity.Resource.Status(childComplexity), true
+	case "Resource.type":
+		if e.complexity.Resource.Type == nil {
+			break
+		}
+
+		return e.complexity.Resource.Type(childComplexity), true
+	case "Resource.updatedAt":
+		if e.complexity.Resource.UpdatedAt == nil {
+			break
+		}
+
+		return e.complexity.Resource.UpdatedAt(childComplexity), true
+
+	case "ResourceConnection.nodes":
+		if e.complexity.ResourceConnection.Nodes == nil {
+			break
+		}
+
+		return e.complexity.ResourceConnection.Nodes(childComplexity), true
+	case "ResourceConnection.pageInfo":
+		if e.complexity.ResourceConnection.PageInfo == nil {
+			break
+		}
+
+		return e.complexity.ResourceConnection.PageInfo(childComplexity), true
+	case "ResourceConnection.totalCount":
+		if e.complexity.ResourceConnection.TotalCount == nil {
+			break
+		}
+
+		return e.complexity.ResourceConnection.TotalCount(childComplexity), true
+
+	case "ResourceMetadata.group":
+		if e.complexity.ResourceMetadata.Group == nil {
+			break
+		}
+
+		return e.complexity.ResourceMetadata.Group(childComplexity), true
+	case "ResourceMetadata.hostname":
+		if e.complexity.ResourceMetadata.Hostname == nil {
+			break
+		}
+
+		return e.complexity.ResourceMetadata.Hostname(childComplexity), true
+	case "ResourceMetadata.size":
+		if e.complexity.ResourceMetadata.Size == nil {
+			break
+		}
+
+		return e.complexity.ResourceMetadata.Size(childComplexity), true
 
 	case "User.avatarUrl":
 		if e.complexity.User.AvatarURL == nil {
@@ -668,7 +829,7 @@ func (ec *executionContext) introspectType(name string) (*introspection.Type, er
 	return introspection.WrapTypeFromDef(ec.Schema(), ec.Schema().Types[name]), nil
 }
 
-//go:embed "apps.graphqls" "projects.graphqls" "schema.graphqls"
+//go:embed "apps.graphqls" "projects.graphqls" "resources.graphqls" "schema.graphqls"
 var sourcesFS embed.FS
 
 func sourceData(filename string) string {
@@ -682,6 +843,7 @@ func sourceData(filename string) string {
 var sources = []*ast.Source{
 	{Name: "apps.graphqls", Input: sourceData("apps.graphqls"), BuiltIn: false},
 	{Name: "projects.graphqls", Input: sourceData("projects.graphqls"), BuiltIn: false},
+	{Name: "resources.graphqls", Input: sourceData("resources.graphqls"), BuiltIn: false},
 	{Name: "schema.graphqls", Input: sourceData("schema.graphqls"), BuiltIn: false},
 }
 var parsedSchema = gqlparser.MustLoadSchema(sources...)
@@ -793,7 +955,34 @@ func (ec *executionContext) field_Query_listProjects_args(ctx context.Context, r
 	return args, nil
 }
 
+func (ec *executionContext) field_Query_listResources_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "first", ec.unmarshalOInt2ᚖint32)
+	if err != nil {
+		return nil, err
+	}
+	args["first"] = arg0
+	arg1, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg1
+	return args, nil
+}
+
 func (ec *executionContext) field_Query_projectDetails_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
+	if err != nil {
+		return nil, err
+	}
+	args["id"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Query_resourceDetails_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
 	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "id", ec.unmarshalNID2string)
@@ -2720,6 +2909,146 @@ func (ec *executionContext) fieldContext_Query_projectDetails(ctx context.Contex
 	return fc, nil
 }
 
+func (ec *executionContext) _Query_listResources(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_listResources,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().ListResources(ctx, fc.Args["first"].(*int32), fc.Args["after"].(*string))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.IsAuthenticated == nil {
+					var zeroVal *model.ResourceConnection
+					return zeroVal, errors.New("directive isAuthenticated is not implemented")
+				}
+				return ec.directives.IsAuthenticated(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		ec.marshalNResourceConnection2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceConnection,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_listResources(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "nodes":
+				return ec.fieldContext_ResourceConnection_nodes(ctx, field)
+			case "pageInfo":
+				return ec.fieldContext_ResourceConnection_pageInfo(ctx, field)
+			case "totalCount":
+				return ec.fieldContext_ResourceConnection_totalCount(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ResourceConnection", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_listResources_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Query_resourceDetails(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Query_resourceDetails,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Query().ResourceDetails(ctx, fc.Args["id"].(string))
+		},
+		func(ctx context.Context, next graphql.Resolver) graphql.Resolver {
+			directive0 := next
+
+			directive1 := func(ctx context.Context) (any, error) {
+				if ec.directives.IsAuthenticated == nil {
+					var zeroVal *model.Resource
+					return zeroVal, errors.New("directive isAuthenticated is not implemented")
+				}
+				return ec.directives.IsAuthenticated(ctx, nil, directive0)
+			}
+
+			next = directive1
+			return next
+		},
+		ec.marshalOResource2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResource,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Query_resourceDetails(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Query",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Resource_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Resource_name(ctx, field)
+			case "type":
+				return ec.fieldContext_Resource_type(ctx, field)
+			case "provider":
+				return ec.fieldContext_Resource_provider(ctx, field)
+			case "region":
+				return ec.fieldContext_Resource_region(ctx, field)
+			case "status":
+				return ec.fieldContext_Resource_status(ctx, field)
+			case "metadata":
+				return ec.fieldContext_Resource_metadata(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Resource_projectId(ctx, field)
+			case "project":
+				return ec.fieldContext_Resource_project(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Resource_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Resource_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Resource", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Query_resourceDetails_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Query___type(ctx context.Context, field graphql.CollectedField) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2823,6 +3152,555 @@ func (ec *executionContext) fieldContext_Query___schema(_ context.Context, field
 				return ec.fieldContext___Schema_directives(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type __Schema", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_id(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNID2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_name(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_type(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_type,
+		func(ctx context.Context) (any, error) {
+			return obj.Type, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_type(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_provider(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_provider,
+		func(ctx context.Context) (any, error) {
+			return obj.Provider, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_provider(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_region(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_region,
+		func(ctx context.Context) (any, error) {
+			return obj.Region, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_region(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_status(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_status,
+		func(ctx context.Context) (any, error) {
+			return obj.Status, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_metadata(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_metadata,
+		func(ctx context.Context) (any, error) {
+			return obj.Metadata, nil
+		},
+		nil,
+		ec.marshalOResourceMetadata2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceMetadata,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_metadata(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "size":
+				return ec.fieldContext_ResourceMetadata_size(ctx, field)
+			case "hostname":
+				return ec.fieldContext_ResourceMetadata_hostname(ctx, field)
+			case "group":
+				return ec.fieldContext_ResourceMetadata_group(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ResourceMetadata", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_projectId(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_projectId,
+		func(ctx context.Context) (any, error) {
+			return obj.ProjectID, nil
+		},
+		nil,
+		ec.marshalOID2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_projectId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type ID does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_project(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_project,
+		func(ctx context.Context) (any, error) {
+			return ec.resolvers.Resource().Project(ctx, obj)
+		},
+		nil,
+		ec.marshalOProject2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐProject,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_project(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Project_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Project_name(ctx, field)
+			case "ref":
+				return ec.fieldContext_Project_ref(ctx, field)
+			case "apps":
+				return ec.fieldContext_Project_apps(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Project_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Project_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Project", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_createdAt,
+		func(ctx context.Context) (any, error) {
+			return obj.CreatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_createdAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Resource_updatedAt(ctx context.Context, field graphql.CollectedField, obj *model.Resource) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Resource_updatedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.UpdatedAt, nil
+		},
+		nil,
+		ec.marshalNTime2timeᚐTime,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Resource_updatedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Resource",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceConnection_nodes(ctx context.Context, field graphql.CollectedField, obj *model.ResourceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceConnection_nodes,
+		func(ctx context.Context) (any, error) {
+			return obj.Nodes, nil
+		},
+		nil,
+		ec.marshalNResource2ᚕᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceConnection_nodes(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Resource_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Resource_name(ctx, field)
+			case "type":
+				return ec.fieldContext_Resource_type(ctx, field)
+			case "provider":
+				return ec.fieldContext_Resource_provider(ctx, field)
+			case "region":
+				return ec.fieldContext_Resource_region(ctx, field)
+			case "status":
+				return ec.fieldContext_Resource_status(ctx, field)
+			case "metadata":
+				return ec.fieldContext_Resource_metadata(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Resource_projectId(ctx, field)
+			case "project":
+				return ec.fieldContext_Resource_project(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Resource_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Resource_updatedAt(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Resource", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceConnection_pageInfo(ctx context.Context, field graphql.CollectedField, obj *model.ResourceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceConnection_pageInfo,
+		func(ctx context.Context) (any, error) {
+			return obj.PageInfo, nil
+		},
+		nil,
+		ec.marshalNPageInfo2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐPageInfo,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceConnection_pageInfo(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "hasNextPage":
+				return ec.fieldContext_PageInfo_hasNextPage(ctx, field)
+			case "hasPreviousPage":
+				return ec.fieldContext_PageInfo_hasPreviousPage(ctx, field)
+			case "startCursor":
+				return ec.fieldContext_PageInfo_startCursor(ctx, field)
+			case "endCursor":
+				return ec.fieldContext_PageInfo_endCursor(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type PageInfo", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceConnection_totalCount(ctx context.Context, field graphql.CollectedField, obj *model.ResourceConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceConnection_totalCount,
+		func(ctx context.Context) (any, error) {
+			return obj.TotalCount, nil
+		},
+		nil,
+		ec.marshalNInt2int32,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceConnection_totalCount(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceMetadata_size(ctx context.Context, field graphql.CollectedField, obj *model.ResourceMetadata) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceMetadata_size,
+		func(ctx context.Context) (any, error) {
+			return obj.Size, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceMetadata_size(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceMetadata",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceMetadata_hostname(ctx context.Context, field graphql.CollectedField, obj *model.ResourceMetadata) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceMetadata_hostname,
+		func(ctx context.Context) (any, error) {
+			return obj.Hostname, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceMetadata_hostname(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceMetadata",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ResourceMetadata_group(ctx context.Context, field graphql.CollectedField, obj *model.ResourceMetadata) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ResourceMetadata_group,
+		func(ctx context.Context) (any, error) {
+			return obj.Group, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ResourceMetadata_group(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ResourceMetadata",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -5150,6 +6028,47 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			}
 
 			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "listResources":
+			field := field
+
+			innerFunc := func(ctx context.Context, fs *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_listResources(ctx, field)
+				if res == graphql.Null {
+					atomic.AddUint32(&fs.Invalids, 1)
+				}
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
+		case "resourceDetails":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Query_resourceDetails(ctx, field)
+				return res
+			}
+
+			rrm := func(ctx context.Context) graphql.Marshaler {
+				return ec.OperationContext.RootResolverMiddleware(ctx,
+					func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return rrm(innerCtx) })
 		case "__type":
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___type(ctx, field)
@@ -5158,6 +6077,206 @@ func (ec *executionContext) _Query(ctx context.Context, sel ast.SelectionSet) gr
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Query___schema(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var resourceImplementors = []string{"Resource"}
+
+func (ec *executionContext) _Resource(ctx context.Context, sel ast.SelectionSet, obj *model.Resource) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, resourceImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Resource")
+		case "id":
+			out.Values[i] = ec._Resource_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "name":
+			out.Values[i] = ec._Resource_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "type":
+			out.Values[i] = ec._Resource_type(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "provider":
+			out.Values[i] = ec._Resource_provider(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "region":
+			out.Values[i] = ec._Resource_region(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "status":
+			out.Values[i] = ec._Resource_status(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "metadata":
+			out.Values[i] = ec._Resource_metadata(ctx, field, obj)
+		case "projectId":
+			out.Values[i] = ec._Resource_projectId(ctx, field, obj)
+		case "project":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Resource_project(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "createdAt":
+			out.Values[i] = ec._Resource_createdAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		case "updatedAt":
+			out.Values[i] = ec._Resource_updatedAt(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&out.Invalids, 1)
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var resourceConnectionImplementors = []string{"ResourceConnection"}
+
+func (ec *executionContext) _ResourceConnection(ctx context.Context, sel ast.SelectionSet, obj *model.ResourceConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, resourceConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ResourceConnection")
+		case "nodes":
+			out.Values[i] = ec._ResourceConnection_nodes(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "pageInfo":
+			out.Values[i] = ec._ResourceConnection_pageInfo(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "totalCount":
+			out.Values[i] = ec._ResourceConnection_totalCount(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var resourceMetadataImplementors = []string{"ResourceMetadata"}
+
+func (ec *executionContext) _ResourceMetadata(ctx context.Context, sel ast.SelectionSet, obj *model.ResourceMetadata) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, resourceMetadataImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ResourceMetadata")
+		case "size":
+			out.Values[i] = ec._ResourceMetadata_size(ctx, field, obj)
+		case "hostname":
+			out.Values[i] = ec._ResourceMetadata_hostname(ctx, field, obj)
+		case "group":
+			out.Values[i] = ec._ResourceMetadata_group(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -5966,6 +7085,74 @@ func (ec *executionContext) marshalNProjectConnection2ᚖgithubᚗcomᚋaugustde
 	return ec._ProjectConnection(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNResource2ᚕᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceᚄ(ctx context.Context, sel ast.SelectionSet, v []*model.Resource) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNResource2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResource(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNResource2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResource(ctx context.Context, sel ast.SelectionSet, v *model.Resource) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Resource(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNResourceConnection2githubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceConnection(ctx context.Context, sel ast.SelectionSet, v model.ResourceConnection) graphql.Marshaler {
+	return ec._ResourceConnection(ctx, sel, &v)
+}
+
+func (ec *executionContext) marshalNResourceConnection2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceConnection(ctx context.Context, sel ast.SelectionSet, v *model.ResourceConnection) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ResourceConnection(ctx, sel, v)
+}
+
 func (ec *executionContext) unmarshalNRole2githubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐRole(ctx context.Context, v any) (model.Role, error) {
 	var res model.Role
 	err := res.UnmarshalGQL(v)
@@ -6328,6 +7515,24 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	return res
 }
 
+func (ec *executionContext) unmarshalOID2ᚖstring(ctx context.Context, v any) (*string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	res, err := graphql.UnmarshalID(v)
+	return &res, graphql.ErrorOnPath(ctx, err)
+}
+
+func (ec *executionContext) marshalOID2ᚖstring(ctx context.Context, sel ast.SelectionSet, v *string) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	_ = sel
+	_ = ctx
+	res := graphql.MarshalID(*v)
+	return res
+}
+
 func (ec *executionContext) unmarshalOInt2ᚖint32(ctx context.Context, v any) (*int32, error) {
 	if v == nil {
 		return nil, nil
@@ -6351,6 +7556,20 @@ func (ec *executionContext) marshalOProject2ᚖgithubᚗcomᚋaugustdevᚋautocl
 		return graphql.Null
 	}
 	return ec._Project(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOResource2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResource(ctx context.Context, sel ast.SelectionSet, v *model.Resource) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Resource(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalOResourceMetadata2ᚖgithubᚗcomᚋaugustdevᚋautoclipᚋinternalᚋgraphᚋmodelᚐResourceMetadata(ctx context.Context, sel ast.SelectionSet, v *model.ResourceMetadata) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ResourceMetadata(ctx, sel, v)
 }
 
 func (ec *executionContext) unmarshalOString2ᚖstring(ctx context.Context, v any) (*string, error) {

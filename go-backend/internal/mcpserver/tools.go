@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -314,10 +315,6 @@ func (s *Server) handleListResources(ctx context.Context, req *mcp.CallToolReque
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, ListResourcesOutput{}, nil
 	}
 
-	if s.resourcesService == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "resources service is not configured"}}}, ListResourcesOutput{}, nil
-	}
-
 	resources, err := s.resourcesService.ListResources(ctx, user.ID, 100, 0)
 	if err != nil {
 		s.logger.Error("failed to list resources", "error", err)
@@ -347,10 +344,6 @@ func (s *Server) handleGetResourceDetails(ctx context.Context, req *mcp.CallTool
 
 	if input.Name == "" {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, GetResourceDetailsOutput{}, nil
-	}
-
-	if s.resourcesService == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "resources service is not configured"}}}, GetResourceDetailsOutput{}, nil
 	}
 
 	resource, err := s.resourcesService.GetResourceByName(ctx, user.ID, input.Name)
@@ -388,22 +381,16 @@ func (s *Server) handleCreateGitHubRepo(ctx context.Context, req *mcp.CallToolRe
 
 	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
 	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected. Please go to https://ml.ink/settings/github?q=repo"}}}, CreateGitHubRepoOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected. Please go to https://ml.ink/settings/access"}}}, CreateGitHubRepoOutput{}, nil
 	}
 
 	if creds.GithubAppInstallationID == nil {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install at https://ml.ink/settings/github"}}}, CreateGitHubRepoOutput{}, nil
 	}
 
-	hasRepoScope := false
-	for _, scope := range creds.GithubOauthScopes {
-		if scope == "repo" {
-			hasRepoScope = true
-			break
-		}
-	}
+	hasRepoScope := slices.Contains(creds.GithubOauthScopes, "repo")
 	if !hasRepoScope {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub token missing 'repo' scope. Please re-authenticate at https://ml.ink/settings/github?q=repo"}}}, CreateGitHubRepoOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub OAuth `repo` scope is missing. Please re-authenticate at https://ml.ink/settings/access. This tool allows to create new repositories and should only be used if `gh` CLI is not installed or configured."}}}, CreateGitHubRepoOutput{}, nil
 	}
 
 	oauthToken, err := s.authService.DecryptToken(creds.GithubOauthToken)
@@ -470,10 +457,6 @@ func (s *Server) handleCreateGitHubRepo(ctx context.Context, req *mcp.CallToolRe
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to parse GitHub response"}}}, CreateGitHubRepoOutput{}, nil
 	}
 
-	if s.githubAppService == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App service not configured"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
 	installationToken, err := s.githubAppService.CreateInstallationToken(ctx, *creds.GithubAppInstallationID, []string{repoResp.Name})
 	if err != nil {
 		s.logger.Error("failed to create installation token", "error", err)
@@ -500,15 +483,11 @@ func (s *Server) handleGetGitHubPushToken(ctx context.Context, req *mcp.CallTool
 
 	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
 	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected. Please go to https://ml.ink/settings/github"}}}, GetGitHubPushTokenOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Github credentials not found. Please go to https://ml.ink/settings/access."}}}, GetGitHubPushTokenOutput{}, nil
 	}
 
 	if creds.GithubAppInstallationID == nil {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install at https://ml.ink/settings/github"}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	if s.githubAppService == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App service not configured"}}}, GetGitHubPushTokenOutput{}, nil
 	}
 
 	// Extract repo name from owner/repo format
@@ -521,7 +500,7 @@ func (s *Server) handleGetGitHubPushToken(ctx context.Context, req *mcp.CallTool
 	installationToken, err := s.githubAppService.CreateInstallationToken(ctx, *creds.GithubAppInstallationID, []string{repoName})
 	if err != nil {
 		s.logger.Error("failed to create installation token", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create access token. The GitHub App may not have access to this repository."}}}, GetGitHubPushTokenOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create access token. The GitHub App may not have access to this repository, you can grant it at https://ml.ink/settings/github. This tool allows to obtain temporary credentials to push code to your repositories and should be used only if `git` is not configured. "}}}, GetGitHubPushTokenOutput{}, nil
 	}
 
 	expiresInMinutes := int(time.Until(installationToken.ExpiresAt).Minutes())
@@ -530,38 +509,6 @@ func (s *Server) handleGetGitHubPushToken(ctx context.Context, req *mcp.CallTool
 		AccessToken:      installationToken.Token,
 		ExpiresAt:        installationToken.ExpiresAt.UTC().Format(time.RFC3339),
 		ExpiresInMinutes: expiresInMinutes,
-	}, nil
-}
-
-func (s *Server) handleDebugGitHubApp(ctx context.Context, req *mcp.CallToolRequest, input DebugGitHubAppInput) (*mcp.CallToolResult, DebugGitHubAppOutput, error) {
-	user := UserFromContext(ctx)
-	if user == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, DebugGitHubAppOutput{}, nil
-	}
-
-	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected"}}}, DebugGitHubAppOutput{}, nil
-	}
-
-	if creds.GithubAppInstallationID == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed"}}}, DebugGitHubAppOutput{}, nil
-	}
-
-	if s.githubAppService == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App service not configured"}}}, DebugGitHubAppOutput{}, nil
-	}
-
-	info, err := s.githubAppService.GetInstallation(ctx, *creds.GithubAppInstallationID)
-	if err != nil {
-		s.logger.Error("failed to get installation info", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Failed to get installation info: %v", err)}}}, DebugGitHubAppOutput{}, nil
-	}
-
-	return nil, DebugGitHubAppOutput{
-		InstallationID:      info.ID,
-		RepositorySelection: info.RepositorySelection,
-		Permissions:         info.Permissions,
 	}, nil
 }
 

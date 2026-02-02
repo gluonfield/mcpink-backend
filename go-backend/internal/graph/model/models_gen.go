@@ -83,6 +83,32 @@ type ProjectConnection struct {
 type Query struct {
 }
 
+type Resource struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Type      string            `json:"type"`
+	Provider  string            `json:"provider"`
+	Region    string            `json:"region"`
+	Status    string            `json:"status"`
+	Metadata  *ResourceMetadata `json:"metadata,omitempty"`
+	ProjectID *string           `json:"projectId,omitempty"`
+	Project   *Project          `json:"project,omitempty"`
+	CreatedAt time.Time         `json:"createdAt"`
+	UpdatedAt time.Time         `json:"updatedAt"`
+}
+
+type ResourceConnection struct {
+	Nodes      []*Resource `json:"nodes"`
+	PageInfo   *PageInfo   `json:"pageInfo"`
+	TotalCount int32       `json:"totalCount"`
+}
+
+type ResourceMetadata struct {
+	Size     *string `json:"size,omitempty"`
+	Hostname *string `json:"hostname,omitempty"`
+	Group    *string `json:"group,omitempty"`
+}
+
 type User struct {
 	ID                      string    `json:"id"`
 	GithubUsername          string    `json:"githubUsername"`
