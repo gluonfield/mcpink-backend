@@ -102,7 +102,13 @@ func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description 
 	}
 
 	// Add coolify-deploy bot as read-only collaborator (workaround for Coolify deploy-key bug)
-	if err := s.client.AddCollaborator(ctx, githubUsername, repoName, DeployBotUsername); err != nil {
+	// Ensure the deploy bot user exists, otherwise collaborator assignment fails with "user does not exist".
+	deployBot := s.client.config.DeployBotUsername
+	deployBotEmail := fmt.Sprintf("%s@users.ml.ink", deployBot)
+	if err := s.client.EnsureUser(ctx, deployBot, deployBotEmail); err != nil {
+		return nil, fmt.Errorf("failed to ensure deploy bot user: %w", err)
+	}
+	if err := s.client.AddCollaborator(ctx, githubUsername, repoName, deployBot); err != nil {
 		if !isAlreadyExistsError(err) {
 			return nil, fmt.Errorf("failed to add deploy bot collaborator: %w", err)
 		}
@@ -141,7 +147,11 @@ func isAlreadyExistsError(err error) bool {
 		return false
 	}
 	s := err.Error()
-	return contains(s, "already exist") || contains(s, "already exists") || contains(s, "has already been taken")
+	return contains(s, "already exist") ||
+		contains(s, "already exists") ||
+		contains(s, "already been added") ||
+		contains(s, "has already been added") ||
+		contains(s, "has already been taken")
 }
 
 func contains(s, substr string) bool {

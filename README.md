@@ -76,11 +76,11 @@ Deploy MCP uses a two-part authentication system:
 |---------|--------------|------------|
 | User identity | ✅ Primary purpose | ❌ Not designed for this |
 | Clone/push to repos | ❌ Requires broad `repo` scope | ✅ Fine-grained per-repo access |
-| Create new repos | ✅ With `repo` scope (optional) | ❌ Cannot create repos |
+| Create new repos | ✅ With `repo` scope (current impl) | ✅ With GitHub App user access tokens (requires App “Administration: write”) |
 | Webhook delivery | ❌ Not supported | ✅ Built-in |
 | Installation tokens | ❌ Not available | ✅ Short-lived, scoped tokens |
 
-**Summary:** GitHub App handles day-to-day repository operations (clone, push, webhooks). GitHub OAuth with `repo` scope is only needed if agents should create new repositories.
+**Summary:** GitHub App handles day-to-day repository operations (clone, push, webhooks). Today, this codebase uses GitHub OAuth `repo` scope to create new repositories, but GitHub’s REST API also supports creating repos using **GitHub App user access tokens** (user-to-server flow) if the App has the right permissions.
 
 ### Authentication Flow
 
