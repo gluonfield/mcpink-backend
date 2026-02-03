@@ -1,4 +1,4 @@
-name: autobot
+name: mlink
 
 services:
   postgres:

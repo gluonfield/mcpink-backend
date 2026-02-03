@@ -38,77 +38,83 @@ func (s *Service) Client() *Client {
 	return s.client
 }
 
-// GetOrCreateGiteaUser ensures a Gitea user exists for the given MCP user
-func (s *Service) GetOrCreateGiteaUser(ctx context.Context, userID string) (string, error) {
-	// Check if user already has a Gitea username
+// CreateRepo creates a new internal git repository under user's GitHub username.
+// Idempotent: if repo already exists for this user, returns credentials.
+func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description string, private bool) (*CreateRepoResult, error) {
+	// Get user's GitHub username
 	user, err := s.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
-		return "", fmt.Errorf("failed to get user: %w", err)
+		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	if user.GiteaUsername != nil && *user.GiteaUsername != "" {
-		return *user.GiteaUsername, nil
+	githubUsername := user.GithubUsername
+	if githubUsername == "" {
+		return nil, fmt.Errorf("user has no github username")
 	}
 
-	// Create new Gitea user
-	giteaUsername := fmt.Sprintf("%s-%s", s.client.config.UserPrefix, userID)
-	// Use a placeholder email - Gitea requires it but we don't need it
-	giteaEmail := fmt.Sprintf("%s@users.ml.ink", giteaUsername)
+	fullName := fmt.Sprintf("%s/%s", githubUsername, repoName)
 
-	_, err = s.client.GetOrCreateUser(ctx, giteaUsername, giteaEmail)
+	// Check if repo already exists in our database
+	existingRepo, err := s.repoQueries.GetInternalRepoByFullName(ctx, fullName)
+	if err == nil {
+		// Repo exists - verify ownership
+		if existingRepo.UserID != userID {
+			return nil, fmt.Errorf("repo belongs to another user")
+		}
+		// Ensure deploy key exists (idempotent)
+		if err := s.client.AddDeployKey(ctx, githubUsername, repoName, "coolify-deploy", s.client.config.DeployPublicKey); err != nil {
+			if !isAlreadyExistsError(err) {
+				return nil, fmt.Errorf("failed to add deploy key: %w", err)
+			}
+		}
+		repoPath := s.client.GetRepoPath(githubUsername, repoName)
+		gitRemote := s.client.GetHTTPSCloneURL(githubUsername, repoName, s.client.config.AdminToken)
+		return &CreateRepoResult{
+			Repo:      repoPath,
+			GitRemote: gitRemote,
+			ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
+			Message:   "Repo already exists. Push your code, then call create_app to deploy",
+		}, nil
+	}
+
+	// Ensure Gitea user exists (matches GitHub username)
+	email := fmt.Sprintf("%s@users.ml.ink", githubUsername)
+	if err := s.client.EnsureUser(ctx, githubUsername, email); err != nil {
+		return nil, fmt.Errorf("failed to ensure gitea user: %w", err)
+	}
+
+	// Create the repo under user's account (or get existing)
+	repo, err := s.client.CreateRepoForUser(ctx, githubUsername, repoName, description, private)
 	if err != nil {
-		return "", fmt.Errorf("failed to create gitea user: %w", err)
+		// Try to get existing repo from Gitea
+		repo, err = s.client.GetRepo(ctx, githubUsername, repoName)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create repo: %w", err)
+		}
 	}
 
-	// Store gitea username in database
-	_, err = s.userQueries.SetGiteaUsername(ctx, users.SetGiteaUsernameParams{
-		ID:             userID,
-		GiteaUsername:  &giteaUsername,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to store gitea username: %w", err)
+	// Add deploy key for Coolify SSH access (ignore "already exists" errors)
+	if err := s.client.AddDeployKey(ctx, githubUsername, repoName, "coolify-deploy", s.client.config.DeployPublicKey); err != nil {
+		// Ignore if key already exists
+		if !isAlreadyExistsError(err) {
+			return nil, fmt.Errorf("failed to add deploy key: %w", err)
+		}
 	}
 
-	return giteaUsername, nil
-}
-
-// CreateRepo creates a new internal git repository
-func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description string, private bool) (*CreateRepoResult, error) {
-	// Get or create Gitea user
-	giteaUsername, err := s.GetOrCreateGiteaUser(ctx, userID)
-	if err != nil {
-		return nil, err
+	// Add coolify-deploy bot as read-only collaborator (workaround for Coolify deploy-key bug)
+	if err := s.client.AddCollaborator(ctx, githubUsername, repoName, DeployBotUsername); err != nil {
+		if !isAlreadyExistsError(err) {
+			return nil, fmt.Errorf("failed to add deploy bot collaborator: %w", err)
+		}
 	}
 
-	// Create the repo
-	repo, err := s.client.CreateRepo(ctx, giteaUsername, &CreateRepoRequest{
-		Name:          repoName,
-		Description:   description,
-		Private:       private,
-		AutoInit:      true,
-		DefaultBranch: "main",
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create repo: %w", err)
+	// Create webhook for the repo (ignore "already exists" errors)
+	_, err = s.client.CreateRepoWebhook(ctx, githubUsername, repoName, s.webhookURL, s.client.config.WebhookSecret)
+	if err != nil && !isAlreadyExistsError(err) {
+		fmt.Printf("warning: failed to create webhook for %s/%s: %v\n", githubUsername, repoName, err)
 	}
 
-	// Create webhook for the repo
-	_, err = s.client.CreateRepoWebhook(ctx, giteaUsername, repoName, &CreateWebhookRequest{
-		Type: "gitea",
-		Config: WebhookConfig{
-			URL:         s.webhookURL,
-			ContentType: "json",
-			Secret:      s.client.config.WebhookSecret,
-		},
-		Events: []string{"push"},
-		Active: true,
-	})
-	if err != nil {
-		// Log but don't fail - webhook can be added later
-		fmt.Printf("warning: failed to create webhook for %s/%s: %v\n", giteaUsername, repoName, err)
-	}
-
-	// Store repo in database
+	// Store repo in database (upsert)
 	_, err = s.repoQueries.CreateInternalRepo(ctx, internalrepos.CreateInternalRepoParams{
 		UserID:   userID,
 		Provider: "gitea",
@@ -119,23 +125,39 @@ func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description 
 		return nil, fmt.Errorf("failed to store repo in database: %w", err)
 	}
 
-	// Get a push token
-	token, err := s.createPushToken(ctx, giteaUsername, repoName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create push token: %w", err)
-	}
-
-	repoPath := s.client.GetRepoPath(giteaUsername, repoName)
-	gitRemote := s.client.GetHTTPSCloneURL(giteaUsername, repoName, token)
+	repoPath := s.client.GetRepoPath(githubUsername, repoName)
+	gitRemote := s.client.GetHTTPSCloneURL(githubUsername, repoName, s.client.config.AdminToken)
 
 	return &CreateRepoResult{
 		Repo:      repoPath,
 		GitRemote: gitRemote,
+		ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
 		Message:   "Push your code, then call create_app to deploy",
 	}, nil
 }
 
-// GetPushToken gets a fresh push token for a repository
+func isAlreadyExistsError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := err.Error()
+	return contains(s, "already exist") || contains(s, "already exists") || contains(s, "has already been taken")
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
+}
+
+func containsAt(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+// GetPushToken returns git remote with admin token
 func (s *Service) GetPushToken(ctx context.Context, userID, repoFullName string) (*GetPushTokenResult, error) {
 	// Verify repo belongs to user
 	repo, err := s.repoQueries.GetInternalRepoByFullName(ctx, repoFullName)
@@ -146,64 +168,18 @@ func (s *Service) GetPushToken(ctx context.Context, userID, repoFullName string)
 		return nil, fmt.Errorf("unauthorized: repo belongs to another user")
 	}
 
-	// Get user's gitea username
-	user, err := s.userQueries.GetUserByID(ctx, userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-	if user.GiteaUsername == nil || *user.GiteaUsername == "" {
-		return nil, fmt.Errorf("user has no gitea account")
+	// Extract owner and repo name from full_name (format: "owner/reponame")
+	owner, repoName := splitFullName(repoFullName)
+	if owner == "" || repoName == "" {
+		return nil, fmt.Errorf("invalid repo full name: %s", repoFullName)
 	}
 
-	giteaUsername := *user.GiteaUsername
-
-	// Extract repo name from full_name (format: "username/reponame")
-	repoName := ""
-	for i := len(repoFullName) - 1; i >= 0; i-- {
-		if repoFullName[i] == '/' {
-			repoName = repoFullName[i+1:]
-			break
-		}
-	}
-	if repoName == "" {
-		repoName = repoFullName
-	}
-
-	// Create new token
-	token, err := s.createPushToken(ctx, giteaUsername, repoName)
-	if err != nil {
-		return nil, err
-	}
-
-	gitRemote := s.client.GetHTTPSCloneURL(giteaUsername, repoName, token)
-	expiresAt := time.Now().Add(DefaultTokenDuration).Format(time.RFC3339)
+	gitRemote := s.client.GetHTTPSCloneURL(owner, repoName, s.client.config.AdminToken)
 
 	return &GetPushTokenResult{
 		GitRemote: gitRemote,
-		ExpiresAt: expiresAt,
+		ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
 	}, nil
-}
-
-// createPushToken creates a new access token for pushing
-func (s *Service) createPushToken(ctx context.Context, giteaUsername, repoName string) (string, error) {
-	// Token name includes repo for easier management
-	tokenName := fmt.Sprintf("push-%s-%d", repoName, time.Now().Unix())
-
-	// Delete any existing tokens with similar names to avoid clutter
-	// (tokens accumulate over time otherwise)
-	_ = s.client.DeleteAccessTokenByName(ctx, giteaUsername, tokenName)
-
-	token, err := s.client.CreateAccessToken(ctx, giteaUsername, &CreateAccessTokenRequest{
-		Name: tokenName,
-		Scopes: []string{
-			"write:repository",
-		},
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to create access token: %w", err)
-	}
-
-	return token.SHA1, nil
 }
 
 // DeleteRepo deletes an internal git repository
@@ -217,29 +193,10 @@ func (s *Service) DeleteRepo(ctx context.Context, userID, repoFullName string) e
 		return fmt.Errorf("unauthorized: repo belongs to another user")
 	}
 
-	// Get user's gitea username
-	user, err := s.userQueries.GetUserByID(ctx, userID)
-	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
-	}
-	if user.GiteaUsername == nil {
-		return fmt.Errorf("user has no gitea account")
-	}
-
-	// Extract repo name
-	repoName := ""
-	for i := len(repoFullName) - 1; i >= 0; i-- {
-		if repoFullName[i] == '/' {
-			repoName = repoFullName[i+1:]
-			break
-		}
-	}
-	if repoName == "" {
-		repoName = repoFullName
-	}
+	owner, repoName := splitFullName(repoFullName)
 
 	// Delete from Gitea
-	if err := s.client.DeleteRepo(ctx, *user.GiteaUsername, repoName); err != nil {
+	if err := s.client.DeleteRepo(ctx, owner, repoName); err != nil {
 		return fmt.Errorf("failed to delete repo from gitea: %w", err)
 	}
 
@@ -257,6 +214,15 @@ func (s *Service) GetRepoByFullName(ctx context.Context, fullName string) (inter
 }
 
 // GetSSHCloneURL returns the SSH clone URL for a repo
-func (s *Service) GetSSHCloneURL(giteaUsername, repoName string) string {
-	return s.client.GetSSHCloneURL(giteaUsername, repoName)
+func (s *Service) GetSSHCloneURL(owner, repoName string) string {
+	return s.client.GetSSHCloneURL(owner, repoName)
+}
+
+func splitFullName(fullName string) (owner, repo string) {
+	for i := 0; i < len(fullName); i++ {
+		if fullName[i] == '/' {
+			return fullName[:i], fullName[i+1:]
+		}
+	}
+	return "", ""
 }

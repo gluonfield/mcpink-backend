@@ -10,11 +10,46 @@ Migrate from direct IP access to Cloudflare DNS for unified domains like `user-a
 
 ## Target State
 
-- All apps accessible via `*.mcpdeploy.com` (or your domain)
-- Origin IPs hidden behind Cloudflare
+- All apps accessible via predefined domains (`*.mcpdeploy.com`, `*.ml.ink`, `*.subj.org`)
+- Custom user domains supported (`mycoolapp.com`)
+- Origin IPs hidden behind Cloudflare (for predefined domains)
 - Basic DDoS protection
 - WebSocket support
 - Optional: Exposed databases on custom ports
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                         Cloudflare                                   │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │  DNS Records (created via API by backend)                   │    │
+│  │                                                             │    │
+│  │  app1.ml.ink      → 157.90.130.187 (muscle-1) [proxied]    │    │
+│  │  app2.ml.ink      → 157.90.130.188 (muscle-2) [proxied]    │    │
+│  │  app3.subj.org    → 157.90.130.187 (muscle-1) [proxied]    │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+                                ▼
+┌──────────────────┐    ┌──────────────────┐
+│    Muscle-1      │    │    Muscle-2      │
+│  157.90.130.187  │    │  157.90.130.188  │
+│                  │    │                  │
+│  ┌────────────┐  │    │  ┌────────────┐  │
+│  │  Traefik   │  │    │  │  Traefik   │  │
+│  └────────────┘  │    │  └────────────┘  │
+│       │         │    │       │         │
+│  ┌────┴────┐    │    │  ┌────┴────┐    │
+│  │ app1    │    │    │  │ app2    │    │
+│  │ app3    │    │    │  │ ...     │    │
+│  └─────────┘    │    │  └─────────┘    │
+└──────────────────┘    └──────────────────┘
+
+Custom domains (mycoolapp.com):
+  User adds CNAME/A → muscle IP directly (no Cloudflare proxy)
+  Traefik generates Let's Encrypt cert via HTTP-01 challenge
+```
 
 ---
 

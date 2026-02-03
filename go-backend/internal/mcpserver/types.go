@@ -15,7 +15,9 @@ type EnvVar struct {
 }
 
 type CreateAppInput struct {
-	Repo   string `json:"repo" jsonschema:"GitHub repository in owner/repo format"`
+	Repo string `json:"repo" jsonschema:"Repository name (e.g. exp20) or owner/repo (required)"`
+	Host string `json:"host,omitempty" jsonschema:"Git host/provider: 'mlink' (default) or 'github'. If repo is just a name, it will be resolved under your username."`
+
 	Branch string `json:"branch" jsonschema:"Branch to deploy"`
 	Name   string `json:"name" jsonschema:"Name for the deployment"`
 
@@ -221,7 +223,7 @@ type DeleteResourceOutput struct {
 
 type CreateRepoInput struct {
 	Name        string `json:"name" jsonschema:"Repository name (required)"`
-	Source      string `json:"source,omitempty" jsonschema:"'private' for internal git (default, no GitHub setup needed), 'github' for GitHub"`
+	Target      string `json:"target,omitempty" jsonschema:"'ml.ink' for private internal git (default), 'github.com' for GitHub"`
 	Description string `json:"description,omitempty" jsonschema:"Repository description"`
 	Private     *bool  `json:"private,omitempty" jsonschema:"Make repository private (default: true)"`
 }

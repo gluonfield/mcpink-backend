@@ -98,6 +98,7 @@ WHERE a.name = $1
   AND p.user_id = $2
   AND (p.ref = $3 OR ($3 = 'default' AND p.is_default = true))
   AND a.is_deleted = false
+ORDER BY a.updated_at DESC, a.created_at DESC, a.id DESC
 LIMIT 1;
 
 -- name: GetAppsByRepoBranchProvider :many

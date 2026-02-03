@@ -2,8 +2,6 @@
 
 > **One MCP to deploy them all.** Infrastructure for the agentic era.
 
-The below documentation is preliminary plan and goals.
-
 ---
 
 ## Motivation
@@ -34,8 +32,8 @@ Human: *waits for SSL*
 → 2 hours later: "It's live"
 
 # With Deploy MCP
-Agent: deploy(repo="github.com/user/my-saas", database={type:"postgres"})
-→ 60 seconds later: "https://my-saas.deploy.app is live"
+Agent: create_app(repo="my-saas", host="mlink", name="my-saas", branch="main")
+→ 60 seconds later: "https://my-saas.s1.ml.ink is live"
 ```
 
 ---
@@ -67,88 +65,260 @@ Deploy MCP is a **platform**, not just a tool:
 
 ## Authentication
 
-Users authenticate to Deploy MCP. We handle all provider credentials internally.
+Deploy MCP uses a two-part authentication system:
 
-### Flow
+1. **GitHub OAuth** — For user identity and session management
+2. **GitHub App** — For repository access (clone, webhooks, push tokens)
+
+### Why Two Systems?
+
+| Concern | GitHub OAuth | GitHub App |
+|---------|--------------|------------|
+| User identity | ✅ Primary purpose | ❌ Not designed for this |
+| Clone/push to repos | ❌ Requires broad `repo` scope | ✅ Fine-grained per-repo access |
+| Create new repos | ✅ With `repo` scope (optional) | ❌ Cannot create repos |
+| Webhook delivery | ❌ Not supported | ✅ Built-in |
+| Installation tokens | ❌ Not available | ✅ Short-lived, scoped tokens |
+
+**Summary:** GitHub App handles day-to-day repository operations (clone, push, webhooks). GitHub OAuth with `repo` scope is only needed if agents should create new repositories.
+
+### Authentication Flow
 
 ```
-1. User visits deploy-mcp.dev
-2. "Sign in with GitHub" → OAuth
-3. We store: user identity + GitHub token (for private repos)
-4. Dashboard shows API key: dk_live_abc123...
-5. User adds to MCP config
-6. All MCP calls authenticated via API key
-7. We use OUR provider credentials behind the scenes
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         USER ONBOARDING FLOW                                │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. SIGN IN (GitHub OAuth)
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │  User    │────▶│  ml.ink  │────▶│  GitHub  │────▶│  ml.ink  │
+   │  clicks  │     │ /auth/   │     │  OAuth   │     │ callback │
+   │ "Sign in"│     │ github   │     │  consent │     │          │
+   └──────────┘     └──────────┘     └──────────┘     └──────────┘
+                                                            │
+                                                            ▼
+                                                    ┌──────────────┐
+                                                    │ Create user  │
+                                                    │ Store OAuth  │
+                                                    │ token (enc)  │
+                                                    │ Set session  │
+                                                    └──────────────┘
+
+2. INSTALL GITHUB APP (Repository Access)
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │  User    │────▶│  GitHub  │────▶│  User    │────▶│  ml.ink  │
+   │  clicks  │     │  App     │     │ selects  │     │ /auth/   │
+   │"Install" │     │  install │     │  repos   │     │ githubapp│
+   └──────────┘     └──────────┘     └──────────┘     │ callback │
+                                                       └──────────┘
+                                                            │
+                                                            ▼
+                                                    ┌──────────────┐
+                                                    │ Store        │
+                                                    │ installation │
+                                                    │ ID           │
+                                                    │              │
+                                                    │ Create       │
+                                                    │ Coolify      │
+                                                    │ source       │
+                                                    └──────────────┘
+
+3. (OPTIONAL) GRANT REPO SCOPE (for create_github_repo tool)
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │  User    │────▶│  ml.ink  │────▶│  GitHub  │────▶│  ml.ink  │
+   │  clicks  │     │ /auth/   │     │  OAuth   │     │ callback │
+   │ "Grant"  │     │ github   │     │  +repo   │     │          │
+   └──────────┘     │ ?scope=  │     │  scope   │     └──────────┘
+                    │ repo     │     └──────────┘          │
+                    └──────────┘                           ▼
+                                                    ┌──────────────┐
+                                                    │ Update OAuth │
+                                                    │ token with   │
+                                                    │ repo scope   │
+                                                    │              │
+                                                    │ Downgrade    │
+                                                    │ protection:  │
+                                                    │ keeps repo   │
+                                                    │ scope on     │
+                                                    │ re-login     │
+                                                    └──────────────┘
+
+4. GENERATE API KEY (for MCP/CLI)
+   ┌──────────┐     ┌──────────┐
+   │  User    │────▶│  ml.ink  │────▶ API Key: dk_live_abc123...
+   │ dashboard│     │ /settings│
+   └──────────┘     └──────────┘
 ```
 
-### Why GitHub OAuth?
+> **Note:** Step 3 is optional. The `repo` scope allows agents to create new GitHub repositories via the `create_github_repo` tool. Without it, agents can only deploy to existing repositories. The system implements "downgrade protection" — if a user later signs in without the repo scope, their existing repo-scoped token is preserved if still valid.
 
-- **Repo is the project key** — Need GitHub identity anyway
-- **Private repo access** — OAuth token lets us clone user's repos
-- **Verify ownership** — Confirm user owns repo before deploying
-- **Familiar** — Every developer has GitHub
+### API Key Authentication (MCP)
+
+Agents authenticate via API key in the `Authorization` header:
+
+```
+Authorization: Bearer dk_live_abc123...
+```
+
+API keys are:
+- Generated per-user from the dashboard
+- Hashed with bcrypt (only prefix stored for lookup)
+- Validated on every MCP request
+
+### GitHub App Webhooks
+
+The GitHub App receives webhooks for:
+
+| Event | Action |
+|-------|--------|
+| `push` | Triggers auto-redeploy for matching apps |
+| `installation.created` | Stores installation ID, creates Coolify source |
+| `installation.deleted` | Clears installation ID |
+
+Webhooks are verified using HMAC-SHA256 with the configured webhook secret.
 
 ---
 
 ## Tech Stack
 
 - **Language**: Go
-- **MCP Framework**: mcp-go
-- **Database**: Postgres
-- **Auth**: GitHub OAuth + JWT
+- **MCP Framework**: [mcp-go](https://github.com/modelcontextprotocol/go-sdk)
+- **Database**: Postgres (with sqlc)
+- **Auth**: GitHub OAuth + GitHub App + JWT sessions
+- **Orchestration**: Temporal (deployment workflows)
+- **Deployment Backend**: Coolify
+- **Compute**: Hetzner (dedicated + cloud)
+- **Database Provisioning**: Turso (SQLite)
 
-## Adding Local MCP Server to Claude Code
+---
+
+## MCP Tools
+
+| Tool | Description | Requirements |
+|------|-------------|--------------|
+| `whoami` | Get current user info and GitHub App status | API key |
+| `create_app` | Deploy an app from a GitHub repository | GitHub App installed |
+| `list_apps` | List all deployed apps | API key |
+| `get_app_details` | Get app details including logs | API key |
+| `redeploy` | Trigger a redeploy of an existing app | GitHub App installed |
+| `delete_app` | Delete an app | API key |
+| `create_resource` | Provision a database (SQLite via Turso) | API key |
+| `list_resources` | List all provisioned resources | API key |
+| `get_resource_details` | Get resource connection details | API key |
+| `delete_resource` | Delete a resource | API key |
+| `create_github_repo` | Create a new GitHub repository | `repo` OAuth scope |
+| `get_github_push_token` | Get a temporary token to push to a repository | GitHub App installed |
+
+### Adding MCP Server to Claude Code
 
 ```bash
+# Production
+claude mcp add --transport http mcpdeploy https://api.ml.ink/mcp --header "Authorization: Bearer <your-api-key>"
+
+# Local development
 claude mcp add --transport http mcpdeploy http://localhost:8081/mcp --header "Authorization: Bearer <your-api-key>"
 ```
 
 ---
 
-# InkMCP: The Agent Deployment OS
+## Deployment Workflow
 
-**Mission:** Build the "AWS for AI Agents." A unified Model Context Protocol (MCP) server that allows autonomous agents to provision infrastructure, deploy full‑stack applications, and host **persistent WebSocket games** on bare metal without human intervention.
+When an agent calls `create_app`, the following happens:
 
-InkMCP starts with **Coolify + Hetzner** (fast to ship), but the agent-facing contract is **provider-agnostic** so we can migrate the compute plane to **Kubernetes** later without breaking clients.
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           DEPLOYMENT FLOW                                    │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+1. AGENT CALLS create_app
+   ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │  Agent   │────▶│   MCP    │────▶│ Temporal │
+   │  (via    │     │  Server  │     │ Workflow │
+   │  Claude) │     │          │     │  Start   │
+   └──────────┘     └──────────┘     └──────────┘
+
+2. TEMPORAL WORKFLOW EXECUTES
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │ Create   │────▶│ Create   │────▶│ Start    │────▶│ Wait for │
+   │ App in   │     │ Coolify  │     │ Deploy   │     │ Build    │
+   │ Postgres │     │ App      │     │          │     │ Complete │
+   └──────────┘     └──────────┘     └──────────┘     └──────────┘
+                          │
+                          ▼
+                    Uses GitHub App
+                    installation token
+                    to clone repo
+
+3. BUILD & DEPLOY (Coolify)
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │ Clone    │────▶│ Build    │────▶│ Push     │────▶│ Deploy   │
+   │ Repo     │     │ (Nix-    │     │ Image    │     │ to       │
+   │          │     │ packs)   │     │          │     │ Muscle   │
+   └──────────┘     └──────────┘     └──────────┘     └──────────┘
+
+4. AUTO-REDEPLOY (Push to GitHub)
+   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+   │ Git Push │────▶│ GitHub   │────▶│ Webhook  │────▶│ Temporal │
+   │          │     │ Webhook  │     │ Handler  │     │ Redeploy │
+   └──────────┘     └──────────┘     └──────────┘     │ Workflow │
+                                                       └──────────┘
+```
+
+### Workflow Idempotency
+
+GitHub webhook delivery is at-least-once, so the same push event may be delivered multiple times. The deployment service handles this by:
+
+1. Deriving a deterministic workflow ID from the commit SHA
+2. Using Temporal's `REJECT_DUPLICATE` policy
+3. Logging and returning success if a workflow for that commit is already running
 
 ---
+
+# Architecture
+
+Deploy MCP uses a 3-plane architecture separating control, build, and run concerns.
 
 ## Core Philosophy
 
 1. **Abstraction**
-
-   - Agents interact with **Projects** and **Modes** (intent), not "servers" or "containers" (implementation).
-   - The MCP surface is stable; providers are replaceable.
+   - Agents interact with **Projects** and **Apps** (intent), not "servers" or "containers" (implementation)
+   - The MCP surface is stable; providers are replaceable
 
 2. **Safety**
+   - User code runs with strong guardrails
+   - **gVisor** sandboxes protect against kernel exploits (implemented via custom Coolify fork)
+   - Egress firewall rules block metadata endpoints, SMTP, mining pools
 
-   - We run untrusted code with strong guardrails.
-   - Target state: **gVisor** sandboxes for user workloads (defense against kernel exploit classes).
-   - Reality check: gVisor integration with Coolify requires deliberate engineering (see Security notes).
-
-3. **Economics**
-   - Sleeping apps (`on_demand`) subsidize always-on (`persistent`) workloads.
-   - Credits/spend caps prevent agent retry loops from burning money.
+3. **Workflow Orchestration**
+   - Deployments run as Temporal workflows for reliability
+   - Automatic retries, idempotency, and observability built-in
 
 ---
 
-## What InkMCP Deploys
+## Build Packs
 
-InkMCP exposes **service types** and **runtime modes**.
+Deploy MCP supports multiple build strategies:
 
-### Service Types (what it is)
+| Build Pack | Use Case |
+|------------|----------|
+| `nixpacks` | Auto-detect language and build (default) |
+| `dockerfile` | Custom Dockerfile |
+| `static` | Static files served by Caddy |
+| `dockercompose` | Multi-container apps |
 
-- `webapp_static` — static site (SPA/docs/landing), served via a tiny web server container
-- `webapp` — HTTP web service (SSR, API routes, typical request/response)
-- `backend` — APIs, realtime servers (WebSockets), workers, cron jobs
+---
 
-### Runtime Modes (how it lives)
+## What Gets Deployed
 
-- `static` — minimal resources, effectively always-on but cheap
-- `on_demand` — sleeps after idle; wakes on request (cold start acceptable)
-- `persistent` — always-on, reserved resources (WebSockets, workers, long-running jobs)
+### Service Types
 
-> Note: `backend` covers HTTP servers, workers, and cron. The difference is expressed via the **start command** (and optional schedule), not separate types.
+- **Web apps** — Next.js, Remix, SvelteKit, etc. (SSR or static)
+- **APIs** — Express, FastAPI, Go servers
+- **Backends** — WebSocket servers, workers, cron jobs
+
+### Database Resources
+
+- **SQLite** — Via Turso (managed, replicated SQLite)
 
 ---
 
@@ -242,68 +412,61 @@ graph TD
 
 ### Principles
 
-- Name-based (agents forget IDs)
-- Discoverable (`list_*`, `get_*`)
-- Idempotent (`ensure_*`)
-- Logs are first-class (agents must self-debug)
+- **Name-based** — Agents reference apps by name, not IDs
+- **Discoverable** — `list_*`, `get_*` tools for exploration
+- **Logs are first-class** — Agents can self-debug via `get_app_details`
 
-### Tool Sketch (v1)
+### Implemented Tools
 
-- `ensure_project(name)`
-- `list_projects()`
-- `deploy_app(project_name, service_name, repo_url, mode, build_command?, start_command?, resources?, env_vars?)`
-- `update_env_vars(project_name, env_vars)`
-- `get_logs(project_name, scope=build|runtime, service_name?, tail?)`
-- `provision_database(project_name, tier)`
-- `get_database_credentials(project_name)`
+#### Apps
+```
+create_app(repo, host?, branch, name, project?, build_pack?, port?, env_vars?)
+list_apps()
+get_app_details(name, project?, include_env?, runtime_log_lines?, deploy_log_lines?)
+redeploy(name, project?)
+delete_app(name, project?)
+```
 
-> Multi-service repos: call `deploy_app` multiple times with different `service_name`s (e.g. `web`, `api`, `worker`).
+#### Resources (Databases)
+```
+create_resource(name, type?, size?, region?)
+list_resources()
+get_resource_details(name)
+delete_resource(name)
+```
 
----
+#### GitHub Integration
+```
+create_github_repo(name, description?, private?)
+get_github_push_token(repo)
+```
 
-## Multi-Process / Monorepo Support
-
-Real repos frequently contain more than one runnable process:
-
-- `cmd/server` (HTTP)
-- `cmd/worker` (background)
-- plus sometimes a `web/` frontend
-
-InkMCP supports this via **service targets**:
-
-- `service_name = "web"` (mode `on_demand`) — Next.js SSR
-- `service_name = "worker"` (mode `persistent`) — queue consumer
-- `service_name = "game"` (mode `persistent`) — WebSocket server
-
-### How InkMCP knows what to run
-
-InkMCP needs explicit runtime intent:
-
-- `build_command` (optional)
-- `start_command` (required unless auto-detected safely)
-- `port` (required for HTTP/WS servers)
-
-Recommended: support a repo manifest (e.g. `inkmcp.yaml`) that defines service targets. InkMCP can generate this too, but the goal is deterministic behavior.
+#### Identity
+```
+whoami()
+```
 
 ---
 
 ## Databases
 
-### SQlite (initial)
+### Current Implementation
 
-Turso - Managed SQLite, later migrate.
+**SQLite via Turso** — Managed, replicated SQLite databases.
 
-### Primary (initial)
+```
+create_resource(name="my-db", type="sqlite", region="eu-west")
+```
 
-InkMCP provisions Postgres via Neon and returns a connection string.
+Returns:
+- `url` — libSQL connection URL
+- `auth_token` — Authentication token (encrypted at rest)
 
-### Short-term alternatives (keep provider interface stable)
+### Future Options
 
-- **Bring-your-own connection string** (fast escape hatch)
-- **Self-hosted Postgres via Coolify** (works, but operationally heavier)
-- Optional later:
-  - Supabase (managed Postgres + extras)
-  - Upstash (Redis/KV) for caching/queues
+- **Postgres** — Via Neon or self-hosted
+- **Redis/KV** — Via Upstash for caching/queues
+- **Bring-your-own** — Connection string passthrough
 
 ---
 
@@ -492,18 +655,31 @@ Host path volumes require cleanup when project is deleted (Coolify handles named
 
 ## Non-goals (for sanity)
 
-- Replacing GitHub (we'll integrate)
-- Building a full PaaS UI for users (InkMCP is the product; Coolify is backend)
+- Replacing GitHub (we integrate via GitHub App)
+- Building a full PaaS UI for users (MCP is the interface; Coolify is the backend)
 - Solving arbitrary sandboxing perfectly on day 1 (ship baseline + iterate)
 
 ---
 
 ## Design Notes
 
-- The **3-plane** separation matches Coolify's own warnings that builds can make the server unresponsive if you mix concerns.
-- The **modes** (`static`, `on_demand`, `persistent`) align with a simpler service taxonomy.
-- gVisor is a **target + implementation plan** because Coolify's current "custom docker options" docs don't list `--runtime`, which means gVisor needs either daemon defaults or compose-based deployments.
-- The **vSwitch bridge** approach is real and documented, but apps may keep running during a control plane outage while you still need to regain control plane operationally.
+### 3-Plane Architecture
+The separation of control, build, and run planes matches Coolify's recommendation that builds can make servers unresponsive if mixed with runtime workloads.
+
+### gVisor Integration
+gVisor is **implemented** via a custom Coolify fork that adds `--runtime` support to Custom Docker Run Options:
+- **Fork:** https://github.com/gluonfield/coolify/tree/feature/add-runtime-option
+- **PR:** https://github.com/coollabsio/coolify/pull/8113
+- Uses `hostinet` mode for DNS compatibility with Docker networks
+
+See `infra/hetzner/hardening/` for complete setup documentation.
+
+### Temporal Workflows
+All deployments run as Temporal workflows, providing:
+- Automatic retries on transient failures
+- Idempotency for webhook-triggered deploys
+- Visibility into deployment progress
+- Clean separation of orchestration from business logic
 
 ---
 

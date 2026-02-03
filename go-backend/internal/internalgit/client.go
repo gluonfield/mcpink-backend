@@ -1,38 +1,55 @@
 package internalgit
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
-	"time"
+	"strings"
+
+	"code.gitea.io/sdk/gitea"
 )
 
 type Client struct {
-	config     Config
-	httpClient *http.Client
-	baseURL    *url.URL
+	config Config
+	api    *gitea.Client
 }
 
 func NewClient(config Config) (*Client, error) {
-	if !config.IsEnabled() {
-		return nil, fmt.Errorf("internalgit: not enabled or missing required config")
+	if config.BaseURL == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_BASEURL is required")
+	}
+	if config.AdminToken == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_ADMINTOKEN is required")
+	}
+	if config.WebhookSecret == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_WEBHOOKSECRET is required")
+	}
+	if config.SSHURL == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_SSHURL is required")
+	}
+	if strings.HasPrefix(config.SSHURL, "ssh://") {
+		return nil, fmt.Errorf("internalgit: GITEA_SSHURL must not start with ssh:// (Coolify rejects ssh:// for git_repository); set GITEA_SSHURL=git@host and GITEA_SSHPORT")
+	}
+	if config.SSHPort == 0 {
+		return nil, fmt.Errorf("internalgit: GITEA_SSHPORT is required")
+	}
+	if config.SSHPort < 1 || config.SSHPort > 65535 {
+		return nil, fmt.Errorf("internalgit: GITEA_SSHPORT must be between 1 and 65535")
+	}
+	if config.CoolifyPrivateKeyUUID == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_COOLIFYPRIVATEKEYUUID is required")
+	}
+	if config.DeployPublicKey == "" {
+		return nil, fmt.Errorf("internalgit: GITEA_DEPLOYPUBLICKEY is required")
 	}
 
-	baseURL, err := url.Parse(config.BaseURL)
+	api, err := gitea.NewClient(config.BaseURL, gitea.SetToken(config.AdminToken))
 	if err != nil {
-		return nil, fmt.Errorf("internalgit: invalid BaseURL: %w", err)
+		return nil, fmt.Errorf("internalgit: failed to create gitea client: %w", err)
 	}
 
 	return &Client{
 		config: config,
-		httpClient: &http.Client{
-			Timeout: DefaultTimeout,
-		},
-		baseURL: baseURL,
+		api:    api,
 	}, nil
 }
 
@@ -40,187 +57,48 @@ func (c *Client) Config() Config {
 	return c.config
 }
 
-type Error struct {
-	StatusCode int
-	Message    string
-	Body       string
-}
-
-func (e *Error) Error() string {
-	if e.Message != "" {
-		return fmt.Sprintf("internalgit: %s (status %d)", e.Message, e.StatusCode)
-	}
-	return fmt.Sprintf("internalgit: request failed with status %d: %s", e.StatusCode, e.Body)
-}
-
-func (c *Client) request(ctx context.Context, method, path string, query url.Values, body any) (*http.Response, error) {
-	u := *c.baseURL
-	u.Path = path
-	if query != nil {
-		u.RawQuery = query.Encode()
-	}
-
-	var bodyReader io.Reader
-	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("internalgit: failed to marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(jsonBody)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("internalgit: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "token "+c.config.AdminToken)
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("internalgit: request failed: %w", err)
-	}
-
-	return resp, nil
-}
-
-func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, result any) error {
-	resp, err := c.request(ctx, method, path, query, body)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("internalgit: failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &Error{
-			StatusCode: resp.StatusCode,
-			Body:       string(respBody),
-		}
-
-		var errResp struct {
-			Message string `json:"message"`
-			Error   string `json:"error"`
-		}
-		if json.Unmarshal(respBody, &errResp) == nil {
-			if errResp.Message != "" {
-				apiErr.Message = errResp.Message
-			} else if errResp.Error != "" {
-				apiErr.Message = errResp.Error
-			}
-		}
-
-		return apiErr
-	}
-
-	if result != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("internalgit: failed to decode response: %w", err)
-		}
-	}
-
-	return nil
-}
-
-// requestWithUserToken makes a request using a user's token instead of admin token
-func (c *Client) requestWithUserToken(ctx context.Context, method, path string, query url.Values, body any, token string) (*http.Response, error) {
-	u := *c.baseURL
-	u.Path = path
-	if query != nil {
-		u.RawQuery = query.Encode()
-	}
-
-	var bodyReader io.Reader
-	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, fmt.Errorf("internalgit: failed to marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(jsonBody)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, u.String(), bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("internalgit: failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "token "+token)
-	req.Header.Set("Accept", "application/json")
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	return c.httpClient.Do(req)
-}
-
-func (c *Client) doWithUserToken(ctx context.Context, method, path string, query url.Values, body, result any, token string) error {
-	resp, err := c.requestWithUserToken(ctx, method, path, query, body, token)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("internalgit: failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		apiErr := &Error{
-			StatusCode: resp.StatusCode,
-			Body:       string(respBody),
-		}
-
-		var errResp struct {
-			Message string `json:"message"`
-		}
-		if json.Unmarshal(respBody, &errResp) == nil && errResp.Message != "" {
-			apiErr.Message = errResp.Message
-		}
-
-		return apiErr
-	}
-
-	if result != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, result); err != nil {
-			return fmt.Errorf("internalgit: failed to decode response: %w", err)
-		}
-	}
-
-	return nil
+func (c *Client) API() *gitea.Client {
+	return c.api
 }
 
 // GetHTTPSCloneURL returns the HTTPS clone URL with embedded token
 func (c *Client) GetHTTPSCloneURL(username, repoName, token string) string {
-	u := *c.baseURL
+	u, _ := url.Parse(c.config.BaseURL)
 	u.User = url.UserPassword(username, token)
 	u.Path = fmt.Sprintf("/%s/%s.git", username, repoName)
 	return u.String()
 }
 
 // GetSSHCloneURL returns the SSH clone URL
+// Format returned is compatible with Coolify "Private Repository (with Deploy Key)":
+// - Standard: git@host:user/repo.git (port 22)
+// - Non-standard port: git@host:PORT/user/repo.git (Coolify extracts PORT and uses it for SSH)
 func (c *Client) GetSSHCloneURL(username, repoName string) string {
-	return fmt.Sprintf("%s:%s/%s.git", c.config.SSHURL, username, repoName)
+	sshBase := strings.TrimSpace(c.config.SSHURL)
+	sshPort := c.config.SSHPort
+
+	// Coolify deploy-key clones support a non-standard SSH port only via a special format:
+	// `git@host:PORT/owner/repo.git` (Coolify parses `:PORT/` and uses that as the SSH port).
+	//
+	// We intentionally do NOT return `ssh://git@host:PORT/owner/repo.git` because Coolify's
+	// create-app validation rejects `ssh://` for `git_repository`.
+	if sshPort != 22 {
+		return fmt.Sprintf("%s:%d/%s/%s.git", sshBase, sshPort, username, repoName)
+	}
+
+	// Standard scp-style format on port 22.
+	return fmt.Sprintf("%s:%s/%s.git", sshBase, username, repoName)
 }
 
 // GetRepoPath returns the repo path in format "ml.ink/{username}/{repo}"
 func (c *Client) GetRepoPath(username, repoName string) string {
-	host := c.baseURL.Host
+	u, _ := url.Parse(c.config.BaseURL)
+	host := u.Host
 	// Remove port if present
-	if idx := len(host) - 1; idx > 0 {
-		for i := len(host) - 1; i >= 0; i-- {
-			if host[i] == ':' {
-				host = host[:i]
-				break
-			}
+	for i := len(host) - 1; i >= 0; i-- {
+		if host[i] == ':' {
+			host = host[:i]
+			break
 		}
 	}
 	// Remove "git." prefix if present for cleaner paths
@@ -230,14 +108,7 @@ func (c *Client) GetRepoPath(username, repoName string) string {
 	return fmt.Sprintf("%s/%s/%s", host, username, repoName)
 }
 
-// GeneratePassword generates a random password for new users
-func GeneratePassword() string {
-	// Generate a random 32-char password
-	const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	b := make([]byte, 32)
-	for i := range b {
-		b[i] = chars[time.Now().UnixNano()%int64(len(chars))]
-		time.Sleep(time.Nanosecond)
-	}
-	return string(b)
+// NewClientWithBasicAuth creates a client authenticated as a specific user
+func NewClientWithBasicAuth(baseURL, username, password string) (*gitea.Client, error) {
+	return gitea.NewClient(baseURL, gitea.SetBasicAuth(username, password))
 }

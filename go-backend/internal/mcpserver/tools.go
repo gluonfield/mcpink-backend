@@ -64,6 +64,12 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateAppOutput{}, nil
 	}
 
+	host, repo, err := normalizeCreateAppRepo(user, input)
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, CreateAppOutput{}, nil
+	}
+	input.Repo = repo
+
 	// Default build pack is nixpacks
 	buildPack := "nixpacks"
 	if input.BuildPack != "" {
@@ -93,10 +99,7 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 	}
 
-	// Detect git provider from repo format
-	// ml.ink/... = internal git (gitea)
-	// github.com/... or owner/repo = GitHub
-	isInternalGit := strings.HasPrefix(input.Repo, "ml.ink/")
+	isInternalGit := host == "mlink"
 
 	s.logger.Info("starting deployment",
 		"user_id", user.ID,
@@ -109,9 +112,8 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	)
 
 	var result *deployments.CreateAppResult
-	var err error
 
-	if isInternalGit {
+	if host == "mlink" {
 		// Internal git flow
 		result, err = s.createAppFromInternalGit(ctx, user.ID, input, buildPack, port, envVars)
 	} else {
@@ -133,6 +135,58 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 
 	return nil, output, nil
+}
+
+func normalizeCreateAppRepo(user *users.User, input CreateAppInput) (host string, normalizedRepo string, err error) {
+	repo := strings.TrimSpace(input.Repo)
+	if repo == "" {
+		return "", "", fmt.Errorf("repo is required")
+	}
+
+	host = strings.ToLower(strings.TrimSpace(input.Host))
+	if host == "" {
+		host = "mlink"
+	}
+	if host != "mlink" && host != "github" {
+		return "", "", fmt.Errorf("invalid host: %s (valid: mlink, github)", host)
+	}
+
+	// New UX intentionally rejects full URLs/SSH strings: pass just `name` or `owner/repo` and set `host`.
+	// This avoids accidental misclassification and avoids leaking credentials.
+	if strings.Contains(repo, "://") || strings.HasPrefix(repo, "git@") {
+		return "", "", fmt.Errorf("invalid repo format: pass a repo name (e.g. exp20) or owner/repo (e.g. gluonfield/exp20), not a URL")
+	}
+	if strings.Contains(repo, "@") {
+		return "", "", fmt.Errorf("invalid repo format: do not include credentials; pass a repo name (e.g. exp20) or owner/repo (e.g. gluonfield/exp20)")
+	}
+	if strings.HasPrefix(repo, "ml.ink/") || strings.HasPrefix(repo, "git.ml.ink/") || strings.HasPrefix(repo, "github.com/") {
+		return "", "", fmt.Errorf("invalid repo format: pass name or owner/repo (no host prefixes); use host=%s instead", host)
+	}
+
+	// If it looks like a full owner/repo, normalize based on host.
+	if strings.Count(repo, "/") == 1 {
+		if host == "mlink" {
+			return host, "ml.ink/" + repo, nil
+		}
+		return host, repo, nil
+	}
+	if strings.Contains(repo, "/") {
+		return "", "", fmt.Errorf("invalid repo format: expected name or owner/repo")
+	}
+
+	// Otherwise treat as a simple repo name.
+	username := ""
+	if user != nil {
+		username = strings.TrimSpace(user.GithubUsername)
+	}
+	if username == "" {
+		return "", "", fmt.Errorf("cannot resolve repo name without github username; please pass owner/repo")
+	}
+
+	if host == "mlink" {
+		return host, fmt.Sprintf("ml.ink/%s/%s", username, repo), nil
+	}
+	return host, fmt.Sprintf("%s/%s", username, repo), nil
 }
 
 func (s *Server) createAppFromGitHub(ctx context.Context, user *users.User, input CreateAppInput, buildPack, port string, envVars []deployments.EnvVar) (*deployments.CreateAppResult, error) {
@@ -173,9 +227,12 @@ func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, in
 		return nil, fmt.Errorf("internal git not configured")
 	}
 
-	// Get internal repo info to get the SSH clone URL
-	// Repo format: ml.ink/username/repo
-	fullName := strings.TrimPrefix(input.Repo, "ml.ink/")
+	// normalizeCreateAppRepo guarantees internal git repos are in format: ml.ink/owner/repo
+	fullName := strings.TrimPrefix(strings.TrimSpace(input.Repo), "ml.ink/")
+	parts := strings.Split(fullName, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return nil, fmt.Errorf("invalid repo format: expected owner/repo, got %s", fullName)
+	}
 
 	internalRepo, err := s.internalGitSvc.GetRepoByFullName(ctx, fullName)
 	if err != nil {
@@ -187,11 +244,6 @@ func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, in
 	}
 
 	// Get the SSH clone URL and private key UUID
-	// fullName is in format "username/reponame"
-	parts := strings.Split(fullName, "/")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid repo format: %s", fullName)
-	}
 	username, repoName := parts[0], parts[1]
 	sshCloneURL := s.internalGitSvc.GetSSHCloneURL(username, repoName)
 	privateKeyUUID := s.internalGitSvc.Client().Config().CoolifyPrivateKeyUUID
@@ -207,8 +259,8 @@ func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, in
 		EnvVars:        envVars,
 		GitProvider:    "gitea",
 		PrivateKeyUUID: privateKeyUUID,
-		SSHCloneURL:    sshCloneURL,
-	})
+			SSHCloneURL:    sshCloneURL,
+		})
 }
 
 func (s *Server) handleListApps(ctx context.Context, req *mcp.CallToolRequest, input ListAppsInput) (*mcp.CallToolResult, ListAppsOutput, error) {

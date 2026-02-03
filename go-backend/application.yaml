@@ -68,10 +68,11 @@ turso:
   orgslug: ""
 
 gitea:
-  enabled: true
   baseurl: "https://git.ml.ink"
   admintoken: ""
   userprefix: "u"
   webhooksecret: ""
   sshurl: "git@git.ml.ink"
+  sshport: 2222
   coolifyprivatekeyuuid: ""
+  deploypublickey: ""

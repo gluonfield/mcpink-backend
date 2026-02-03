@@ -98,16 +98,6 @@ func (s *Server) registerTools() {
 	}, s.handleDeleteResource)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "create_github_repo",
-		Description: "Create a new GitHub repository and return a temporary access token for pushing code. Requires OAuth `repo` scope. This tool should only be used if `gh` cli is not installed or configured.",
-	}, s.handleCreateGitHubRepo)
-
-	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "github_get_push_token",
-		Description: "Get a temporary access token for pushing to an existing GitHub repository. Requires GitHub App to be installed and have access to the repository. This tool should only be used if `git` is not configured.",
-	}, s.handleGetGitHubPushToken)
-
-	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "get_app_details",
 		Description: "Get detailed information about a deployed application, optionally including environment variables and logs",
 	}, s.handleGetAppDetails)
@@ -119,7 +109,7 @@ func (s *Server) registerTools() {
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "create_repo",
-		Description: "Create a git repository. Use source='private' (default) for instant deployment without GitHub setup, or source='github' if GitHub integration is already configured.",
+		Description: "Create a git repository. Use target='ml.ink' (default) for instant deployment without GitHub setup, or target='github.com' if GitHub integration is already configured.",
 	}, s.handleCreateRepo)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
