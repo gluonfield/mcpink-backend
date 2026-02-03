@@ -216,3 +216,27 @@ type DeleteResourceOutput struct {
 	Name       string `json:"name"`
 	Message    string `json:"message"`
 }
+
+// Unified repo tools
+
+type CreateRepoInput struct {
+	Name        string `json:"name" jsonschema:"Repository name (required)"`
+	Source      string `json:"source,omitempty" jsonschema:"'private' for internal git (default, no GitHub setup needed), 'github' for GitHub"`
+	Description string `json:"description,omitempty" jsonschema:"Repository description"`
+	Private     *bool  `json:"private,omitempty" jsonschema:"Make repository private (default: true)"`
+}
+
+type CreateRepoOutput struct {
+	Repo      string `json:"repo"`
+	GitRemote string `json:"git_remote"`
+	Message   string `json:"message"`
+}
+
+type GetPushTokenInput struct {
+	Repo string `json:"repo" jsonschema:"Full repo path: ml.ink/user/repo for private repos or github.com/owner/repo for GitHub"`
+}
+
+type GetPushTokenOutput struct {
+	GitRemote string `json:"git_remote"`
+	ExpiresAt string `json:"expires_at"`
+}

@@ -2,13 +2,17 @@ package deployments
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/lithammer/shortuuid/v4"
+	enumspb "go.temporal.io/api/enums/v1"
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 )
 
@@ -37,15 +41,18 @@ func NewService(
 }
 
 type CreateAppInput struct {
-	UserID        string
-	ProjectRef    string
-	GitHubAppUUID string
-	Repo          string
-	Branch        string
-	Name          string
-	BuildPack     string
-	Port          string
-	EnvVars       []EnvVar
+	UserID         string
+	ProjectRef     string
+	GitHubAppUUID  string
+	Repo           string
+	Branch         string
+	Name           string
+	BuildPack      string
+	Port           string
+	EnvVars        []EnvVar
+	GitProvider    string // "github" or "gitea"
+	PrivateKeyUUID string // for internal git
+	SSHCloneURL    string // for internal git
 }
 
 type CreateAppResult struct {
@@ -79,17 +86,25 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 	appID := shortuuid.New()
 	workflowID := fmt.Sprintf("deploy-%s-%s-%s", input.UserID, input.Repo, input.Branch)
 
+	gitProvider := input.GitProvider
+	if gitProvider == "" {
+		gitProvider = "github"
+	}
+
 	workflowInput := DeployWorkflowInput{
-		AppID:         appID,
-		UserID:        input.UserID,
-		ProjectID:     projectID,
-		GitHubAppUUID: input.GitHubAppUUID,
-		Repo:          input.Repo,
-		Branch:        input.Branch,
-		Name:          input.Name,
-		BuildPack:     input.BuildPack,
-		Port:          input.Port,
-		EnvVars:       input.EnvVars,
+		AppID:          appID,
+		UserID:         input.UserID,
+		ProjectID:      projectID,
+		GitHubAppUUID:  input.GitHubAppUUID,
+		Repo:           input.Repo,
+		Branch:         input.Branch,
+		Name:           input.Name,
+		BuildPack:      input.BuildPack,
+		Port:           input.Port,
+		EnvVars:        input.EnvVars,
+		GitProvider:    gitProvider,
+		PrivateKeyUUID: input.PrivateKeyUUID,
+		SSHCloneURL:    input.SSHCloneURL,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
@@ -177,10 +192,46 @@ func (s *Service) GetAppByName(ctx context.Context, params GetAppByNameParams) (
 
 func (s *Service) RedeployApp(ctx context.Context, appID, coolifyAppUUID string) (string, error) {
 	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, shortuuid.New())
+	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+}
+
+// RedeployFromGitHubPush starts (or reuses) a redeploy workflow triggered by a GitHub push.
+//
+// GitHub delivery is at-least-once, so we treat it as potentially duplicated and use a deterministic workflow ID
+// derived from the commit SHA (preferred) or delivery ID (fallback).
+func (s *Service) RedeployFromGitHubPush(ctx context.Context, appID, coolifyAppUUID, afterSHA, deliveryID string) (string, error) {
+	key := strings.TrimSpace(afterSHA)
+	if key == "" || key == "0000000000000000000000000000000000000000" {
+		key = strings.TrimSpace(deliveryID)
+	}
+	if key == "" {
+		key = shortuuid.New()
+	}
+
+	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, key)
+	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+}
+
+// RedeployFromInternalGitPush starts (or reuses) a redeploy workflow triggered by an internal git (Gitea) push.
+func (s *Service) RedeployFromInternalGitPush(ctx context.Context, appID, coolifyAppUUID, afterSHA string) (string, error) {
+	key := strings.TrimSpace(afterSHA)
+	if key == "" || key == "0000000000000000000000000000000000000000" {
+		key = shortuuid.New()
+	}
+
+	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, key)
+	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+}
+
+func (s *Service) RedeployAppWithWorkflowID(ctx context.Context, appID, coolifyAppUUID, workflowID string) (string, error) {
+	if workflowID == "" {
+		workflowID = fmt.Sprintf("redeploy-%s-%s", appID, shortuuid.New())
+	}
 
 	workflowOptions := client.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: "default",
+		ID:                    workflowID,
+		TaskQueue:             "default",
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
 	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, RedeployToCoolifyWorkflow, RedeployWorkflowInput{
@@ -188,6 +239,14 @@ func (s *Service) RedeployApp(ctx context.Context, appID, coolifyAppUUID string)
 		CoolifyAppUUID: coolifyAppUUID,
 	})
 	if err != nil {
+		var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+		if errors.As(err, &alreadyStarted) {
+			s.logger.Info("redeploy workflow already started, skipping duplicate",
+				"workflowID", workflowID,
+				"appID", appID)
+			return workflowID, nil
+		}
+
 		s.logger.Error("failed to start redeploy workflow",
 			"workflowID", workflowID,
 			"error", err)

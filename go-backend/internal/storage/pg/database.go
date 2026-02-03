@@ -9,6 +9,7 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
@@ -28,13 +29,14 @@ type DbConfig struct {
 
 type DB struct {
 	*pgxpool.Pool
-	logger           *slog.Logger
-	userQueries      users.Querier
-	apiKeyQueries    apikeys.Querier
-	appQueries       apps.Querier
-	projectQueries   projects.Querier
-	githubCredsQ     githubcreds.Querier
-	resourceQueries  resources.Querier
+	logger              *slog.Logger
+	userQueries         users.Querier
+	apiKeyQueries       apikeys.Querier
+	appQueries          apps.Querier
+	projectQueries      projects.Querier
+	githubCredsQ        githubcreds.Querier
+	resourceQueries     resources.Querier
+	internalReposQ      internalrepos.Querier
 }
 
 func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, error) {
@@ -117,6 +119,7 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		projectQueries:  projects.New(pool),
 		githubCredsQ:    githubcreds.New(pool),
 		resourceQueries: resources.New(pool),
+		internalReposQ:  internalrepos.New(pool),
 	}, nil
 }
 
@@ -146,4 +149,8 @@ func NewGitHubCredsQueries(database *DB) githubcreds.Querier {
 
 func NewResourceQueries(database *DB) resources.Querier {
 	return database.resourceQueries
+}
+
+func NewInternalReposQueries(database *DB) internalrepos.Querier {
+	return database.internalReposQ
 }

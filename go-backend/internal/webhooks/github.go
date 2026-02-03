@@ -14,6 +14,7 @@ import (
 
 type GitHubPushPayload struct {
 	Ref        string               `json:"ref"`
+	After      string               `json:"after"`
 	Repository GitHubPushRepository `json:"repository"`
 }
 
@@ -140,10 +141,14 @@ func (h *Handlers) handlePushWebhook(w http.ResponseWriter, r *http.Request, bod
 	// Extract repo and branch
 	repo := payload.Repository.FullName
 	branch := strings.TrimPrefix(payload.Ref, "refs/heads/")
+	delivery := r.Header.Get("X-GitHub-Delivery")
+	after := strings.TrimSpace(payload.After)
 
 	h.logger.Info("received push webhook",
 		"repo", repo,
-		"branch", branch)
+		"branch", branch,
+		"after", after,
+		"delivery", delivery)
 
 	// Find apps for this repo/branch
 	matchingApps, err := h.appsQ.GetAppsByRepoBranch(r.Context(), apps.GetAppsByRepoBranchParams{
@@ -179,7 +184,7 @@ func (h *Handlers) handlePushWebhook(w http.ResponseWriter, r *http.Request, bod
 			continue
 		}
 
-		workflowID, err := h.deployService.RedeployApp(r.Context(), app.ID, *app.CoolifyAppUuid)
+		workflowID, err := h.deployService.RedeployFromGitHubPush(r.Context(), app.ID, *app.CoolifyAppUuid, after, delivery)
 		if err != nil {
 			h.logger.Error("failed to start redeploy workflow",
 				"appID", app.ID,

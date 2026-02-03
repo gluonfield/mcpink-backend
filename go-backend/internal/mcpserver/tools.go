@@ -14,6 +14,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/resources"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -53,15 +54,6 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, CreateAppOutput{}, nil
 	}
 
-	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to get GitHub credentials."}}}, CreateAppOutput{}, nil
-	}
-
-	if creds.GithubAppInstallationID == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install the GitHub App first."}}}, CreateAppOutput{}, nil
-	}
-
 	if input.Repo == "" {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "repo is required"}}}, CreateAppOutput{}, nil
 	}
@@ -71,12 +63,6 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	if input.Name == "" {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateAppOutput{}, nil
 	}
-
-	if user.CoolifyGithubAppUuid == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install the GitHub App first."}}}, CreateAppOutput{}, nil
-	}
-
-	githubAppUUID := *user.CoolifyGithubAppUuid
 
 	// Default build pack is nixpacks
 	buildPack := "nixpacks"
@@ -107,6 +93,11 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 	}
 
+	// Detect git provider from repo format
+	// ml.ink/... = internal git (gitea)
+	// github.com/... or owner/repo = GitHub
+	isInternalGit := strings.HasPrefix(input.Repo, "ml.ink/")
+
 	s.logger.Info("starting deployment",
 		"user_id", user.ID,
 		"project", input.Project,
@@ -114,19 +105,20 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		"branch", input.Branch,
 		"build_pack", buildPack,
 		"port", port,
+		"is_internal_git", isInternalGit,
 	)
 
-	result, err := s.deployService.CreateApp(ctx, deployments.CreateAppInput{
-		UserID:        user.ID,
-		ProjectRef:    input.Project,
-		GitHubAppUUID: githubAppUUID,
-		Repo:          input.Repo,
-		Branch:        input.Branch,
-		Name:          input.Name,
-		BuildPack:     buildPack,
-		Port:          port,
-		EnvVars:       envVars,
-	})
+	var result *deployments.CreateAppResult
+	var err error
+
+	if isInternalGit {
+		// Internal git flow
+		result, err = s.createAppFromInternalGit(ctx, user.ID, input, buildPack, port, envVars)
+	} else {
+		// GitHub flow (existing)
+		result, err = s.createAppFromGitHub(ctx, user, input, buildPack, port, envVars)
+	}
+
 	if err != nil {
 		s.logger.Error("failed to start deployment", "error", err)
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to start deployment: %v", err)}}}, CreateAppOutput{}, nil
@@ -141,6 +133,82 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 
 	return nil, output, nil
+}
+
+func (s *Server) createAppFromGitHub(ctx context.Context, user *users.User, input CreateAppInput, buildPack, port string, envVars []deployments.EnvVar) (*deployments.CreateAppResult, error) {
+	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get GitHub credentials")
+	}
+
+	if creds.GithubAppInstallationID == nil {
+		return nil, fmt.Errorf("GitHub App not installed. Please install the GitHub App first")
+	}
+
+	if user.CoolifyGithubAppUuid == nil {
+		return nil, fmt.Errorf("GitHub App not installed. Please install the GitHub App first")
+	}
+
+	githubAppUUID := *user.CoolifyGithubAppUuid
+
+	// Strip github.com/ prefix if present
+	repo := strings.TrimPrefix(input.Repo, "github.com/")
+
+	return s.deployService.CreateApp(ctx, deployments.CreateAppInput{
+		UserID:        user.ID,
+		ProjectRef:    input.Project,
+		GitHubAppUUID: githubAppUUID,
+		Repo:          repo,
+		Branch:        input.Branch,
+		Name:          input.Name,
+		BuildPack:     buildPack,
+		Port:          port,
+		EnvVars:       envVars,
+		GitProvider:   "github",
+	})
+}
+
+func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, input CreateAppInput, buildPack, port string, envVars []deployments.EnvVar) (*deployments.CreateAppResult, error) {
+	if s.internalGitSvc == nil {
+		return nil, fmt.Errorf("internal git not configured")
+	}
+
+	// Get internal repo info to get the SSH clone URL
+	// Repo format: ml.ink/username/repo
+	fullName := strings.TrimPrefix(input.Repo, "ml.ink/")
+
+	internalRepo, err := s.internalGitSvc.GetRepoByFullName(ctx, fullName)
+	if err != nil {
+		return nil, fmt.Errorf("internal repo not found: %s", fullName)
+	}
+
+	if internalRepo.UserID != userID {
+		return nil, fmt.Errorf("repo belongs to another user")
+	}
+
+	// Get the SSH clone URL and private key UUID
+	// fullName is in format "username/reponame"
+	parts := strings.Split(fullName, "/")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid repo format: %s", fullName)
+	}
+	username, repoName := parts[0], parts[1]
+	sshCloneURL := s.internalGitSvc.GetSSHCloneURL(username, repoName)
+	privateKeyUUID := s.internalGitSvc.Client().Config().CoolifyPrivateKeyUUID
+
+	return s.deployService.CreateApp(ctx, deployments.CreateAppInput{
+		UserID:         userID,
+		ProjectRef:     input.Project,
+		Repo:           fullName,
+		Branch:         input.Branch,
+		Name:           input.Name,
+		BuildPack:      buildPack,
+		Port:           port,
+		EnvVars:        envVars,
+		GitProvider:    "gitea",
+		PrivateKeyUUID: privateKeyUUID,
+		SSHCloneURL:    sshCloneURL,
+	})
 }
 
 func (s *Server) handleListApps(ctx context.Context, req *mcp.CallToolRequest, input ListAppsInput) (*mcp.CallToolResult, ListAppsOutput, error) {

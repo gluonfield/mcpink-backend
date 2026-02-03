@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,8 @@ type Config struct {
 	ServerUUIDs     []string
 	EnvironmentName string
 	GitHubAppUUID   string
+	RegistryURL     string
+	UseBuildServer  bool
 }
 
 type Client struct {
@@ -75,6 +78,17 @@ func (c *Client) Config() Config {
 func (c *Client) GetMuscleServer() string {
 	// TODO: implement server selection logic
 	return c.config.ServerUUIDs[0]
+}
+
+func (c *Client) GetRegistryHost() string {
+	url := c.config.RegistryURL
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	return url
+}
+
+func (c *Client) UseBuildServer() bool {
+	return c.config.UseBuildServer && c.config.RegistryURL != ""
 }
 
 func (e *Error) Error() string {

@@ -8,6 +8,7 @@ import (
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/githubapp"
+	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/logs"
 	"github.com/augustdev/autoclip/internal/resources"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -20,11 +21,12 @@ type Server struct {
 	deployService    *deployments.Service
 	resourcesService *resources.Service
 	githubAppService *githubapp.Service
+	internalGitSvc   *internalgit.Service
 	logProvider      logs.Provider
 	logger           *slog.Logger
 }
 
-func NewServer(authService *auth.Service, coolifyClient *coolify.Client, deployService *deployments.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, logProvider logs.Provider, logger *slog.Logger) *Server {
+func NewServer(authService *auth.Service, coolifyClient *coolify.Client, deployService *deployments.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, internalGitSvc *internalgit.Service, logProvider logs.Provider, logger *slog.Logger) *Server {
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "Ink MCP",
@@ -43,6 +45,7 @@ func NewServer(authService *auth.Service, coolifyClient *coolify.Client, deployS
 		deployService:    deployService,
 		resourcesService: resourcesService,
 		githubAppService: githubAppService,
+		internalGitSvc:   internalGitSvc,
 		logProvider:      logProvider,
 		logger:           logger,
 	}
@@ -113,6 +116,16 @@ func (s *Server) registerTools() {
 		Name:        "delete_app",
 		Description: "Delete an application. This removes it from Coolify and marks it as deleted in the database.",
 	}, s.handleDeleteApp)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "create_repo",
+		Description: "Create a git repository. Use source='private' (default) for instant deployment without GitHub setup, or source='github' if GitHub integration is already configured.",
+	}, s.handleCreateRepo)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "get_push_token",
+		Description: "Get a fresh push token for a repository. Works with both private (ml.ink/*) and GitHub (github.com/*) repositories.",
+	}, s.handleGetPushToken)
 }
 
 func (s *Server) Handler() http.Handler {

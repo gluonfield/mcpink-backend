@@ -361,6 +361,100 @@ func (s *ApplicationsService) Delete(ctx context.Context, uuid string) error {
 	return nil
 }
 
+// CreatePrivateDeployKeyRequest is used to create an application using a private SSH deploy key
+type CreatePrivateDeployKeyRequest struct {
+	ProjectUUID     string    `json:"project_uuid"`
+	ServerUUID      string    `json:"server_uuid"`
+	EnvironmentName string    `json:"environment_name,omitempty"`
+	EnvironmentUUID string    `json:"environment_uuid,omitempty"`
+	PrivateKeyUUID  string    `json:"private_key_uuid"`
+	GitRepository   string    `json:"git_repository"`
+	GitBranch       string    `json:"git_branch"`
+	PortsExposes    string    `json:"ports_exposes"`
+	BuildPack       BuildPack `json:"build_pack"`
+
+	DestinationUUID         string `json:"destination_uuid,omitempty"`
+	Name                    string `json:"name,omitempty"`
+	Description             string `json:"description,omitempty"`
+	Domains                 string `json:"domains,omitempty"`
+	GitCommitSHA            string `json:"git_commit_sha,omitempty"`
+	DockerRegistryImageName string `json:"docker_registry_image_name,omitempty"`
+	DockerRegistryImageTag  string `json:"docker_registry_image_tag,omitempty"`
+
+	IsStatic    *bool  `json:"is_static,omitempty"`
+	IsSPA       *bool  `json:"is_spa,omitempty"`
+	StaticImage string `json:"static_image,omitempty"`
+
+	IsAutoDeployEnabled *bool `json:"is_auto_deploy_enabled,omitempty"`
+	IsForceHTTPSEnabled *bool `json:"is_force_https_enabled,omitempty"`
+	InstantDeploy       *bool `json:"instant_deploy,omitempty"`
+
+	InstallCommand string `json:"install_command,omitempty"`
+	BuildCommand   string `json:"build_command,omitempty"`
+	StartCommand   string `json:"start_command,omitempty"`
+
+	BaseDirectory    string `json:"base_directory,omitempty"`
+	PublishDirectory string `json:"publish_directory,omitempty"`
+
+	PortsMappings string `json:"ports_mappings,omitempty"`
+
+	LimitsMemory            string `json:"limits_memory,omitempty"`
+	LimitsMemorySwap        string `json:"limits_memory_swap,omitempty"`
+	LimitsMemorySwappiness  *int   `json:"limits_memory_swappiness,omitempty"`
+	LimitsMemoryReservation string `json:"limits_memory_reservation,omitempty"`
+	LimitsCPUs              string `json:"limits_cpus,omitempty"`
+	LimitsCPUSet            string `json:"limits_cpuset,omitempty"`
+	LimitsCPUShares         *int   `json:"limits_cpu_shares,omitempty"`
+
+	CustomLabels           string `json:"custom_labels,omitempty"`
+	CustomDockerRunOptions string `json:"custom_docker_run_options,omitempty"`
+
+	ManualWebhookSecretGitHub    string `json:"manual_webhook_secret_github,omitempty"`
+	ManualWebhookSecretGitLab    string `json:"manual_webhook_secret_gitlab,omitempty"`
+	ManualWebhookSecretBitbucket string `json:"manual_webhook_secret_bitbucket,omitempty"`
+	ManualWebhookSecretGitea     string `json:"manual_webhook_secret_gitea,omitempty"`
+
+	Redirect RedirectType `json:"redirect,omitempty"`
+
+	UseBuildServer *bool `json:"use_build_server,omitempty"`
+}
+
+func (s *ApplicationsService) CreatePrivateDeployKey(ctx context.Context, req *CreatePrivateDeployKeyRequest) (*CreateApplicationResponse, error) {
+	if req == nil {
+		return nil, fmt.Errorf("coolify: request is required")
+	}
+	if req.ProjectUUID == "" {
+		return nil, fmt.Errorf("coolify: project_uuid is required")
+	}
+	if req.ServerUUID == "" {
+		return nil, fmt.Errorf("coolify: server_uuid is required")
+	}
+	if req.EnvironmentName == "" && req.EnvironmentUUID == "" {
+		return nil, fmt.Errorf("coolify: environment_name or environment_uuid is required")
+	}
+	if req.PrivateKeyUUID == "" {
+		return nil, fmt.Errorf("coolify: private_key_uuid is required")
+	}
+	if req.GitRepository == "" {
+		return nil, fmt.Errorf("coolify: git_repository is required")
+	}
+	if req.GitBranch == "" {
+		return nil, fmt.Errorf("coolify: git_branch is required")
+	}
+	if req.PortsExposes == "" {
+		return nil, fmt.Errorf("coolify: ports_exposes is required")
+	}
+	if req.BuildPack == "" {
+		return nil, fmt.Errorf("coolify: build_pack is required")
+	}
+
+	var resp CreateApplicationResponse
+	if err := s.client.do(ctx, "POST", "/api/v1/applications/private-deploy-key", nil, req, &resp); err != nil {
+		return nil, fmt.Errorf("failed to create application with private deploy key: %w", err)
+	}
+	return &resp, nil
+}
+
 type DeployOptions struct {
 	Force bool
 }

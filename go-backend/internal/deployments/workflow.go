@@ -30,6 +30,12 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 
 	appID := input.AppID
 
+	// Determine git provider
+	gitProvider := input.GitProvider
+	if gitProvider == "" {
+		gitProvider = "github"
+	}
+
 	// Step 1: Create app record in database
 	envVarsJSON, _ := json.Marshal(input.EnvVars)
 	workflowInfo := workflow.GetInfo(ctx)
@@ -45,6 +51,7 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 		BuildPack:     input.BuildPack,
 		Port:          input.Port,
 		EnvVars:       envVarsJSON,
+		GitProvider:   gitProvider,
 	}
 
 	err := workflow.ExecuteActivity(ctx, activities.CreateAppRecord, createRecordInput).Get(ctx, nil)
@@ -59,27 +66,53 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 
 	logger.Info("Created app record", "appID", appID)
 
-	// Step 2: Create app in Coolify from private GitHub
-	createAppInput := CoolifyAppInput{
-		AppID:         appID,
-		GitHubAppUUID: input.GitHubAppUUID,
-		Repo:          input.Repo,
-		Branch:        input.Branch,
-		Name:          input.Name,
-		BuildPack:     input.BuildPack,
-		Port:          input.Port,
-	}
-
+	// Step 2: Create app in Coolify (branch based on git provider)
 	var createAppResult CoolifyAppResult
-	err = workflow.ExecuteActivity(ctx, activities.CreateAppFromPrivateGithub, createAppInput).Get(ctx, &createAppResult)
-	if err != nil {
-		logger.Error("Failed to create app", "error", err)
-		_ = markAppFailed(ctx, activities, appID, err.Error())
-		return DeployWorkflowResult{
-			AppID:        appID,
-			Status:       string(BuildStatusFailed),
-			ErrorMessage: err.Error(),
-		}, err
+
+	if gitProvider == "gitea" {
+		// Internal git (Gitea) flow
+		internalGitInput := InternalGitAppInput{
+			AppID:          appID,
+			PrivateKeyUUID: input.PrivateKeyUUID,
+			SSHCloneURL:    input.SSHCloneURL,
+			Branch:         input.Branch,
+			Name:           input.Name,
+			BuildPack:      input.BuildPack,
+			Port:           input.Port,
+		}
+
+		err = workflow.ExecuteActivity(ctx, activities.CreateAppFromInternalGit, internalGitInput).Get(ctx, &createAppResult)
+		if err != nil {
+			logger.Error("Failed to create app from internal git", "error", err)
+			_ = markAppFailed(ctx, activities, appID, err.Error())
+			return DeployWorkflowResult{
+				AppID:        appID,
+				Status:       string(BuildStatusFailed),
+				ErrorMessage: err.Error(),
+			}, err
+		}
+	} else {
+		// GitHub flow (default)
+		createAppInput := CoolifyAppInput{
+			AppID:         appID,
+			GitHubAppUUID: input.GitHubAppUUID,
+			Repo:          input.Repo,
+			Branch:        input.Branch,
+			Name:          input.Name,
+			BuildPack:     input.BuildPack,
+			Port:          input.Port,
+		}
+
+		err = workflow.ExecuteActivity(ctx, activities.CreateAppFromPrivateGithub, createAppInput).Get(ctx, &createAppResult)
+		if err != nil {
+			logger.Error("Failed to create app from GitHub", "error", err)
+			_ = markAppFailed(ctx, activities, appID, err.Error())
+			return DeployWorkflowResult{
+				AppID:        appID,
+				Status:       string(BuildStatusFailed),
+				ErrorMessage: err.Error(),
+			}, err
+		}
 	}
 
 	// Step 3: Bulk update environment variables (if any)
@@ -270,6 +303,7 @@ func RegisterWorkflowsAndActivities(w worker.Worker, activities *Activities) {
 	w.RegisterWorkflow(RedeployToCoolifyWorkflow)
 	w.RegisterActivity(activities.CreateAppRecord)
 	w.RegisterActivity(activities.CreateAppFromPrivateGithub)
+	w.RegisterActivity(activities.CreateAppFromInternalGit)
 	w.RegisterActivity(activities.BulkUpdateEnvs)
 	w.RegisterActivity(activities.StartApp)
 	w.RegisterActivity(activities.WaitForRunning)

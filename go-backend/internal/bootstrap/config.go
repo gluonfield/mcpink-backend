@@ -9,6 +9,7 @@ import (
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
+	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/turso"
 	"github.com/joho/godotenv"
@@ -31,6 +32,7 @@ func NewConfig() (Config, error) {
 		NATS       NATSConfig
 		Coolify    coolify.Config
 		Turso      turso.Config
+		Gitea      internalgit.Config
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -47,6 +49,7 @@ func NewConfig() (Config, error) {
 		NATS:       cfg.NATS,
 		Coolify:    cfg.Coolify,
 		Turso:      cfg.Turso,
+		Gitea:      cfg.Gitea,
 	}, nil
 }
 
@@ -62,6 +65,7 @@ type Config struct {
 	NATS       NATSConfig
 	Coolify    coolify.Config
 	Turso      turso.Config
+	Gitea      internalgit.Config
 }
 
 func InitConfig() error {

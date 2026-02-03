@@ -29,3 +29,12 @@ UPDATE users
 SET coolify_github_app_uuid = NULL, updated_at = NOW()
 WHERE id = $1
 RETURNING *;
+
+-- name: SetGiteaUsername :one
+UPDATE users
+SET gitea_username = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: GetUserByGiteaUsername :one
+SELECT * FROM users WHERE gitea_username = $1;

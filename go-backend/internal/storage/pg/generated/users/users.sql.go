@@ -13,7 +13,7 @@ const clearCoolifyGitHubAppUUID = `-- name: ClearCoolifyGitHubAppUUID :one
 UPDATE users
 SET coolify_github_app_uuid = NULL, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
 `
 
 func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (User, error) {
@@ -27,6 +27,7 @@ func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (Use
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }
@@ -34,7 +35,7 @@ func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (Use
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, github_id, github_username, avatar_url)
 VALUES ($1, $2, $3, $4)
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
 `
 
 type CreateUserParams struct {
@@ -60,6 +61,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }
@@ -74,7 +76,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getUserByGitHubID = `-- name: GetUserByGitHubID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid FROM users WHERE github_id = $1
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE github_id = $1
 `
 
 func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, error) {
@@ -88,12 +90,33 @@ func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, 
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
+	)
+	return i, err
+}
+
+const getUserByGiteaUsername = `-- name: GetUserByGiteaUsername :one
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE gitea_username = $1
+`
+
+func (q *Queries) GetUserByGiteaUsername(ctx context.Context, giteaUsername *string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByGiteaUsername, giteaUsername)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.AvatarUrl,
+		&i.ID,
+		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid FROM users WHERE id = $1
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -107,6 +130,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }
@@ -115,7 +139,7 @@ const setCoolifyGitHubAppUUID = `-- name: SetCoolifyGitHubAppUUID :one
 UPDATE users
 SET coolify_github_app_uuid = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
 `
 
 type SetCoolifyGitHubAppUUIDParams struct {
@@ -134,6 +158,35 @@ func (q *Queries) SetCoolifyGitHubAppUUID(ctx context.Context, arg SetCoolifyGit
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
+	)
+	return i, err
+}
+
+const setGiteaUsername = `-- name: SetGiteaUsername :one
+UPDATE users
+SET gitea_username = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+`
+
+type SetGiteaUsernameParams struct {
+	ID            string  `json:"id"`
+	GiteaUsername *string `json:"gitea_username"`
+}
+
+func (q *Queries) SetGiteaUsername(ctx context.Context, arg SetGiteaUsernameParams) (User, error) {
+	row := q.db.QueryRow(ctx, setGiteaUsername, arg.ID, arg.GiteaUsername)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.AvatarUrl,
+		&i.ID,
+		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }
@@ -142,7 +195,7 @@ const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
 SET github_username = $2, avatar_url = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
 `
 
 type UpdateUserProfileParams struct {
@@ -162,6 +215,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.AvatarUrl,
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
 	)
 	return i, err
 }

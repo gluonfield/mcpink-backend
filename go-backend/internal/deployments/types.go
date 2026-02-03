@@ -11,6 +11,9 @@ type DeployWorkflowInput struct {
 	BuildPack     string
 	Port          string
 	EnvVars       []EnvVar
+	GitProvider   string // "github" or "gitea"
+	PrivateKeyUUID string // for internal git (gitea)
+	SSHCloneURL   string // for internal git (gitea)
 }
 
 type DeployWorkflowResult struct {

@@ -41,6 +41,7 @@ type App struct {
 	ProjectID      string             `json:"project_id"`
 	CommitHash     *string            `json:"commit_hash"`
 	IsDeleted      bool               `json:"is_deleted"`
+	GitProvider    string             `json:"git_provider"`
 }
 
 type GithubCred struct {
@@ -53,6 +54,16 @@ type GithubCred struct {
 	GithubAppInstallationID *int64             `json:"github_app_installation_id"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
+}
+
+type InternalRepo struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	Provider  string             `json:"provider"`
+	RepoID    int64              `json:"repo_id"`
+	FullName  string             `json:"full_name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Project struct {
@@ -89,4 +100,5 @@ type User struct {
 	AvatarUrl            *string            `json:"avatar_url"`
 	ID                   string             `json:"id"`
 	CoolifyGithubAppUuid *string            `json:"coolify_github_app_uuid"`
+	GiteaUsername        *string            `json:"gitea_username"`
 }

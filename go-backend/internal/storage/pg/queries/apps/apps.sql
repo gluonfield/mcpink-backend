@@ -1,8 +1,8 @@
 -- name: CreateApp :one
 INSERT INTO apps (
-    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status
+    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status, git_provider
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'queued'
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'queued', $13
 )
 RETURNING *;
 
@@ -99,3 +99,7 @@ WHERE a.name = $1
   AND (p.ref = $3 OR ($3 = 'default' AND p.is_default = true))
   AND a.is_deleted = false
 LIMIT 1;
+
+-- name: GetAppsByRepoBranchProvider :many
+SELECT * FROM apps
+WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND coolify_app_uuid IS NOT NULL AND is_deleted = false;

@@ -35,6 +35,11 @@ func (a *Activities) CreateAppRecord(ctx context.Context, input CreateAppRecordI
 
 	serverID := a.coolify.GetMuscleServer()
 
+	gitProvider := input.GitProvider
+	if gitProvider == "" {
+		gitProvider = "github"
+	}
+
 	_, err := a.appsQ.CreateApp(ctx, apps.CreateAppParams{
 		ID:            input.AppID,
 		UserID:        input.UserID,
@@ -48,6 +53,7 @@ func (a *Activities) CreateAppRecord(ctx context.Context, input CreateAppRecordI
 		EnvVars:       input.EnvVars,
 		WorkflowID:    input.WorkflowID,
 		WorkflowRunID: &input.WorkflowRunID,
+		GitProvider:   gitProvider,
 	})
 	if err != nil {
 		a.logger.Error("Failed to create app record",
@@ -77,6 +83,7 @@ type CreateAppRecordInput struct {
 	BuildPack     string
 	Port          string
 	EnvVars       []byte
+	GitProvider   string
 }
 
 type CoolifyAppInput struct {
@@ -87,6 +94,16 @@ type CoolifyAppInput struct {
 	Name          string
 	BuildPack     string
 	Port          string
+}
+
+type InternalGitAppInput struct {
+	AppID            string
+	PrivateKeyUUID   string
+	SSHCloneURL      string
+	Branch           string
+	Name             string
+	BuildPack        string
+	Port             string
 }
 
 type CoolifyAppResult struct {
@@ -129,6 +146,15 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 		CustomDockerRunOptions: "--runtime=runsc",
 	}
 
+	// Configure build server if enabled
+	if a.coolify.UseBuildServer() {
+		useBuildServer := true
+		req.UseBuildServer = &useBuildServer
+		req.DockerRegistryImageName = fmt.Sprintf("%s/%s", a.coolify.GetRegistryHost(), input.Name)
+		a.logger.Info("Using build server with registry",
+			"registryImage", req.DockerRegistryImageName)
+	}
+
 	a.logger.Debug("Coolify create app request",
 		"projectUUID", cfg.ProjectUUID,
 		"serverUUID", serverID,
@@ -161,6 +187,71 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 	}
 
 	a.logger.Info("Created Coolify application",
+		"appID", input.AppID,
+		"coolifyUUID", resp.UUID)
+
+	return &CoolifyAppResult{CoolifyAppUUID: resp.UUID, ServerID: serverID}, nil
+}
+
+func (a *Activities) CreateAppFromInternalGit(ctx context.Context, input InternalGitAppInput) (*CoolifyAppResult, error) {
+	a.logger.Info("Creating app from internal git",
+		"appID", input.AppID,
+		"sshCloneURL", input.SSHCloneURL,
+		"branch", input.Branch,
+		"privateKeyUUID", input.PrivateKeyUUID)
+
+	cfg := a.coolify.Config()
+	serverID := a.coolify.GetMuscleServer()
+
+	// Static build pack uses nginx:alpine which serves on port 80
+	port := input.Port
+	if input.BuildPack == "static" {
+		port = "80"
+	}
+
+	req := &coolify.CreatePrivateDeployKeyRequest{
+		ProjectUUID:            cfg.ProjectUUID,
+		ServerUUID:             serverID,
+		EnvironmentName:        cfg.EnvironmentName,
+		PrivateKeyUUID:         input.PrivateKeyUUID,
+		GitRepository:          input.SSHCloneURL,
+		GitBranch:              input.Branch,
+		PortsExposes:           port,
+		BuildPack:              coolify.BuildPack(input.BuildPack),
+		Name:                   input.Name,
+		CustomDockerRunOptions: "--runtime=runsc",
+	}
+
+	// Configure build server if enabled
+	if a.coolify.UseBuildServer() {
+		useBuildServer := true
+		req.UseBuildServer = &useBuildServer
+		req.DockerRegistryImageName = fmt.Sprintf("%s/%s", a.coolify.GetRegistryHost(), input.Name)
+		a.logger.Info("Using build server with registry",
+			"registryImage", req.DockerRegistryImageName)
+	}
+
+	resp, err := a.coolify.Applications.CreatePrivateDeployKey(ctx, req)
+	if err != nil {
+		a.logger.Error("Failed to create Coolify application from internal git",
+			"appID", input.AppID,
+			"error", err)
+		return nil, fmt.Errorf("failed to create Coolify application: %w", err)
+	}
+
+	_, err = a.appsQ.UpdateAppCoolifyUUID(ctx, apps.UpdateAppCoolifyUUIDParams{
+		ID:             input.AppID,
+		CoolifyAppUuid: &resp.UUID,
+	})
+	if err != nil {
+		a.logger.Error("Failed to update app with Coolify UUID",
+			"appID", input.AppID,
+			"coolifyUUID", resp.UUID,
+			"error", err)
+		return nil, fmt.Errorf("failed to update app with Coolify UUID: %w", err)
+	}
+
+	a.logger.Info("Created Coolify application from internal git",
 		"appID", input.AppID,
 		"coolifyUUID", resp.UUID)
 

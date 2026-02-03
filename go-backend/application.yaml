@@ -60,7 +60,18 @@ coolify:
   serveruuids: []
   environmentname: "production"
   githubappuuid: ""
+  registryurl: ""
+  usebuildserver: true
 
 turso:
   apikey: ""
   orgslug: ""
+
+gitea:
+  enabled: true
+  baseurl: "https://git.ml.ink"
+  admintoken: ""
+  userprefix: "u"
+  webhooksecret: ""
+  sshurl: "git@git.ml.ink"
+  coolifyprivatekeyuuid: ""
