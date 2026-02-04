@@ -1,157 +1,88 @@
-# ml.ink: Sovereign Deployment for AI Agents
-## A private “ship button” for governments and enterprises
+# ml.ink: AI That Deploys on Government Infrastructure
+## From “idea” to “running service” in minutes—without leaving your environment
 
-### Executive summary
+### What it is
 
-**ml.ink** is a deployment control plane designed for the agentic era: it lets AI coding agents (including **OpenAI Codex**, Claude, Cursor, Windsurf, and any MCP-capable agent) **provision and deploy applications into your own infrastructure**—private bare metal, private cloud, or on‑prem—through a single, auditable interface.
+**ml.ink** is a deployment platform that lets your teams use AI assistants (including **OpenAI Codex**) to **stand up real applications inside government-controlled infrastructure**—on‑prem, private cloud, or dedicated servers.
 
-AI can already generate working software in minutes. The bottleneck is the “last mile”: credentials, environments, DNS/TLS, databases, resource limits, and safe runtime isolation. **ml.ink turns that last mile into an API** so your organization can go from “code written” to “service running” without handing agents the keys to the kingdom or pushing sensitive workloads into a public PaaS.
-
----
-
-### The problem: AI can build; your org can’t safely ship
-
-Enterprises and agencies are adopting AI assistants to accelerate delivery, but deployment remains:
-
-- **Fragmented**: one tool for hosting, another for databases, another for DNS/TLS, secrets, logs, backups.
-- **Manual**: human operators bridge connection strings, dashboards, permissions, ports, and environments.
-- **Risky**: AI-generated code and dependencies are untrusted by default; production environments are not.
-- **Sovereignty constrained**: many workloads can’t use convenient public PaaS offerings due to data residence, policy, procurement, or mission assurance requirements.
-
-The result is predictable: agents can write software quickly, but **your throughput is still gated by DevOps and compliance**.
+It turns the slowest part of software delivery—getting a service safely live—into a repeatable, governed process. Instead of waiting on tickets, dashboards, and handoffs, teams can go from “AI wrote it” to “it’s running” with consistent controls and clear accountability.
 
 ---
 
-### The solution: an agent-native control plane that runs on your hardware
+### Why this matters for government
 
-ml.ink exposes a stable, high-level contract (MCP tools like `create_app`, `list_apps`, `get_app_details`, `create_resource`) that agents can use to deploy real services:
+Government organizations are under pressure to modernize quickly, but they face real constraints:
 
-- **One call** to deploy an app (build + registry + runtime + domain).
-- **Repeatable workflows** orchestrated as durable jobs (retries, idempotency, observability).
-- **Provider abstraction**: agents operate on “apps” and “resources,” not vendor dashboards.
+- **Data sensitivity**: not everything can run on public platforms.
+- **Operational risk**: untrusted code and third‑party packages must be contained.
+- **Staffing reality**: a small platform team supports many mission teams.
+- **Accountability**: deployments must be attributable and reviewable.
 
-Under the hood, ml.ink intentionally builds on boring, battle-tested primitives (Docker, SSH, standard registries) with a modern workflow engine and an app deployment backend (Coolify) to avoid lock‑in and to make audits and operations tractable.
-
----
-
-### Deployment model: the 3‑plane architecture (safety + performance + clarity)
-
-ml.ink separates “control,” “build,” and “run” concerns into independent planes so untrusted code can’t easily impact the systems that manage it.
-
-**Plane A — Control Plane (you own)**
-- The ml.ink API / MCP server (the “agent contract”)
-- Metadata DB (projects, resources, usage, audit)
-- Authentication (API keys) and integrations (Git providers)
-
-**Plane B — Factory (build + orchestration backend)**
-- Coolify master (UI + API) orchestrating deployments via SSH
-- Build engine (Nixpacks / Dockerfile / Compose build packs)
-- Registry access (shared image store when you have multiple servers)
-
-**Plane C — Muscle (runtime)**
-- Docker engine + per-host reverse proxy
-- User workloads (apps, APIs, workers)
-- Optional scale-to-zero for idle services (on-demand mode)
-
-This separation is practical: builds are bursty and CPU/RAM heavy, while production runtimes require predictable latency and stability.
+AI speeds up coding; it does not solve deployment governance. **ml.ink is the missing piece that makes AI “shippable” inside government boundaries.**
 
 ---
 
-### What you can deploy
+### What you get
 
-ml.ink is built to deploy the things enterprises and governments actually ship:
+**1) Faster delivery with guardrails**
+- Stand up internal tools, dashboards, APIs, and services quickly.
+- Use standard templates and policies so deployments are consistent across teams.
 
-- **Web apps** (SSR or static)
-- **APIs** (Go, Node, Python, etc.)
-- **Backends and services** (workers, cron jobs, WebSocket services)
-- **Multi-container stacks** (Compose)
+**2) Sovereignty by default**
+- Run the platform where you need it: data centers, private networks, private cloud accounts, or dedicated hardware.
+- Keep sensitive systems and data inside your environment.
 
-Agents can also provision supporting **resources** (today: managed SQLite via Turso; roadmap: Postgres/Redis and bring‑your‑own connection strings).
+**3) Safer execution of AI-generated software**
+- Treat AI-generated code as untrusted by default.
+- Use isolation and strong runtime limits to reduce blast radius if something goes wrong.
 
----
+**4) Operational readiness**
+- A practical approach to backups, recovery, and monitoring (so this isn’t a demo that fails in production).
+- Designed so existing services keep running even if the “management” layer is temporarily unavailable.
 
-### Enterprise & government-grade controls (without “trusting the agent”)
-
-ml.ink assumes AI-generated code is untrusted and designs for containment:
-
-**1) Runtime isolation with gVisor (runsc)**
-- User workloads can run under **gVisor** for kernel-level isolation (container escape risk reduction).
-- Practical compatibility is addressed via a tested configuration (hostinet mode) and deployment integration.
-
-**2) Guardrails against common abuse**
-- Host-level egress controls to block high-risk destinations and ports (e.g., metadata endpoints, SMTP).
-- Support for strict container runtime settings (capability drops, PID limits, CPU/memory limits).
-- Operational checks and verification scripts for new runtime servers.
-
-**3) Private networking and reduced blast radius**
-- Internal traffic can stay on private networks (e.g., Hetzner vSwitch / VLAN) for registry pulls and server-to-server control.
-- Clear separation between trusted “ops” services (registry, Git, monitoring) and untrusted user workloads.
-
-**4) Auditability**
-- API-key-based agent authentication supports consistent attribution.
-- The control plane can maintain an audit trail of actions (deploy intent, resources, usage).
-
-**5) Resilience by design**
-- Deployed apps keep running even if the build/orchestration backend is down because runtime servers run standard Docker services locally.
-- Disaster recovery is runbook-driven with scripted backups and restoration procedures.
+**5) Clear accountability**
+- Agent actions can be authenticated and recorded, supporting oversight and audit needs.
 
 ---
 
-### Sovereignty and “private by default” options
+### What it can deploy (the things agencies actually need)
 
-ml.ink is designed to run in the environments that procurement and policy demand:
-
-- **Private bare metal** (high compute density and cost efficiency)
-- **Private cloud** (your AWS/Azure/GCP accounts, or other providers)
-- **On‑prem data centers** and segmented networks
-- **Internal Git** options for sensitive code (e.g., Gitea/Forgejo), including deploy-key based builds
-
-For externally reachable applications, DNS/TLS can be managed in a way that fits your posture (including optional Cloudflare fronting for predefined domains to reduce origin exposure and add basic DDoS protection).
+- **Internal web apps** (forms, dashboards, portals)
+- **APIs and services** (integration layers, data services, workflow backends)
+- **Background jobs** (report generation, scheduled processing)
+- **Multi-service stacks** (when an app needs more than one component)
 
 ---
 
-### Use cases (what this enables in practice)
+### Common government use cases
 
 **Secure internal tooling**
-- Analysts and operators can request an agent-built dashboard or workflow tool and have it deployed to an internal subdomain with enforced guardrails.
+- An analyst requests a new reporting dashboard.
+- An AI assistant builds it, and ml.ink deploys it into an internal network segment with the right limits.
 
-**Isolated research and evaluation sandboxes**
-- Rapidly stand up ephemeral environments for evaluating open-source tools, models, or codebases, while containing risk.
+**Rapid response**
+- Stand up a new intake form, status page, or coordination tool during an incident—fast, without bypassing controls.
 
-**Mission systems support**
-- Deploy and update services on your own runtime fleet with predictable placement, resource tiers, monitoring, and runbooks.
+**Modernization**
+- Move legacy “scripts on a server” into managed, repeatable deployments that are easier to update and support.
 
-**Modernization at the speed of intent**
-- Replace ticket-driven “please deploy this” workflows with an audited, policy-bound interface that agents can call.
-
----
-
-### Why ml.ink (the differentiators)
-
-- **Agent-native interface**: MCP is the contract; agents don’t need a human to click dashboards.
-- **Runs in your infrastructure**: data sovereignty and policy alignment without needing a public PaaS.
-- **Safety via architecture**: separation of planes + sandboxed runtime + network controls.
-- **Operational reality**: backups, monitoring, and disaster recovery are first-class, not afterthoughts.
-- **Composable and replaceable**: underlying providers and components can evolve without breaking the agent contract.
+**Evaluation environments**
+- Quickly create isolated sandboxes for evaluating new tools or codebases without risking wider networks.
 
 ---
 
-### A pragmatic pilot path
+### How adoption works (a practical pilot)
 
-A typical enterprise/government rollout can be staged:
-
-1. **Pilot** (single Factory + single Muscle + optional Ops node)
-2. **Harden** (gVisor, egress policy, resource tiers, audit requirements)
-3. **Scale out** (multiple Muscle nodes, dedicated build servers, internal registry, internal Git)
-4. **Govern** (policy templates for allowed service types, network egress, resource caps, and placement)
+1. **Start small**: deploy ml.ink into a pilot environment and onboard 1–2 mission teams.
+2. **Define guardrails**: resource limits, allowed service types, and network rules that match your security posture.
+3. **Scale**: expand to more teams and more runtime capacity once the operating model is proven.
 
 ---
 
 ### Bottom line
 
-AI is already changing software creation; the strategic bottleneck is **safe execution**. ml.ink gives governments and enterprises a way to let agents *ship*—without surrendering sovereignty, security posture, or operational control.
+Government modernization requires speed **and** control. **ml.ink lets you use AI to deliver software faster while keeping deployments inside government infrastructure, with consistent guardrails and accountability.**
 
-If you want a single sentence:
+If you want the one-liner:
 
-> **ml.ink turns your private infrastructure into an agent-addressable platform—so “build” and “deploy” become auditable API calls, not human bottlenecks.**
-
+> **ml.ink is the “ship button” for AI-built software on government infrastructure.**
