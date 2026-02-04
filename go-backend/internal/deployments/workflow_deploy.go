@@ -9,6 +9,26 @@ import (
 	"go.temporal.io/sdk/workflow"
 )
 
+// withSystemBuildEnvVars appends system-level build environment variables.
+// These optimize the build process across all apps.
+func withSystemBuildEnvVars(envVars []EnvVar) []EnvVar {
+	systemEnvVars := []EnvVar{
+		// UV_THREADPOOL_SIZE=128 fixes glibc's blocking DNS resolver that serializes
+		// npm's parallel downloads. Without this, Node.js builds take 7+ minutes
+		// instead of ~30 seconds. See: https://nodejs.org/api/cli.html#uv_threadpool_sizesize
+		{Key: "UV_THREADPOOL_SIZE", Value: "16", IsBuildTime: true},
+		// NODE_OPTIONS=--dns-result-order=ipv4first forces IPv4 DNS resolution first.
+		// The Nix-built Node.js has slow IPv6 handling that causes npm installs to take
+		// 3+ minutes instead of ~30 seconds. This bypasses the issue.
+		{Key: "NODE_OPTIONS", Value: "--dns-result-order=ipv4first", IsBuildTime: true},
+		// npm network optimizations for Docker/BuildKit environment where connection
+		// reuse is poor. These reduce unnecessary network calls during install.
+		{Key: "npm_config_fund", Value: "false", IsBuildTime: true},
+		{Key: "npm_config_audit", Value: "false", IsBuildTime: true},
+	}
+	return append(envVars, systemEnvVars...)
+}
+
 func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (DeployWorkflowResult, error) {
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting DeployWorkflow",
@@ -152,24 +172,22 @@ func DeployToCoolifyWorkflow(ctx workflow.Context, input DeployWorkflowInput) (D
 		}
 	}
 
-	// Step 3: Bulk update environment variables (if any)
-	if len(input.EnvVars) > 0 {
-		bulkUpdateInput := BulkUpdateEnvsInput{
-			CoolifyAppUUID: createAppResult.CoolifyAppUUID,
-			EnvVars:        input.EnvVars,
-		}
+	// Step 3: Set environment variables
+	bulkUpdateInput := BulkUpdateEnvsInput{
+		CoolifyAppUUID: createAppResult.CoolifyAppUUID,
+		EnvVars:        withSystemBuildEnvVars(input.EnvVars),
+	}
 
-		err = workflow.ExecuteActivity(ctx, activities.BulkUpdateEnvs, bulkUpdateInput).Get(ctx, nil)
-		if err != nil {
-			logger.Error("Failed to set environment variables", "error", err)
-			_ = markAppFailed(ctx, activities, appID, err.Error())
-			return DeployWorkflowResult{
-				AppID:        appID,
-				AppUUID:      createAppResult.CoolifyAppUUID,
-				Status:       string(BuildStatusFailed),
-				ErrorMessage: err.Error(),
-			}, err
-		}
+	err = workflow.ExecuteActivity(ctx, activities.BulkUpdateEnvs, bulkUpdateInput).Get(ctx, nil)
+	if err != nil {
+		logger.Error("Failed to set environment variables", "error", err)
+		_ = markAppFailed(ctx, activities, appID, err.Error())
+		return DeployWorkflowResult{
+			AppID:        appID,
+			AppUUID:      createAppResult.CoolifyAppUUID,
+			Status:       string(BuildStatusFailed),
+			ErrorMessage: err.Error(),
+		}, err
 	}
 
 	// Step 4: Start the app (triggers deployment)

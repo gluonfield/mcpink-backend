@@ -10,6 +10,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/coolify"
+	"github.com/augustdev/autoclip/internal/helpers"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"go.temporal.io/sdk/activity"
@@ -310,8 +311,9 @@ func (a *Activities) BulkUpdateEnvs(ctx context.Context, input BulkUpdateEnvsInp
 	envReqs := make([]coolify.CreateEnvRequest, len(input.EnvVars))
 	for i, ev := range input.EnvVars {
 		envReqs[i] = coolify.CreateEnvRequest{
-			Key:   ev.Key,
-			Value: ev.Value,
+			Key:         ev.Key,
+			Value:       ev.Value,
+			IsBuildTime: helpers.Ptr(ev.IsBuildTime),
 		}
 	}
 
@@ -588,9 +590,9 @@ type CreateDNSRecordInput struct {
 }
 
 type CreateDNSRecordResult struct {
-	FQDN             string
-	DNSRecordID      string
-	CloudflareID     string
+	FQDN         string
+	DNSRecordID  string
+	CloudflareID string
 }
 
 func (a *Activities) CreateDNSRecord(ctx context.Context, input CreateDNSRecordInput) (*CreateDNSRecordResult, error) {

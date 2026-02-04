@@ -30,8 +30,9 @@ type DeployWorkflowResult struct {
 }
 
 type EnvVar struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
+	Key         string `json:"key"`
+	Value       string `json:"value"`
+	IsBuildTime bool   `json:"is_build_time,omitempty"`
 }
 
 type BuildStatus string
