@@ -79,12 +79,9 @@ type CreateAppResult struct {
 func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateAppResult, error) {
 	var projectID string
 	if input.ProjectRef != "" {
-		project, err := s.projectsQ.GetProjectByRef(ctx, projects.GetProjectByRefParams{
-			UserID: input.UserID,
-			Ref:    input.ProjectRef,
-		})
+		project, err := s.getOrCreateProject(ctx, input.UserID, input.ProjectRef)
 		if err != nil {
-			return nil, fmt.Errorf("project not found: %s", input.ProjectRef)
+			return nil, err
 		}
 		projectID = project.ID
 	} else {
@@ -163,14 +160,28 @@ func (s *Service) ListApps(ctx context.Context, userID string, limit, offset int
 }
 
 func (s *Service) GetProjectByRef(ctx context.Context, userID, ref string) (*projects.Project, error) {
+	return s.getOrCreateProject(ctx, userID, ref)
+}
+
+func (s *Service) getOrCreateProject(ctx context.Context, userID, ref string) (*projects.Project, error) {
 	project, err := s.projectsQ.GetProjectByRef(ctx, projects.GetProjectByRefParams{
 		UserID: userID,
 		Ref:    ref,
 	})
-	if err != nil {
-		return nil, fmt.Errorf("project not found: %s", ref)
+	if err == nil {
+		return &project, nil
 	}
-	return &project, nil
+
+	s.logger.Info("auto-creating project", "user_id", userID, "ref", ref)
+	newProject, err := s.projectsQ.CreateProject(ctx, projects.CreateProjectParams{
+		UserID: userID,
+		Name:   ref,
+		Ref:    ref,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create project: %w", err)
+	}
+	return &newProject, nil
 }
 
 func (s *Service) GetAppByNameAndProject(ctx context.Context, name, projectID string) (*apps.App, error) {

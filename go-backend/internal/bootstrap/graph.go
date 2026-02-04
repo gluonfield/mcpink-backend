@@ -18,6 +18,7 @@ import (
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
 	"github.com/augustdev/autoclip/internal/logs"
+	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/mcpserver"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
@@ -80,6 +81,8 @@ func NewGraphQLRouter(
 	authService *auth.Service,
 	mcpServer *mcpserver.Server,
 	webhookHandlers *webhooks.Handlers,
+	mcpOAuthHandlers *mcp_oauth.Handlers,
+	mcpOAuthConfig mcp_oauth.Config,
 ) *chi.Mux {
 	router := chi.NewRouter()
 
@@ -153,7 +156,11 @@ func NewGraphQLRouter(
 	router.Handle("/", playground.Handler("GraphQL playground", "/graphql"))
 	router.Handle("/graphql", authMiddleware)
 
-	router.Mount("/mcp", mcpserver.AuthMiddleware(authService, logger, mcpServer.Handler()))
+	// Mount MCP OAuth routes (must be before /mcp to handle /.well-known)
+	mcpOAuthHandlers.RegisterRoutes(router)
+
+	// Mount MCP server with auth middleware (includes issuer for WWW-Authenticate header)
+	router.Mount("/mcp", mcpserver.AuthMiddleware(authService, logger, mcpOAuthConfig.Issuer, mcpServer.Handler()))
 	webhookHandlers.RegisterRoutes(router)
 
 	return router

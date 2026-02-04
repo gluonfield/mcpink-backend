@@ -11,6 +11,7 @@ import (
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
+	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/turso"
 	"github.com/joho/godotenv"
@@ -35,6 +36,7 @@ func NewConfig() (Config, error) {
 		Turso       turso.Config
 		Gitea       internalgit.Config
 		Cloudflare  cloudflare.Config
+		MCPOAuth    mcp_oauth.Config
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -58,6 +60,7 @@ func NewConfig() (Config, error) {
 		Turso:       cfg.Turso,
 		Gitea:       cfg.Gitea,
 		Cloudflare:  cfg.Cloudflare,
+		MCPOAuth:    cfg.MCPOAuth,
 	}, nil
 }
 
@@ -75,6 +78,7 @@ type Config struct {
 	Turso       turso.Config
 	Gitea       internalgit.Config
 	Cloudflare  cloudflare.Config
+	MCPOAuth    mcp_oauth.Config
 }
 
 func InitConfig() error {

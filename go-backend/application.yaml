@@ -84,3 +84,7 @@ gitea:
   coolifyprivatekeyuuid: ""
   deploypublickey: ""
   deploybotusername: ""
+
+mcpoauth:
+  issuer: "http://localhost:8081"
+  frontendurl: "http://localhost:5001"

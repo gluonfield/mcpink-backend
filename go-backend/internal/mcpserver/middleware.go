@@ -8,10 +8,14 @@ import (
 	"github.com/augustdev/autoclip/internal/auth"
 )
 
-func AuthMiddleware(authService *auth.Service, logger *slog.Logger, next http.Handler) http.Handler {
+func AuthMiddleware(authService *auth.Service, logger *slog.Logger, issuer string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
+			// Return WWW-Authenticate header per MCP OAuth spec
+			// This tells MCP clients where to find the OAuth metadata
+			w.Header().Set("WWW-Authenticate",
+				`Bearer resource_metadata="`+issuer+`/.well-known/oauth-protected-resource"`)
 			http.Error(w, "missing authorization header", http.StatusUnauthorized)
 			return
 		}

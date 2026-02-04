@@ -10,6 +10,7 @@ import (
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
+	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/mcpserver"
 	"github.com/augustdev/autoclip/internal/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg"
@@ -49,6 +50,8 @@ func main() {
 			bootstrap.NewTokenValidator,
 			mcpserver.NewServer,
 			webhooks.NewHandlers,
+			mcp_oauth.NewMCPOAuthService,
+			mcp_oauth.NewHandlers,
 			bootstrap.NewGraphQLRouter,
 			bootstrap.NewAuthRouter,
 		),
