@@ -45,6 +45,16 @@ type deploymentLogEntry struct {
 }
 
 func ParseDeploymentLogs(raw string) ([]LogEntry, error) {
+	return parseDeploymentLogs(raw, false)
+}
+
+// ParseDeploymentLogsAll parses deployment logs including hidden entries (debug logs).
+// Use this for build progress extraction since Docker stage output is in hidden logs.
+func ParseDeploymentLogsAll(raw string) ([]LogEntry, error) {
+	return parseDeploymentLogs(raw, true)
+}
+
+func parseDeploymentLogs(raw string, includeHidden bool) ([]LogEntry, error) {
 	if raw == "" {
 		return []LogEntry{}, nil
 	}
@@ -54,19 +64,23 @@ func ParseDeploymentLogs(raw string) ([]LogEntry, error) {
 		return nil, fmt.Errorf("failed to parse deployment logs: %w", err)
 	}
 
-	// Filter out hidden entries and sort by order
-	visible := make([]deploymentLogEntry, 0, len(rawLogs))
+	// Filter entries and sort by order
+	filtered := make([]deploymentLogEntry, 0, len(rawLogs))
 	for _, log := range rawLogs {
-		if !log.Hidden && log.Output != "" {
-			visible = append(visible, log)
+		if log.Output == "" {
+			continue
 		}
+		if !includeHidden && log.Hidden {
+			continue
+		}
+		filtered = append(filtered, log)
 	}
-	sort.Slice(visible, func(i, j int) bool {
-		return visible[i].Order < visible[j].Order
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Order < filtered[j].Order
 	})
 
-	entries := make([]LogEntry, 0, len(visible))
-	for _, log := range visible {
+	entries := make([]LogEntry, 0, len(filtered))
+	for _, log := range filtered {
 		entries = append(entries, LogEntry{
 			Timestamp: log.Timestamp,
 			Message:   log.Output,

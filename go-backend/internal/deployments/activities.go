@@ -431,7 +431,9 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 		activity.RecordHeartbeat(ctx, deployment.Status)
 
 		// Parse logs from deployment response (already included, no extra API call)
-		logs, _ := coolify.ParseDeploymentLogs(deployment.Logs)
+		// Visible logs for error messages, all logs (including hidden) for progress extraction
+		visibleLogs, _ := coolify.ParseDeploymentLogs(deployment.Logs)
+		allLogs, _ := coolify.ParseDeploymentLogsAll(deployment.Logs)
 
 		switch deployment.Status {
 		case "finished":
@@ -486,15 +488,15 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 			errMsg := fmt.Sprintf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
 
 			// Attach a small, readable log snippet to help debug (frequently contains git/auth failures).
-			if len(logs) > 0 {
+			if len(visibleLogs) > 0 {
 				const maxLines = 25
 				start := 0
-				if len(logs) > maxLines {
-					start = len(logs) - maxLines
+				if len(visibleLogs) > maxLines {
+					start = len(visibleLogs) - maxLines
 				}
 
 				var b strings.Builder
-				for _, entry := range logs[start:] {
+				for _, entry := range visibleLogs[start:] {
 					line := strings.TrimSpace(entry.Message)
 					if line == "" {
 						continue
@@ -525,8 +527,8 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 			return nil, fmt.Errorf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
 
 		case "queued", "in_progress":
-			// Extract and persist progress from logs (already parsed above)
-			if progress := coolify.ExtractBuildProgress(logs); progress != nil {
+			// Extract progress from all logs (including hidden debug logs with Docker build stages)
+			if progress := coolify.ExtractBuildProgress(allLogs); progress != nil {
 				progressJSON, _ := json.Marshal(progress)
 				_ = a.appsQ.UpdateAppBuildProgress(ctx, apps.UpdateAppBuildProgressParams{
 					ID:            input.AppID,
