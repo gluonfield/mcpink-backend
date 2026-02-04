@@ -61,13 +61,20 @@ type ListAppsOutput struct {
 	Apps []AppInfo `json:"apps"`
 }
 
+type BuildProgress struct {
+	Stage       int    `json:"stage"`
+	TotalStages int    `json:"total_stages"`
+	Message     string `json:"message,omitempty"`
+}
+
 type AppInfo struct {
-	AppID      string  `json:"app_id"`
-	Name       string  `json:"name"`
-	Status     string  `json:"status"`
-	Repo       string  `json:"repo"`
-	URL        *string `json:"url,omitempty"`
-	CommitHash *string `json:"commit_hash,omitempty"`
+	AppID         string         `json:"app_id"`
+	Name          string         `json:"name"`
+	Status        string         `json:"status"`
+	Repo          string         `json:"repo"`
+	URL           *string        `json:"url,omitempty"`
+	CommitHash    *string        `json:"commit_hash,omitempty"`
+	BuildProgress *BuildProgress `json:"build_progress,omitempty"`
 }
 
 const (
@@ -138,21 +145,22 @@ type GetAppDetailsInput struct {
 }
 
 type GetAppDetailsOutput struct {
-	AppID          string       `json:"app_id"`
-	Name           string       `json:"name"`
-	Project        string       `json:"project"`
-	Repo           string       `json:"repo"`
-	Branch         string       `json:"branch"`
-	CommitHash     string       `json:"commit_hash,omitempty"`
-	BuildStatus    string       `json:"build_status"`
-	RuntimeStatus  string       `json:"runtime_status"`
-	URL            *string      `json:"url,omitempty"`
-	CreatedAt      string       `json:"created_at"`
-	UpdatedAt      string       `json:"updated_at"`
-	ErrorMessage   *string      `json:"error_message,omitempty"`
-	EnvVars        []EnvVarInfo `json:"env_vars,omitempty"`
-	DeploymentLogs string       `json:"deployment_logs,omitempty"`
-	RuntimeLogs    string       `json:"runtime_logs,omitempty"`
+	AppID          string         `json:"app_id"`
+	Name           string         `json:"name"`
+	Project        string         `json:"project"`
+	Repo           string         `json:"repo"`
+	Branch         string         `json:"branch"`
+	CommitHash     string         `json:"commit_hash,omitempty"`
+	BuildStatus    string         `json:"build_status"`
+	RuntimeStatus  string         `json:"runtime_status"`
+	URL            *string        `json:"url,omitempty"`
+	CreatedAt      string         `json:"created_at"`
+	UpdatedAt      string         `json:"updated_at"`
+	ErrorMessage   *string        `json:"error_message,omitempty"`
+	EnvVars        []EnvVarInfo   `json:"env_vars,omitempty"`
+	DeploymentLogs string         `json:"deployment_logs,omitempty"`
+	RuntimeLogs    string         `json:"runtime_logs,omitempty"`
+	BuildProgress  *BuildProgress `json:"build_progress,omitempty"`
 }
 
 type EnvVarInfo struct {

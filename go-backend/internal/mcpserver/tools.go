@@ -59,7 +59,6 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	}
 	input.Repo = repo
 
-	// Default build pack is nixpacks
 	buildPack := "nixpacks"
 	if input.BuildPack != "" {
 		switch input.BuildPack {
@@ -70,7 +69,6 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 	}
 
-	// Default port based on buildpack
 	port := strconv.Itoa(DefaultPort)
 	if buildPack == "static" {
 		port = "80"
@@ -79,7 +77,6 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		port = strconv.Itoa(input.Port)
 	}
 
-	// Convert env vars
 	envVars := make([]deployments.EnvVar, len(input.EnvVars))
 	for i, ev := range input.EnvVars {
 		envVars[i] = deployments.EnvVar{
@@ -103,10 +100,8 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	var result *deployments.CreateAppResult
 
 	if host == "ml.ink" {
-		// Internal git flow
 		result, err = s.createAppFromInternalGit(ctx, user.ID, input, buildPack, port, envVars)
 	} else {
-		// GitHub flow (existing)
 		result, err = s.createAppFromGitHub(ctx, user, input, buildPack, port, envVars)
 	}
 
@@ -181,7 +176,6 @@ func (s *Server) createAppFromGitHub(ctx context.Context, user *users.User, inpu
 
 	githubAppUUID := *user.CoolifyGithubAppUuid
 
-	// Strip github.com/ prefix if present
 	repo := strings.TrimPrefix(input.Repo, "github.com/")
 
 	return s.deployService.CreateApp(ctx, deployments.CreateAppInput{
@@ -224,7 +218,6 @@ func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, in
 		return nil, fmt.Errorf("repo belongs to another user")
 	}
 
-	// Get the SSH clone URL and private key UUID
 	username, repoName := parts[0], parts[1]
 	sshCloneURL := s.internalGitSvc.GetSSHCloneURL(username, repoName)
 	privateKeyUUID := s.internalGitSvc.Client().Config().CoolifyPrivateKeyUUID
@@ -290,19 +283,16 @@ func (s *Server) handleRedeploy(ctx context.Context, req *mcp.CallToolRequest, i
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, RedeployOutput{}, nil
 	}
 
-	// Get project (default to "default")
 	projectRef := input.Project
 	if projectRef == "" {
 		projectRef = "default"
 	}
 
-	// Look up project by ref
 	project, err := s.deployService.GetProjectByRef(ctx, user.ID, projectRef)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("project not found: %s", projectRef)}}}, RedeployOutput{}, nil
 	}
 
-	// Look up app by name and project
 	app, err := s.deployService.GetAppByNameAndProject(ctx, input.Name, project.ID)
 	if err != nil {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("app not found: %s", input.Name)}}}, RedeployOutput{}, nil
@@ -355,7 +345,6 @@ func (s *Server) handleCreateResource(ctx context.Context, req *mcp.CallToolRequ
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateResourceOutput{}, nil
 	}
 
-	// Set defaults for optional fields
 	dbType := DefaultDBType
 	if input.Type != "" {
 		if input.Type != "sqlite" {
@@ -486,11 +475,9 @@ func (s *Server) handleGetAppDetails(ctx context.Context, req *mcp.CallToolReque
 		project = input.Project
 	}
 
-	// Cap log lines at max
 	runtimeLogLines := min(input.RuntimeLogLines, MaxLogLines)
 	deployLogLines := min(input.DeployLogLines, MaxLogLines)
 
-	// Look up app by name and project
 	app, err := s.deployService.GetAppByName(ctx, deployments.GetAppByNameParams{
 		Name:    input.Name,
 		Project: project,
@@ -520,7 +507,13 @@ func (s *Server) handleGetAppDetails(ctx context.Context, req *mcp.CallToolReque
 		ErrorMessage:  app.ErrorMessage,
 	}
 
-	// Include env vars if requested
+	if len(app.BuildProgress) > 0 {
+		var progress BuildProgress
+		if err := json.Unmarshal(app.BuildProgress, &progress); err == nil {
+			output.BuildProgress = &progress
+		}
+	}
+
 	if input.IncludeEnv {
 		var envVars []EnvVar
 		if err := json.Unmarshal(app.EnvVars, &envVars); err == nil {
@@ -531,7 +524,6 @@ func (s *Server) handleGetAppDetails(ctx context.Context, req *mcp.CallToolReque
 		}
 	}
 
-	// Fetch logs via provider
 	if s.logProvider != nil && app.CoolifyAppUuid != nil {
 		if runtimeLogLines > 0 {
 			logs, err := s.logProvider.GetRuntimeLogs(ctx, *app.CoolifyAppUuid, runtimeLogLines)

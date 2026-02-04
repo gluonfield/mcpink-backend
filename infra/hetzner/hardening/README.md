@@ -9,6 +9,7 @@ Secure the run servers (Muscle) for executing untrusted user code. Focus: ship a
 When provisioning a new Muscle server, complete this checklist:
 
 ### Prerequisites
+
 - [ ] Server provisioned in Hetzner
 - [ ] SSH key access configured and tested
 - [ ] Docker installed
@@ -103,11 +104,13 @@ ssh root@${MUSCLE_IP} "docker run --rm node:20-alpine node -e 'console.log(proce
 ## Verification Checklist
 
 Run the automated verification:
+
 ```bash
 ssh root@${MUSCLE_IP} "bash /root/verify-hardening.sh"
 ```
 
 Expected output (all green):
+
 ```
 === Security Verification ===
 
@@ -154,14 +157,17 @@ All critical security checks passed.
 ### gVisor Kernel Emulation
 
 Containers running under gVisor see an emulated kernel:
+
 ```
 Linux version 4.4.0 #1 SMP Sun Jan 10 15:06:54 PST 2016
 ```
+
 This is normal - gVisor intercepts syscalls and doesn't use the host kernel.
 
 ### Docker Restart Issues
 
 If Docker fails to restart repeatedly, systemd may rate-limit it:
+
 ```bash
 # Reset the failed state first
 ssh root@${MUSCLE_IP} "systemctl reset-failed docker.service && systemctl start docker.service"
@@ -170,6 +176,7 @@ ssh root@${MUSCLE_IP} "systemctl reset-failed docker.service && systemctl start 
 ### SSH Connection Drops
 
 If SSH connections drop during setup, wait 5-10 seconds and retry. This can happen due to:
+
 - Network latency
 - Too many concurrent SSH sessions
 - Server load during Docker restarts
@@ -182,32 +189,35 @@ Coolify names its Traefik container `coolify-proxy`, not `traefik`. Both are the
 
 ## Troubleshooting
 
-| Problem | Solution |
-|---------|----------|
-| Docker won't start after daemon.json change | Check logs: `journalctl -xeu docker.service`. Common issue: invalid JSON syntax |
-| App doesn't work under gVisor | Test with `--runtime=runc` to confirm. Some apps need raw sockets or io_uring |
-| Traefik/coolify-proxy down after restart | Containers with `live-restore: true` should survive. Check: `docker ps \| grep proxy` |
-| SSH locked out after harden-ssh.sh | Use Hetzner Robot console to restore: `cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd` |
-| "systemctl restart docker" rate-limited | Run `systemctl reset-failed docker.service` first |
-| gVisor test shows "command not found" | gVisor not installed. Run `install-gvisor.sh` again |
-| Container shows runtime "runc" after enabling gVisor default | Expected for containers started before the change. New containers use runsc |
+| Problem                                                      | Solution                                                                                                           |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Docker won't start after daemon.json change                  | Check logs: `journalctl -xeu docker.service`. Common issue: invalid JSON syntax                                    |
+| App doesn't work under gVisor                                | Test with `--runtime=runc` to confirm. Some apps need raw sockets or io_uring                                      |
+| Traefik/coolify-proxy down after restart                     | Containers with `live-restore: true` should survive. Check: `docker ps \| grep proxy`                              |
+| SSH locked out after harden-ssh.sh                           | Use Hetzner Robot console to restore: `cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd` |
+| "systemctl restart docker" rate-limited                      | Run `systemctl reset-failed docker.service` first                                                                  |
+| gVisor test shows "command not found"                        | gVisor not installed. Run `install-gvisor.sh` again                                                                |
+| Container shows runtime "runc" after enabling gVisor default | Expected for containers started before the change. New containers use runsc                                        |
 
 ---
 
 ## Rollback Procedures
 
 ### Revert gVisor to Non-Default
+
 ```bash
 scp daemon-baseline.json root@${MUSCLE_IP}:/etc/docker/daemon.json
 ssh root@${MUSCLE_IP} "systemctl restart docker"
 ```
 
 ### Remove Egress Rules
+
 ```bash
 ssh root@${MUSCLE_IP} "iptables -F DOCKER-USER && iptables -A DOCKER-USER -j RETURN && netfilter-persistent save"
 ```
 
 ### Revert SSH Hardening
+
 ```bash
 ssh root@${MUSCLE_IP} "cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd"
 ```
@@ -216,15 +226,15 @@ ssh root@${MUSCLE_IP} "cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && syste
 
 ## Threat Model: What You're Actually Defending Against
 
-| Threat | Likelihood | Impact | Mitigation |
-|--------|------------|--------|------------|
-| Crypto mining | High | High (CPU/cost) | CPU limits + process monitoring |
-| Spam/phishing | High | High (IP reputation) | Block SMTP ports |
-| DDoS launch point | Medium | High (IP blacklist) | Rate limits + egress rules |
-| Container escape | Low | Critical | gVisor |
-| Credential theft (metadata) | Medium | Critical | Block 169.254.169.254 |
-| Fork bomb / resource exhaustion | Medium | Medium | pids-limit, memory limits |
-| Disk fill attack | Medium | Medium | Ephemeral storage limits |
+| Threat                          | Likelihood | Impact               | Mitigation                      |
+| ------------------------------- | ---------- | -------------------- | ------------------------------- |
+| Crypto mining                   | High       | High (CPU/cost)      | CPU limits + process monitoring |
+| Spam/phishing                   | High       | High (IP reputation) | Block SMTP ports                |
+| DDoS launch point               | Medium     | High (IP blacklist)  | Rate limits + egress rules      |
+| Container escape                | Low        | Critical             | gVisor                          |
+| Credential theft (metadata)     | Medium     | Critical             | Block 169.254.169.254           |
+| Fork bomb / resource exhaustion | Medium     | Medium               | pids-limit, memory limits       |
+| Disk fill attack                | Medium     | Medium               | Ephemeral storage limits        |
 
 ---
 
@@ -232,13 +242,13 @@ ssh root@${MUSCLE_IP} "cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && syste
 
 ### Explicitly Block at Deployment Time
 
-| Blocked | Detection | Action |
-|---------|-----------|--------|
-| Crypto miners | Dockerfile has xmrig, cgminer, etc. | Reject at build |
-| Tor exit nodes | Port 9001, 9030 in start command | Reject |
-| VPN/proxy servers | OpenVPN, Wireguard, Shadowsocks | Reject |
-| Torrenting | qBittorrent, Transmission | Reject |
-| Mail servers | Postfix, Sendmail, SMTP apps | Reject |
+| Blocked           | Detection                           | Action          |
+| ----------------- | ----------------------------------- | --------------- |
+| Crypto miners     | Dockerfile has xmrig, cgminer, etc. | Reject at build |
+| Tor exit nodes    | Port 9001, 9030 in start command    | Reject          |
+| VPN/proxy servers | OpenVPN, Wireguard, Shadowsocks     | Reject          |
+| Torrenting        | qBittorrent, Transmission           | Reject          |
+| Mail servers      | Postfix, Sendmail, SMTP apps        | Reject          |
 
 **Practical implementation**: Scan Dockerfile and start commands for keywords before deploying.
 
@@ -255,6 +265,7 @@ blockedPatterns := []string{
 ### Block at Runtime (Egress Rules)
 
 See `setup-egress-rules.sh` - blocks:
+
 - Cloud metadata endpoints (credential theft)
 - SMTP ports (spam prevention)
 - Common mining pool ports
@@ -264,6 +275,7 @@ See `setup-egress-rules.sh` - blocks:
 ### Runtime Monitoring (Detect & Log)
 
 See `detect-miners.sh` - detects containers with sustained high CPU usage.
+
 - Runs every 5 minutes via cron
 - Logs to `/var/log/miner-detection.log`
 - Auto-kill disabled by default (logging only)
@@ -289,12 +301,12 @@ docker run -d \
 
 ### Resource Tiers
 
-| Tier | Memory | CPU | Ephemeral Disk | Use Case |
-|------|--------|-----|----------------|----------|
-| Free | 256m | 0.25 | 512MB (tmpfs) | Simple MCP servers |
-| Basic | 512m | 0.5 | 1GB (tmpfs) | Most apps |
-| Pro | 1g | 1.0 | 2GB (tmpfs) | Heavier workloads |
-| Custom | 2g+ | 2.0+ | 5GB+ | PDF processing, ML, etc. |
+| Tier   | Memory | CPU  | Ephemeral Disk | Use Case                 |
+| ------ | ------ | ---- | -------------- | ------------------------ |
+| Free   | 256m   | 0.25 | 512MB (tmpfs)  | Simple MCP servers       |
+| Basic  | 512m   | 0.5  | 1GB (tmpfs)    | Most apps                |
+| Pro    | 1g     | 1.0  | 2GB (tmpfs)    | Heavier workloads        |
+| Custom | 2g+    | 2.0+ | 5GB+           | PDF processing, ML, etc. |
 
 ---
 
@@ -334,13 +346,13 @@ Use this for initial testing before making gVisor the default.
 
 These containers run on runc (not gVisor) because they need special access:
 
-| Container | Why runc |
-|-----------|----------|
-| coolify-proxy | Coolify's Traefik - needs full network access |
-| coolify-sentinel | Coolify health monitoring |
-| coolify-* | All Coolify internal services |
-| cadvisor | Needs /sys, /proc access for metrics |
-| alloy | Grafana agent - needs host access |
+| Container        | Why runc                                      |
+| ---------------- | --------------------------------------------- |
+| coolify-proxy    | Coolify's Traefik - needs full network access |
+| coolify-sentinel | Coolify health monitoring                     |
+| coolify-\*       | All Coolify internal services                 |
+| cadvisor         | Needs /sys, /proc access for metrics          |
+| alloy            | Grafana agent - needs host access             |
 
 Since existing containers keep their runtime after changing the default, these system containers (started before gVisor was default) continue using runc automatically.
 
@@ -348,14 +360,15 @@ Since existing containers keep their runtime after changing the default, these s
 
 ## What gVisor Protects Against
 
-| Scenario | Without gVisor | With gVisor |
-|----------|----------------|-------------|
-| Kernel exploit (CVE-2024-21626) | Full host access | Blocked - hits gVisor kernel |
-| Container escape via runc bug | Host compromise | Blocked |
-| /proc, /sys snooping | Can read host info | Sandboxed |
-| ptrace attacks | Possible | Blocked |
+| Scenario                        | Without gVisor     | With gVisor                  |
+| ------------------------------- | ------------------ | ---------------------------- |
+| Kernel exploit (CVE-2024-21626) | Full host access   | Blocked - hits gVisor kernel |
+| Container escape via runc bug   | Host compromise    | Blocked                      |
+| /proc, /sys snooping            | Can read host info | Sandboxed                    |
+| ptrace attacks                  | Possible           | Blocked                      |
 
 **What gVisor does NOT protect against**:
+
 - Network abuse (that's why you need egress rules)
 - Resource exhaustion (that's why you need limits)
 - Application-level vulns (your problem)
@@ -364,12 +377,12 @@ Since existing containers keep their runtime after changing the default, these s
 
 ## Compatibility: What Breaks Under gVisor
 
-| Works | Doesn't Work |
-|-------|--------------|
+| Works                           | Doesn't Work                     |
+| ------------------------------- | -------------------------------- |
 | Node.js, Python, Go, Rust, Java | Raw sockets (some network tools) |
-| PostgreSQL, Redis, MongoDB | io_uring (some high-perf libs) |
-| Next.js, Remix, FastAPI | strace, gdb, perf |
-| WebSockets, HTTP/2 | Some kernel-specific syscalls |
+| PostgreSQL, Redis, MongoDB      | io_uring (some high-perf libs)   |
+| Next.js, Remix, FastAPI         | strace, gdb, perf                |
+| WebSockets, HTTP/2              | Some kernel-specific syscalls    |
 
 **Practical impact**: 95%+ of web apps work. If something breaks, user can report and you can investigate.
 
@@ -377,24 +390,25 @@ Since existing containers keep their runtime after changing the default, these s
 
 ## Files in This Directory
 
-| File | Purpose |
-|------|---------|
-| `README.md` | This documentation |
-| `setup-muscle.sh` | **One-command setup** for new Muscle servers (baseline) |
-| `setup-egress-rules.sh` | Egress firewall rules (metadata, SMTP, mining, IRC, Tor) |
-| `install-gvisor.sh` | gVisor installation |
-| `detect-miners.sh` | Runtime abuse detection (cron) |
-| `verify-hardening.sh` | Automated security verification |
-| `harden-ssh.sh` | SSH hardening (disable password auth) |
-| `setup-host-firewall.sh` | UFW host firewall configuration (optional) |
-| `daemon.json` | Docker daemon config with gVisor as default |
-| `daemon-baseline.json` | Docker daemon config with gVisor available (not default) |
+| File                     | Purpose                                                  |
+| ------------------------ | -------------------------------------------------------- |
+| `README.md`              | This documentation                                       |
+| `setup-muscle.sh`        | **One-command setup** for new Muscle servers (baseline)  |
+| `setup-egress-rules.sh`  | Egress firewall rules (metadata, SMTP, mining, IRC, Tor) |
+| `install-gvisor.sh`      | gVisor installation                                      |
+| `detect-miners.sh`       | Runtime abuse detection (cron)                           |
+| `verify-hardening.sh`    | Automated security verification                          |
+| `harden-ssh.sh`          | SSH hardening (disable password auth)                    |
+| `setup-host-firewall.sh` | UFW host firewall configuration (optional)               |
+| `daemon.json`            | Docker daemon config with gVisor as default              |
+| `daemon-baseline.json`   | Docker daemon config with gVisor available (not default) |
 
 ---
 
 ## Monitoring for Abuse
 
 Check miner detection logs:
+
 ```bash
 ssh root@${MUSCLE_IP} "cat /var/log/miner-detection.log"
 ```

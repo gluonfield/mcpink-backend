@@ -102,7 +102,6 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 	var userID string
 	user, err := s.usersQ.GetUserByGitHubID(ctx, ghUser.ID)
 	if err != nil {
-		// New user - create user and github_creds, trigger async account setup
 		userID = shortuuid.New()
 		var avatarURL *string
 		if ghUser.AvatarURL != "" {
@@ -133,13 +132,11 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 	} else {
 		userID = user.ID
 
-		// Get existing github creds for downgrade protection
 		existingCreds, credsErr := s.githubCredsQ.GetGitHubCredsByUserID(ctx, user.ID)
 		if credsErr != nil {
 			return nil, fmt.Errorf("failed to get github creds: %w", credsErr)
 		}
 
-		// Apply downgrade protection
 		finalToken := encryptedToken
 		finalScopes := newScopes
 
@@ -151,7 +148,6 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 			}
 		}
 
-		// Update user profile
 		var avatarURLUpdate *string
 		if ghUser.AvatarURL != "" {
 			avatarURLUpdate = helpers.Ptr(ghUser.AvatarURL)
@@ -165,7 +161,6 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 			return nil, fmt.Errorf("failed to update user profile: %w", err)
 		}
 
-		// Update github creds
 		_, err = s.githubCredsQ.UpdateGitHubOAuthToken(ctx, githubcreds.UpdateGitHubOAuthTokenParams{
 			UserID:            user.ID,
 			GithubOauthToken:  finalToken,

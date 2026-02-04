@@ -223,7 +223,6 @@ func StartServer(lc fx.Lifecycle, router *chi.Mux, config GraphQLAPIConfig, logg
 			// Disable keep-alives to prevent new persistent connections during shutdown
 			server.SetKeepAlivesEnabled(false)
 
-			// Create a short timeout for graceful shutdown
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 			defer cancel()
 

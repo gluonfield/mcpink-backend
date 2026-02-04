@@ -44,7 +44,7 @@ type deploymentLogEntry struct {
 	Order     int     `json:"order"`
 }
 
-func parseDeploymentLogs(raw string) ([]LogEntry, error) {
+func ParseDeploymentLogs(raw string) ([]LogEntry, error) {
 	if raw == "" {
 		return []LogEntry{}, nil
 	}
@@ -132,7 +132,7 @@ func (s *ApplicationsService) GetDeploymentLogsForUUID(ctx context.Context, appU
 	if err != nil {
 		return nil, err
 	}
-	return parseDeploymentLogs(deployment.Logs)
+	return ParseDeploymentLogs(deployment.Logs)
 }
 
 func (s *ApplicationsService) GetDeploymentLogs(ctx context.Context, uuid string) ([]LogEntry, error) {
@@ -153,5 +153,5 @@ func (s *ApplicationsService) GetDeploymentLogs(ctx context.Context, uuid string
 		return []LogEntry{}, nil
 	}
 
-	return parseDeploymentLogs(resp.Deployments[0].Logs)
+	return ParseDeploymentLogs(resp.Deployments[0].Logs)
 }

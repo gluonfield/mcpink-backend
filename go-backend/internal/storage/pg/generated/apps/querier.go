@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	ClearAppBuildProgress(ctx context.Context, id string) error
 	CountAppsByProjectID(ctx context.Context, projectID string) (int64, error)
 	CountAppsByUserID(ctx context.Context, userID string) (int64, error)
 	CreateApp(ctx context.Context, arg CreateAppParams) (App, error)
@@ -23,6 +24,7 @@ type Querier interface {
 	ListAppsByProjectID(ctx context.Context, arg ListAppsByProjectIDParams) ([]App, error)
 	ListAppsByUserID(ctx context.Context, arg ListAppsByUserIDParams) ([]App, error)
 	SoftDeleteApp(ctx context.Context, id string) (App, error)
+	UpdateAppBuildProgress(ctx context.Context, arg UpdateAppBuildProgressParams) error
 	UpdateAppCoolifyUUID(ctx context.Context, arg UpdateAppCoolifyUUIDParams) (App, error)
 	UpdateAppFailed(ctx context.Context, arg UpdateAppFailedParams) (App, error)
 	UpdateAppRedeploying(ctx context.Context, id string) (App, error)

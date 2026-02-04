@@ -23,7 +23,6 @@ func (r *mutationResolver) DeleteApp(ctx context.Context, name string, project *
 		projectRef = *project
 	}
 
-	// Look up app by name and project
 	app, err := r.AppQueries.GetAppByNameAndUserProject(ctx, apps.GetAppByNameAndUserProjectParams{
 		Name:   &name,
 		UserID: userID,
@@ -42,7 +41,6 @@ func (r *mutationResolver) DeleteApp(ctx context.Context, name string, project *
 		}
 	}
 
-	// Soft delete in database
 	_, err = r.AppQueries.SoftDeleteApp(ctx, app.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete app: %w", err)
@@ -64,7 +62,6 @@ func (r *mutationResolver) DeleteApp(ctx context.Context, name string, project *
 func (r *queryResolver) ListApps(ctx context.Context, first *int32, after *string) (*model.AppConnection, error) {
 	userID := authz.For(ctx).GetUserID()
 
-	// Get total count
 	totalCount, err := r.AppQueries.CountAppsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to count apps: %w", err)
@@ -115,7 +112,6 @@ func (r *queryResolver) AppDetails(ctx context.Context, id string) (*model.App, 
 		return nil, fmt.Errorf("failed to get app: %w", err)
 	}
 
-	// Verify ownership
 	if dbApp.UserID != userID {
 		return nil, fmt.Errorf("app not found")
 	}

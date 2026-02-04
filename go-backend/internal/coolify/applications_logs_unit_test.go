@@ -10,9 +10,9 @@ func TestParseDeploymentLogs_FiltersAndSorts(t *testing.T) {
   {"output":"first","type":"stdout","timestamp":"t1","hidden":false,"order":1}
 ]`
 
-	entries, err := parseDeploymentLogs(raw)
+	entries, err := ParseDeploymentLogs(raw)
 	if err != nil {
-		t.Fatalf("parseDeploymentLogs returned error: %v", err)
+		t.Fatalf("ParseDeploymentLogs returned error: %v", err)
 	}
 
 	if len(entries) != 2 {
@@ -27,9 +27,9 @@ func TestParseDeploymentLogs_FiltersAndSorts(t *testing.T) {
 }
 
 func TestParseDeploymentLogs_Empty(t *testing.T) {
-	entries, err := parseDeploymentLogs("")
+	entries, err := ParseDeploymentLogs("")
 	if err != nil {
-		t.Fatalf("parseDeploymentLogs returned error: %v", err)
+		t.Fatalf("ParseDeploymentLogs returned error: %v", err)
 	}
 	if len(entries) != 0 {
 		t.Fatalf("expected 0 entries, got %d", len(entries))

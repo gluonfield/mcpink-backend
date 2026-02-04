@@ -77,7 +77,6 @@ type CreateAppResult struct {
 }
 
 func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateAppResult, error) {
-	// Look up project by ref or get default
 	var projectID string
 	if input.ProjectRef != "" {
 		project, err := s.projectsQ.GetProjectByRef(ctx, projects.GetProjectByRefParams{

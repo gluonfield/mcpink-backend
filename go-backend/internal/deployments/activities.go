@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand"
@@ -429,8 +430,14 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 
 		activity.RecordHeartbeat(ctx, deployment.Status)
 
+		// Parse logs from deployment response (already included, no extra API call)
+		logs, _ := coolify.ParseDeploymentLogs(deployment.Logs)
+
 		switch deployment.Status {
 		case "finished":
+			// Clear build progress on completion
+			_ = a.appsQ.ClearAppBuildProgress(ctx, input.AppID)
+
 			// Deployment complete - get app info for FQDN and commit hash
 			app, err := a.coolify.Applications.Get(ctx, input.CoolifyAppUUID)
 			if err != nil {
@@ -473,10 +480,13 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 			return &WaitForRunningResult{FQDN: fqdn}, nil
 
 		case "failed", "cancelled_by_user":
+			// Clear build progress on failure
+			_ = a.appsQ.ClearAppBuildProgress(ctx, input.AppID)
+
 			errMsg := fmt.Sprintf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
 
 			// Attach a small, readable log snippet to help debug (frequently contains git/auth failures).
-			if logs, logErr := a.coolify.Applications.GetDeploymentLogsForUUID(ctx, input.CoolifyAppUUID, input.DeploymentUUID); logErr == nil && len(logs) > 0 {
+			if len(logs) > 0 {
 				const maxLines = 25
 				start := 0
 				if len(logs) > maxLines {
@@ -515,7 +525,14 @@ func (a *Activities) WaitForRunning(ctx context.Context, input WaitForRunningInp
 			return nil, fmt.Errorf("deployment %s: %s", deployment.Status, input.DeploymentUUID)
 
 		case "queued", "in_progress":
-			// Still in progress, keep polling
+			// Extract and persist progress from logs (already parsed above)
+			if progress := coolify.ExtractBuildProgress(logs); progress != nil {
+				progressJSON, _ := json.Marshal(progress)
+				_ = a.appsQ.UpdateAppBuildProgress(ctx, apps.UpdateAppBuildProgressParams{
+					ID:            input.AppID,
+					BuildProgress: progressJSON,
+				})
+			}
 		}
 
 		time.Sleep(pollInterval)

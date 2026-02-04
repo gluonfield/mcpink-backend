@@ -104,3 +104,13 @@ LIMIT 1;
 -- name: GetAppsByRepoBranchProvider :many
 SELECT * FROM apps
 WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND coolify_app_uuid IS NOT NULL AND is_deleted = false;
+
+-- name: UpdateAppBuildProgress :exec
+UPDATE apps
+SET build_progress = $2, updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;
+
+-- name: ClearAppBuildProgress :exec
+UPDATE apps
+SET build_progress = NULL, updated_at = NOW()
+WHERE id = $1 AND is_deleted = false;

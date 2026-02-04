@@ -43,6 +43,7 @@ type App struct {
 	IsDeleted      bool               `json:"is_deleted"`
 	GitProvider    string             `json:"git_provider"`
 	CustomDomain   *string            `json:"custom_domain"`
+	BuildProgress  []byte             `json:"build_progress"`
 }
 
 type DnsRecord struct {
