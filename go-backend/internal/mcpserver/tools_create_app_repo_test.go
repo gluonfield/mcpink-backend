@@ -17,28 +17,21 @@ func TestNormalizeCreateAppRepo(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "defaults to mlink",
+			name:     "defaults to ml.ink",
 			input:    CreateAppInput{Repo: "exp20"},
-			wantHost: "mlink",
+			wantHost: "ml.ink",
 			wantRepo: "ml.ink/gluonfield/exp20",
 		},
 		{
-			name:     "github host name expands to owner/repo",
-			input:    CreateAppInput{Repo: "exp20", Host: "github"},
-			wantHost: "github",
+			name:     "github.com host expands repo name",
+			input:    CreateAppInput{Repo: "exp20", Host: "github.com"},
+			wantHost: "github.com",
 			wantRepo: "gluonfield/exp20",
 		},
 		{
-			name:     "mlink owner/repo expands to ml.ink prefix",
-			input:    CreateAppInput{Repo: "gluonfield/exp20", Host: "mlink"},
-			wantHost: "mlink",
-			wantRepo: "ml.ink/gluonfield/exp20",
-		},
-		{
-			name:     "github owner/repo kept",
-			input:    CreateAppInput{Repo: "gluonfield/exp20", Host: "github"},
-			wantHost: "github",
-			wantRepo: "gluonfield/exp20",
+			name:    "rejects owner/repo format",
+			input:   CreateAppInput{Repo: "gluonfield/exp20", Host: "ml.ink"},
+			wantErr: true,
 		},
 		{
 			name:    "rejects url",
@@ -47,7 +40,7 @@ func TestNormalizeCreateAppRepo(t *testing.T) {
 		},
 		{
 			name:    "rejects prefixed repo",
-			input:   CreateAppInput{Repo: "ml.ink/gluonfield/exp20", Host: "mlink"},
+			input:   CreateAppInput{Repo: "ml.ink/gluonfield/exp20", Host: "ml.ink"},
 			wantErr: true,
 		},
 		{
@@ -56,7 +49,7 @@ func TestNormalizeCreateAppRepo(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "rejects extra slashes",
+			name:    "rejects paths with slashes",
 			input:   CreateAppInput{Repo: "a/b/c"},
 			wantErr: true,
 		},
@@ -88,4 +81,3 @@ func TestNormalizeCreateAppRepo(t *testing.T) {
 		})
 	}
 }
-

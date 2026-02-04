@@ -2,7 +2,7 @@
 // versions:
 //   sqlc v1.30.0
 
-package internalrepos
+package dnsrecords
 
 import (
 	"github.com/jackc/pgx/v5/pgtype"

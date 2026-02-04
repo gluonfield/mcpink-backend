@@ -43,7 +43,6 @@ openai:
   apikey: ""
 
 temporal:
-  enabled: true
   address: "localhost:7233"
   namespace: "default"
   cloudapikey: ""
@@ -57,11 +56,19 @@ coolify:
   token: ""
   timeout: "30s"
   projectuuid: ""
-  serveruuids: []
+  servers:
+    - uuid: "lswwsosgs8okoog4ksg8gkog"
+      ip: "157.90.130.187"
+  # Or via env var: COOLIFY_SERVERS="lswwsosgs8okoog4ksg8gkog:157.90.130.187"
   environmentname: "production"
   githubappuuid: ""
   registryurl: ""
   usebuildserver: true
+
+cloudflare:
+  apitoken: ""
+  zoneid: ""
+  basedomain: "ml.ink"
 
 turso:
   apikey: ""

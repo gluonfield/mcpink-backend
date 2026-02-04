@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/augustdev/autoclip/internal/auth"
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
@@ -23,49 +24,57 @@ func NewConfig() (Config, error) {
 	}
 
 	var cfg struct {
-		GraphQLAPI GraphQLAPIConfig
-		Db         pg.DbConfig
-		GitHub     github_oauth.Config
-		GitHubApp  githubapp.Config
-		Auth       auth.Config
-		Temporal   TemporalClientConfig
-		NATS       NATSConfig
-		Coolify    coolify.Config
-		Turso      turso.Config
-		Gitea      internalgit.Config
+		GraphQLAPI  GraphQLAPIConfig
+		Db          pg.DbConfig
+		GitHub      github_oauth.Config
+		GitHubApp   githubapp.Config
+		Auth        auth.Config
+		Temporal    TemporalClientConfig
+		NATS        NATSConfig
+		Coolify     coolify.Config
+		Turso       turso.Config
+		Gitea       internalgit.Config
+		Cloudflare  cloudflare.Config
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
 		return Config{}, fmt.Errorf("unable to decode config: %w", err)
 	}
 
+	// Parse COOLIFY_SERVERS env var override: "uuid1:ip1,uuid2:ip2"
+	if serversEnv := os.Getenv("COOLIFY_SERVERS"); serversEnv != "" {
+		cfg.Coolify.Servers = parseServersEnv(serversEnv)
+	}
+
 	return Config{
-		GraphQLAPI: cfg.GraphQLAPI,
-		Db:         cfg.Db,
-		GitHub:     cfg.GitHub,
-		GitHubApp:  cfg.GitHubApp,
-		Auth:       cfg.Auth,
-		Temporal:   cfg.Temporal,
-		NATS:       cfg.NATS,
-		Coolify:    cfg.Coolify,
-		Turso:      cfg.Turso,
-		Gitea:      cfg.Gitea,
+		GraphQLAPI:  cfg.GraphQLAPI,
+		Db:          cfg.Db,
+		GitHub:      cfg.GitHub,
+		GitHubApp:   cfg.GitHubApp,
+		Auth:        cfg.Auth,
+		Temporal:    cfg.Temporal,
+		NATS:        cfg.NATS,
+		Coolify:     cfg.Coolify,
+		Turso:       cfg.Turso,
+		Gitea:       cfg.Gitea,
+		Cloudflare:  cfg.Cloudflare,
 	}, nil
 }
 
 type Config struct {
 	fx.Out
 
-	GraphQLAPI GraphQLAPIConfig
-	Db         pg.DbConfig
-	GitHub     github_oauth.Config
-	GitHubApp  githubapp.Config
-	Auth       auth.Config
-	Temporal   TemporalClientConfig
-	NATS       NATSConfig
-	Coolify    coolify.Config
-	Turso      turso.Config
-	Gitea      internalgit.Config
+	GraphQLAPI  GraphQLAPIConfig
+	Db          pg.DbConfig
+	GitHub      github_oauth.Config
+	GitHubApp   githubapp.Config
+	Auth        auth.Config
+	Temporal    TemporalClientConfig
+	NATS        NATSConfig
+	Coolify     coolify.Config
+	Turso       turso.Config
+	Gitea       internalgit.Config
+	Cloudflare  cloudflare.Config
 }
 
 func InitConfig() error {
@@ -90,4 +99,23 @@ func InitConfig() error {
 type NATSConfig struct {
 	URL   string
 	Token string
+}
+
+// parseServersEnv parses "uuid1:ip1,uuid2:ip2" format into []ServerEntry
+func parseServersEnv(env string) []coolify.ServerEntry {
+	var servers []coolify.ServerEntry
+	for _, pair := range strings.Split(env, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		parts := strings.SplitN(pair, ":", 2)
+		if len(parts) == 2 {
+			servers = append(servers, coolify.ServerEntry{
+				UUID: strings.TrimSpace(parts[0]),
+				IP:   strings.TrimSpace(parts[1]),
+			})
+		}
+	}
+	return servers
 }

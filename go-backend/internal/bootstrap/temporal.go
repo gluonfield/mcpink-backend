@@ -19,11 +19,9 @@ import (
 )
 
 type TemporalClientConfig struct {
-	Enabled      bool
-	AllowDisable bool
-	Address      string
-	Namespace    string
-	CloudAPIKey  string
+	Address     string
+	Namespace   string
+	CloudAPIKey string
 }
 
 func CreateTemporalClient(lc fx.Lifecycle, config TemporalClientConfig) (client.Client, error) {

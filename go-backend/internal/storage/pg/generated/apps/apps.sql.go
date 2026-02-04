@@ -37,7 +37,7 @@ INSERT INTO apps (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'queued', $13
 )
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type CreateAppParams struct {
@@ -96,6 +96,7 @@ func (q *Queries) CreateApp(ctx context.Context, arg CreateAppParams) (App, erro
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -110,7 +111,7 @@ func (q *Queries) DeleteApp(ctx context.Context, id string) error {
 }
 
 const getAppByCoolifyUUID = `-- name: GetAppByCoolifyUUID :one
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps WHERE coolify_app_uuid = $1 AND is_deleted = false
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps WHERE coolify_app_uuid = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetAppByCoolifyUUID(ctx context.Context, coolifyAppUuid *string) (App, error) {
@@ -139,12 +140,13 @@ func (q *Queries) GetAppByCoolifyUUID(ctx context.Context, coolifyAppUuid *strin
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
 
 const getAppByID = `-- name: GetAppByID :one
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps WHERE id = $1 AND is_deleted = false
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps WHERE id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetAppByID(ctx context.Context, id string) (App, error) {
@@ -173,12 +175,13 @@ func (q *Queries) GetAppByID(ctx context.Context, id string) (App, error) {
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
 
 const getAppByNameAndProject = `-- name: GetAppByNameAndProject :one
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps
 WHERE name = $1 AND project_id = $2 AND coolify_app_uuid IS NOT NULL AND is_deleted = false
 `
 
@@ -213,12 +216,13 @@ func (q *Queries) GetAppByNameAndProject(ctx context.Context, arg GetAppByNameAn
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
 
 const getAppByNameAndUserProject = `-- name: GetAppByNameAndUserProject :one
-SELECT a.id, a.user_id, a.coolify_app_uuid, a.build_status, a.runtime_status, a.error_message, a.repo, a.branch, a.server_uuid, a.name, a.build_pack, a.port, a.env_vars, a.fqdn, a.workflow_id, a.workflow_run_id, a.created_at, a.updated_at, a.project_id, a.commit_hash, a.is_deleted, a.git_provider FROM apps a
+SELECT a.id, a.user_id, a.coolify_app_uuid, a.build_status, a.runtime_status, a.error_message, a.repo, a.branch, a.server_uuid, a.name, a.build_pack, a.port, a.env_vars, a.fqdn, a.workflow_id, a.workflow_run_id, a.created_at, a.updated_at, a.project_id, a.commit_hash, a.is_deleted, a.git_provider, a.custom_domain FROM apps a
 JOIN projects p ON a.project_id = p.id
 WHERE a.name = $1
   AND p.user_id = $2
@@ -260,12 +264,13 @@ func (q *Queries) GetAppByNameAndUserProject(ctx context.Context, arg GetAppByNa
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
 
 const getAppByWorkflowID = `-- name: GetAppByWorkflowID :one
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps WHERE workflow_id = $1 AND is_deleted = false
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps WHERE workflow_id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetAppByWorkflowID(ctx context.Context, workflowID string) (App, error) {
@@ -294,12 +299,13 @@ func (q *Queries) GetAppByWorkflowID(ctx context.Context, workflowID string) (Ap
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
 
 const getAppsByRepoBranch = `-- name: GetAppsByRepoBranch :many
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps
 WHERE repo = $1 AND branch = $2 AND coolify_app_uuid IS NOT NULL AND is_deleted = false
 `
 
@@ -340,6 +346,7 @@ func (q *Queries) GetAppsByRepoBranch(ctx context.Context, arg GetAppsByRepoBran
 			&i.CommitHash,
 			&i.IsDeleted,
 			&i.GitProvider,
+			&i.CustomDomain,
 		); err != nil {
 			return nil, err
 		}
@@ -352,7 +359,7 @@ func (q *Queries) GetAppsByRepoBranch(ctx context.Context, arg GetAppsByRepoBran
 }
 
 const getAppsByRepoBranchProvider = `-- name: GetAppsByRepoBranchProvider :many
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps
 WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND coolify_app_uuid IS NOT NULL AND is_deleted = false
 `
 
@@ -394,6 +401,7 @@ func (q *Queries) GetAppsByRepoBranchProvider(ctx context.Context, arg GetAppsBy
 			&i.CommitHash,
 			&i.IsDeleted,
 			&i.GitProvider,
+			&i.CustomDomain,
 		); err != nil {
 			return nil, err
 		}
@@ -406,7 +414,7 @@ func (q *Queries) GetAppsByRepoBranchProvider(ctx context.Context, arg GetAppsBy
 }
 
 const listAppsByProjectID = `-- name: ListAppsByProjectID :many
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps
 WHERE project_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -450,6 +458,7 @@ func (q *Queries) ListAppsByProjectID(ctx context.Context, arg ListAppsByProject
 			&i.CommitHash,
 			&i.IsDeleted,
 			&i.GitProvider,
+			&i.CustomDomain,
 		); err != nil {
 			return nil, err
 		}
@@ -462,7 +471,7 @@ func (q *Queries) ListAppsByProjectID(ctx context.Context, arg ListAppsByProject
 }
 
 const listAppsByUserID = `-- name: ListAppsByUserID :many
-SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider FROM apps
+SELECT id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain FROM apps
 WHERE user_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -506,6 +515,7 @@ func (q *Queries) ListAppsByUserID(ctx context.Context, arg ListAppsByUserIDPara
 			&i.CommitHash,
 			&i.IsDeleted,
 			&i.GitProvider,
+			&i.CustomDomain,
 		); err != nil {
 			return nil, err
 		}
@@ -521,7 +531,7 @@ const softDeleteApp = `-- name: SoftDeleteApp :one
 UPDATE apps
 SET is_deleted = true, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 func (q *Queries) SoftDeleteApp(ctx context.Context, id string) (App, error) {
@@ -550,6 +560,7 @@ func (q *Queries) SoftDeleteApp(ctx context.Context, id string) (App, error) {
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -558,7 +569,7 @@ const updateAppCoolifyUUID = `-- name: UpdateAppCoolifyUUID :one
 UPDATE apps
 SET coolify_app_uuid = $2, build_status = 'building', updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type UpdateAppCoolifyUUIDParams struct {
@@ -592,6 +603,7 @@ func (q *Queries) UpdateAppCoolifyUUID(ctx context.Context, arg UpdateAppCoolify
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -600,7 +612,7 @@ const updateAppFailed = `-- name: UpdateAppFailed :one
 UPDATE apps
 SET build_status = 'failed', error_message = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type UpdateAppFailedParams struct {
@@ -634,6 +646,7 @@ func (q *Queries) UpdateAppFailed(ctx context.Context, arg UpdateAppFailedParams
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -642,7 +655,7 @@ const updateAppRedeploying = `-- name: UpdateAppRedeploying :one
 UPDATE apps
 SET build_status = 'building', updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 func (q *Queries) UpdateAppRedeploying(ctx context.Context, id string) (App, error) {
@@ -671,6 +684,7 @@ func (q *Queries) UpdateAppRedeploying(ctx context.Context, id string) (App, err
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -679,7 +693,7 @@ const updateAppRunning = `-- name: UpdateAppRunning :one
 UPDATE apps
 SET build_status = 'success', runtime_status = 'running', fqdn = $2, commit_hash = $3, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type UpdateAppRunningParams struct {
@@ -714,6 +728,7 @@ func (q *Queries) UpdateAppRunning(ctx context.Context, arg UpdateAppRunningPara
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -722,7 +737,7 @@ const updateBuildStatus = `-- name: UpdateBuildStatus :one
 UPDATE apps
 SET build_status = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type UpdateBuildStatusParams struct {
@@ -756,6 +771,7 @@ func (q *Queries) UpdateBuildStatus(ctx context.Context, arg UpdateBuildStatusPa
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }
@@ -764,7 +780,7 @@ const updateRuntimeStatus = `-- name: UpdateRuntimeStatus :one
 UPDATE apps
 SET runtime_status = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider
+RETURNING id, user_id, coolify_app_uuid, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain
 `
 
 type UpdateRuntimeStatusParams struct {
@@ -798,6 +814,7 @@ func (q *Queries) UpdateRuntimeStatus(ctx context.Context, arg UpdateRuntimeStat
 		&i.CommitHash,
 		&i.IsDeleted,
 		&i.GitProvider,
+		&i.CustomDomain,
 	)
 	return i, err
 }

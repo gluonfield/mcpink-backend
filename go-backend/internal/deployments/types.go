@@ -1,19 +1,24 @@
 package deployments
 
 type DeployWorkflowInput struct {
-	AppID         string
-	UserID        string
-	ProjectID     string
-	GitHubAppUUID string
-	Repo          string
-	Branch        string
-	Name          string
-	BuildPack     string
-	Port          string
-	EnvVars       []EnvVar
-	GitProvider   string // "github" or "gitea"
+	AppID          string
+	UserID         string
+	ProjectID      string
+	GitHubAppUUID  string
+	Repo           string
+	Branch         string
+	Name           string
+	BuildPack      string
+	Port           string
+	EnvVars        []EnvVar
+	GitProvider    string // "github" or "gitea"
 	PrivateKeyUUID string // for internal git (gitea)
-	SSHCloneURL   string // for internal git (gitea)
+	SSHCloneURL    string // for internal git (gitea)
+	Memory         string
+	CPU            string
+	InstallCommand string
+	BuildCommand   string
+	StartCommand   string
 }
 
 type DeployWorkflowResult struct {
@@ -54,6 +59,17 @@ type RedeployWorkflowInput struct {
 type RedeployWorkflowResult struct {
 	AppID        string
 	FQDN         string
+	Status       string
+	ErrorMessage string
+}
+
+type DeleteAppWorkflowInput struct {
+	AppID          string
+	CoolifyAppUUID string
+}
+
+type DeleteAppWorkflowResult struct {
+	AppID        string
 	Status       string
 	ErrorMessage string
 }

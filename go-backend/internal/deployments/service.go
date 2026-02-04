@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/lithammer/shortuuid/v4"
 	enumspb "go.temporal.io/api/enums/v1"
@@ -17,26 +19,32 @@ import (
 )
 
 type Service struct {
-	temporalClient client.Client
-	appsQ          apps.Querier
-	projectsQ      projects.Querier
-	coolifyClient  *coolify.Client
-	logger         *slog.Logger
+	temporalClient   client.Client
+	appsQ            apps.Querier
+	projectsQ        projects.Querier
+	dnsQ             dnsrecords.Querier
+	coolifyClient    *coolify.Client
+	cloudflareClient *cloudflare.Client
+	logger           *slog.Logger
 }
 
 func NewService(
 	temporalClient client.Client,
 	appsQ apps.Querier,
 	projectsQ projects.Querier,
+	dnsQ dnsrecords.Querier,
 	coolifyClient *coolify.Client,
+	cloudflareClient *cloudflare.Client,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
-		temporalClient: temporalClient,
-		appsQ:          appsQ,
-		projectsQ:      projectsQ,
-		coolifyClient:  coolifyClient,
-		logger:         logger,
+		temporalClient:   temporalClient,
+		appsQ:            appsQ,
+		projectsQ:        projectsQ,
+		dnsQ:             dnsQ,
+		coolifyClient:    coolifyClient,
+		cloudflareClient: cloudflareClient,
+		logger:           logger,
 	}
 }
 
@@ -53,6 +61,11 @@ type CreateAppInput struct {
 	GitProvider    string // "github" or "gitea"
 	PrivateKeyUUID string // for internal git
 	SSHCloneURL    string // for internal git
+	Memory         string
+	CPU            string
+	InstallCommand string
+	BuildCommand   string
+	StartCommand   string
 }
 
 type CreateAppResult struct {
@@ -105,6 +118,11 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 		GitProvider:    gitProvider,
 		PrivateKeyUUID: input.PrivateKeyUUID,
 		SSHCloneURL:    input.SSHCloneURL,
+		Memory:         input.Memory,
+		CPU:            input.CPU,
+		InstallCommand: input.InstallCommand,
+		BuildCommand:   input.BuildCommand,
+		StartCommand:   input.StartCommand,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
@@ -267,8 +285,9 @@ type DeleteAppParams struct {
 }
 
 type DeleteAppResult struct {
-	AppID string
-	Name  string
+	AppID      string
+	Name       string
+	WorkflowID string
 }
 
 func (s *Service) DeleteApp(ctx context.Context, params DeleteAppParams) (*DeleteAppResult, error) {
@@ -286,37 +305,41 @@ func (s *Service) DeleteApp(ctx context.Context, params DeleteAppParams) (*Delet
 		return nil, fmt.Errorf("app not found: %s in project %s", params.Name, project)
 	}
 
-	// Delete from Coolify if it was deployed
-	if app.CoolifyAppUuid != nil && s.coolifyClient != nil {
-		if err := s.coolifyClient.Applications.Delete(ctx, *app.CoolifyAppUuid); err != nil {
-			s.logger.Warn("failed to delete app from Coolify",
-				"app_id", app.ID,
-				"coolify_uuid", *app.CoolifyAppUuid,
-				"error", err)
-		} else {
-			s.logger.Info("deleted app from Coolify",
-				"app_id", app.ID,
-				"coolify_uuid", *app.CoolifyAppUuid)
-		}
-	}
-
-	// Soft delete in database
-	_, err = s.appsQ.SoftDeleteApp(ctx, app.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete app: %w", err)
-	}
-
 	var name string
 	if app.Name != nil {
 		name = *app.Name
 	}
 
-	s.logger.Info("soft deleted app",
+	coolifyUUID := ""
+	if app.CoolifyAppUuid != nil {
+		coolifyUUID = *app.CoolifyAppUuid
+	}
+
+	workflowID := fmt.Sprintf("delete-app-%s", app.ID)
+
+	workflowOptions := client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: "default",
+	}
+
+	input := DeleteAppWorkflowInput{
+		AppID:          app.ID,
+		CoolifyAppUUID: coolifyUUID,
+	}
+
+	run, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, DeleteAppWorkflow, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to start delete workflow: %w", err)
+	}
+
+	s.logger.Info("started delete app workflow",
 		"app_id", app.ID,
-		"name", name)
+		"name", name,
+		"workflow_id", run.GetID())
 
 	return &DeleteAppResult{
-		AppID: app.ID,
-		Name:  name,
+		AppID:      app.ID,
+		Name:       name,
+		WorkflowID: run.GetID(),
 	}, nil
 }

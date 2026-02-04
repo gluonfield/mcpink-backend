@@ -11,8 +11,17 @@ import (
 	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/logs"
 	"github.com/augustdev/autoclip/internal/resources"
+	"github.com/invopop/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
+
+var reflector = jsonschema.Reflector{
+	DoNotReference: true,
+}
+
+func schemaFor[T any]() any {
+	return reflector.Reflect(new(T))
+}
 
 type Server struct {
 	mcpServer        *mcp.Server
@@ -60,62 +69,74 @@ func (s *Server) registerTools() {
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "whoami",
 		Description: "Get information about the authenticated user",
+		InputSchema: schemaFor[WhoamiInput](),
 	}, s.handleWhoami)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "create_app",
-		Description: "Create and deploy an application from a GitHub repository",
+		Description: "Create and deploy an application. Use host='ml.ink' (default) for private repos or host='github.com' for GitHub.",
+		InputSchema: schemaFor[CreateAppInput](),
 	}, s.handleCreateApp)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "redeploy",
 		Description: "Redeploy an existing application to pull latest code",
+		InputSchema: schemaFor[RedeployInput](),
 	}, s.handleRedeploy)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "list_apps",
 		Description: "List all deployed applications",
+		InputSchema: schemaFor[ListAppsInput](),
 	}, s.handleListApps)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "create_resource",
 		Description: "Create a new resource (e.g., sqlite database). Returns connection URL and auth token.",
+		InputSchema: schemaFor[CreateResourceInput](),
 	}, s.handleCreateResource)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "list_resources",
 		Description: "List all resources (databases, etc.) for the authenticated user",
+		InputSchema: schemaFor[ListResourcesInput](),
 	}, s.handleListResources)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "get_resource",
 		Description: "Get detailed information about a resource including connection URL and auth token",
+		InputSchema: schemaFor[GetResourceDetailsInput](),
 	}, s.handleGetResourceDetails)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "delete_resource",
 		Description: "Delete a resource (e.g., sqlite database). This permanently removes the resource.",
+		InputSchema: schemaFor[DeleteResourceInput](),
 	}, s.handleDeleteResource)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "get_app_details",
 		Description: "Get detailed information about a deployed application, optionally including environment variables and logs",
+		InputSchema: schemaFor[GetAppDetailsInput](),
 	}, s.handleGetAppDetails)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "delete_app",
-		Description: "Delete an application. This removes it from Coolify and marks it as deleted in the database.",
+		Description: "Delete an application. This permanently removes the deployment.",
+		InputSchema: schemaFor[DeleteAppInput](),
 	}, s.handleDeleteApp)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "create_repo",
-		Description: "Create a git repository. Use target='ml.ink' (default) for instant deployment without GitHub setup, or target='github.com' if GitHub integration is already configured.",
+		Description: "Create a git repository. Use host='ml.ink' (default) for instant private repos, or host='github.com' for GitHub.",
+		InputSchema: schemaFor[CreateRepoInput](),
 	}, s.handleCreateRepo)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "get_push_token",
-		Description: "Get a fresh push token for a repository. Works with both private (ml.ink/*) and GitHub (github.com/*) repositories.",
-	}, s.handleGetPushToken)
+		Name:        "get_git_token",
+		Description: "Get a temporary git token to push code. Example: name='myapp', host='ml.ink' (default) or host='github.com'.",
+		InputSchema: schemaFor[GetGitTokenInput](),
+	}, s.handleGetGitToken)
 }
 
 func (s *Server) Handler() http.Handler {

@@ -24,19 +24,18 @@ func (s *Server) handleCreateRepo(ctx context.Context, req *mcp.CallToolRequest,
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateRepoOutput{}, nil
 	}
 
-	// Determine target from input (default: ml.ink)
-	target := input.Target
-	if target == "" {
-		target = "ml.ink"
+	host := input.Host
+	if host == "" {
+		host = "ml.ink"
 	}
 
-	switch target {
+	switch host {
 	case "ml.ink":
 		return s.createPrivateRepo(ctx, user.ID, input)
 	case "github.com":
 		return s.createGitHubRepo(ctx, user, input)
 	default:
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "target must be 'ml.ink' (default) or 'github.com'"}}}, CreateRepoOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "host must be 'ml.ink' (default) or 'github.com'"}}}, CreateRepoOutput{}, nil
 	}
 }
 
@@ -45,12 +44,7 @@ func (s *Server) createPrivateRepo(ctx context.Context, userID string, input Cre
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "internal git not configured"}}}, CreateRepoOutput{}, nil
 	}
 
-	private := true
-	if input.Private != nil {
-		private = *input.Private
-	}
-
-	result, err := s.internalGitSvc.CreateRepo(ctx, userID, input.Name, input.Description, private)
+	result, err := s.internalGitSvc.CreateRepo(ctx, userID, input.Name, input.Description, true)
 	if err != nil {
 		s.logger.Error("failed to create internal repo", "error", err, "name", input.Name)
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to create repository: %v", err)}}}, CreateRepoOutput{}, nil
@@ -85,14 +79,9 @@ func (s *Server) createGitHubRepo(ctx context.Context, user *users.User, input C
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to decrypt GitHub token. Please re-authenticate"}}}, CreateRepoOutput{}, nil
 	}
 
-	isPrivate := true
-	if input.Private != nil {
-		isPrivate = *input.Private
-	}
-
-	repoPayload := map[string]interface{}{
+	repoPayload := map[string]any{
 		"name":    input.Name,
-		"private": isPrivate,
+		"private": true,
 	}
 	if input.Description != "" {
 		repoPayload["description"] = input.Description
@@ -157,74 +146,71 @@ func (s *Server) createGitHubRepo(ctx context.Context, user *users.User, input C
 	}, nil
 }
 
-func (s *Server) handleGetPushToken(ctx context.Context, req *mcp.CallToolRequest, input GetPushTokenInput) (*mcp.CallToolResult, GetPushTokenOutput, error) {
+func (s *Server) handleGetGitToken(ctx context.Context, req *mcp.CallToolRequest, input GetGitTokenInput) (*mcp.CallToolResult, GetGitTokenOutput, error) {
 	user := UserFromContext(ctx)
 	if user == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, GetPushTokenOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, GetGitTokenOutput{}, nil
 	}
 
-	if input.Repo == "" {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "repo is required"}}}, GetPushTokenOutput{}, nil
+	if input.Name == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, GetGitTokenOutput{}, nil
 	}
 
-	// Determine source from repo path
-	if strings.HasPrefix(input.Repo, "github.com/") {
-		return s.getGitHubPushToken(ctx, user.ID, input.Repo)
+	host := input.Host
+	if host == "" {
+		host = "ml.ink"
 	}
 
-	if strings.HasPrefix(input.Repo, "ml.ink/") {
-		return s.getPrivatePushToken(ctx, user.ID, input.Repo)
+	switch host {
+	case "ml.ink":
+		return s.getPrivateGitToken(ctx, user, input.Name)
+	case "github.com":
+		return s.getGitHubGitToken(ctx, user, input.Name)
+	default:
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "host must be 'ml.ink' (default) or 'github.com'"}}}, GetGitTokenOutput{}, nil
 	}
-
-	return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "repo must start with 'github.com/' or 'ml.ink/'"}}}, GetPushTokenOutput{}, nil
 }
 
-func (s *Server) getPrivatePushToken(ctx context.Context, userID, repoPath string) (*mcp.CallToolResult, GetPushTokenOutput, error) {
+func (s *Server) getPrivateGitToken(ctx context.Context, user *users.User, repoName string) (*mcp.CallToolResult, GetGitTokenOutput, error) {
 	if s.internalGitSvc == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "internal git not configured"}}}, GetPushTokenOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "internal git not configured"}}}, GetGitTokenOutput{}, nil
 	}
 
-	// Extract full_name from path (ml.ink/username/repo -> username/repo)
-	fullName := strings.TrimPrefix(repoPath, "ml.ink/")
+	// Build full name: username/repoName
+	fullName := fmt.Sprintf("%s/%s", user.GithubUsername, repoName)
 
-	result, err := s.internalGitSvc.GetPushToken(ctx, userID, fullName)
+	result, err := s.internalGitSvc.GetPushToken(ctx, user.ID, fullName)
 	if err != nil {
-		s.logger.Error("failed to get push token", "error", err, "repo", fullName)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get push token: %v", err)}}}, GetPushTokenOutput{}, nil
+		s.logger.Error("failed to get git token", "error", err, "repo", fullName)
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get git token: %v", err)}}}, GetGitTokenOutput{}, nil
 	}
 
-	return nil, GetPushTokenOutput{
+	return nil, GetGitTokenOutput{
 		GitRemote: result.GitRemote,
 		ExpiresAt: result.ExpiresAt,
 	}, nil
 }
 
-func (s *Server) getGitHubPushToken(ctx context.Context, userID, repoPath string) (*mcp.CallToolResult, GetPushTokenOutput, error) {
-	creds, err := s.authService.GetGitHubCredsByUserID(ctx, userID)
+func (s *Server) getGitHubGitToken(ctx context.Context, user *users.User, repoName string) (*mcp.CallToolResult, GetGitTokenOutput, error) {
+	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
 	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected"}}}, GetPushTokenOutput{}, nil
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected"}}}, GetGitTokenOutput{}, nil
 	}
 
 	if creds.GithubAppInstallationID == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed"}}}, GetPushTokenOutput{}, nil
-	}
-
-	// Extract repo from github.com/owner/repo format
-	repo := strings.TrimPrefix(repoPath, "github.com/")
-	parts := strings.Split(repo, "/")
-	repoName := repo
-	if len(parts) == 2 {
-		repoName = parts[1]
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed"}}}, GetGitTokenOutput{}, nil
 	}
 
 	installationToken, err := s.githubAppService.CreateInstallationToken(ctx, *creds.GithubAppInstallationID, []string{repoName})
 	if err != nil {
-		s.logger.Error("failed to get GitHub push token", "error", err, "repo", repo)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get push token: %v", err)}}}, GetPushTokenOutput{}, nil
+		s.logger.Error("failed to get GitHub git token", "error", err, "repo", repoName)
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get git token: %v", err)}}}, GetGitTokenOutput{}, nil
 	}
 
-	return nil, GetPushTokenOutput{
-		GitRemote: fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", installationToken.Token, repo),
+	fullRepo := fmt.Sprintf("%s/%s", user.GithubUsername, repoName)
+
+	return nil, GetGitTokenOutput{
+		GitRemote: fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", installationToken.Token, fullRepo),
 		ExpiresAt: installationToken.ExpiresAt.Format("2006-01-02T15:04:05Z"),
 	}, nil
 }

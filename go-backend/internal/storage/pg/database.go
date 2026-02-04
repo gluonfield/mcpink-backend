@@ -8,6 +8,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
@@ -37,6 +38,7 @@ type DB struct {
 	githubCredsQ        githubcreds.Querier
 	resourceQueries     resources.Querier
 	internalReposQ      internalrepos.Querier
+	dnsrecordsQ         dnsrecords.Querier
 }
 
 func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, error) {
@@ -120,6 +122,7 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		githubCredsQ:    githubcreds.New(pool),
 		resourceQueries: resources.New(pool),
 		internalReposQ:  internalrepos.New(pool),
+		dnsrecordsQ:     dnsrecords.New(pool),
 	}, nil
 }
 
@@ -153,4 +156,8 @@ func NewResourceQueries(database *DB) resources.Querier {
 
 func NewInternalReposQueries(database *DB) internalrepos.Querier {
 	return database.internalReposQ
+}
+
+func NewDNSRecordQueries(database *DB) dnsrecords.Querier {
+	return database.dnsrecordsQ
 }

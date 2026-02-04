@@ -1,30 +1,19 @@
 package mcpserver
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/augustdev/autoclip/internal/deployments"
+	"github.com/augustdev/autoclip/internal/helpers"
 	"github.com/augustdev/autoclip/internal/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
-
-func deref[T any](ptr *T) T {
-	if ptr == nil {
-		var zero T
-		return zero
-	}
-	return *ptr
-}
 
 func (s *Server) handleWhoami(ctx context.Context, req *mcp.CallToolRequest, input WhoamiInput) (*mcp.CallToolResult, WhoamiOutput, error) {
 	user := UserFromContext(ctx)
@@ -58,7 +47,7 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "repo is required"}}}, CreateAppOutput{}, nil
 	}
 	if input.Branch == "" {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "branch is required"}}}, CreateAppOutput{}, nil
+		input.Branch = "main"
 	}
 	if input.Name == "" {
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateAppOutput{}, nil
@@ -74,7 +63,7 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 	buildPack := "nixpacks"
 	if input.BuildPack != "" {
 		switch input.BuildPack {
-		case "nixpacks", "dockerfile", "static", "dockercompose", "docker-compose":
+		case "nixpacks", "dockerfile", "static", "dockercompose":
 			buildPack = input.BuildPack
 		default:
 			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("invalid build_pack: %s. Valid options: nixpacks, dockerfile, static, dockercompose", input.BuildPack)}}}, CreateAppOutput{}, nil
@@ -99,7 +88,7 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 		}
 	}
 
-	isInternalGit := host == "mlink"
+	isInternalGit := host == "ml.ink"
 
 	s.logger.Info("starting deployment",
 		"user_id", user.ID,
@@ -113,7 +102,7 @@ func (s *Server) handleCreateApp(ctx context.Context, req *mcp.CallToolRequest, 
 
 	var result *deployments.CreateAppResult
 
-	if host == "mlink" {
+	if host == "ml.ink" {
 		// Internal git flow
 		result, err = s.createAppFromInternalGit(ctx, user.ID, input, buildPack, port, envVars)
 	} else {
@@ -145,45 +134,32 @@ func normalizeCreateAppRepo(user *users.User, input CreateAppInput) (host string
 
 	host = strings.ToLower(strings.TrimSpace(input.Host))
 	if host == "" {
-		host = "mlink"
+		host = "ml.ink"
 	}
-	if host != "mlink" && host != "github" {
-		return "", "", fmt.Errorf("invalid host: %s (valid: mlink, github)", host)
+	if host != "ml.ink" && host != "github.com" {
+		return "", "", fmt.Errorf("invalid host: %s (valid: ml.ink, github.com)", host)
 	}
 
-	// New UX intentionally rejects full URLs/SSH strings: pass just `name` or `owner/repo` and set `host`.
-	// This avoids accidental misclassification and avoids leaking credentials.
+	// Reject URLs, credentials, and paths - only accept simple repo name
 	if strings.Contains(repo, "://") || strings.HasPrefix(repo, "git@") {
-		return "", "", fmt.Errorf("invalid repo format: pass a repo name (e.g. exp20) or owner/repo (e.g. gluonfield/exp20), not a URL")
+		return "", "", fmt.Errorf("invalid repo format: pass a repo name (e.g. 'myapp') not a URL")
 	}
 	if strings.Contains(repo, "@") {
-		return "", "", fmt.Errorf("invalid repo format: do not include credentials; pass a repo name (e.g. exp20) or owner/repo (e.g. gluonfield/exp20)")
-	}
-	if strings.HasPrefix(repo, "ml.ink/") || strings.HasPrefix(repo, "git.ml.ink/") || strings.HasPrefix(repo, "github.com/") {
-		return "", "", fmt.Errorf("invalid repo format: pass name or owner/repo (no host prefixes); use host=%s instead", host)
-	}
-
-	// If it looks like a full owner/repo, normalize based on host.
-	if strings.Count(repo, "/") == 1 {
-		if host == "mlink" {
-			return host, "ml.ink/" + repo, nil
-		}
-		return host, repo, nil
+		return "", "", fmt.Errorf("invalid repo format: do not include credentials; pass a repo name (e.g. 'myapp')")
 	}
 	if strings.Contains(repo, "/") {
-		return "", "", fmt.Errorf("invalid repo format: expected name or owner/repo")
+		return "", "", fmt.Errorf("invalid repo format: pass repo name only (e.g. 'myapp'), not owner/repo")
 	}
 
-	// Otherwise treat as a simple repo name.
 	username := ""
 	if user != nil {
 		username = strings.TrimSpace(user.GithubUsername)
 	}
 	if username == "" {
-		return "", "", fmt.Errorf("cannot resolve repo name without github username; please pass owner/repo")
+		return "", "", fmt.Errorf("cannot resolve repo: user has no username configured")
 	}
 
-	if host == "mlink" {
+	if host == "ml.ink" {
 		return host, fmt.Sprintf("ml.ink/%s/%s", username, repo), nil
 	}
 	return host, fmt.Sprintf("%s/%s", username, repo), nil
@@ -209,16 +185,21 @@ func (s *Server) createAppFromGitHub(ctx context.Context, user *users.User, inpu
 	repo := strings.TrimPrefix(input.Repo, "github.com/")
 
 	return s.deployService.CreateApp(ctx, deployments.CreateAppInput{
-		UserID:        user.ID,
-		ProjectRef:    input.Project,
-		GitHubAppUUID: githubAppUUID,
-		Repo:          repo,
-		Branch:        input.Branch,
-		Name:          input.Name,
-		BuildPack:     buildPack,
-		Port:          port,
-		EnvVars:       envVars,
-		GitProvider:   "github",
+		UserID:         user.ID,
+		ProjectRef:     input.Project,
+		GitHubAppUUID:  githubAppUUID,
+		Repo:           repo,
+		Branch:         input.Branch,
+		Name:           input.Name,
+		BuildPack:      buildPack,
+		Port:           port,
+		EnvVars:        envVars,
+		GitProvider:    "github",
+		Memory:         input.Memory,
+		CPU:            input.CPU,
+		InstallCommand: input.InstallCommand,
+		BuildCommand:   input.BuildCommand,
+		StartCommand:   input.StartCommand,
 	})
 }
 
@@ -259,8 +240,13 @@ func (s *Server) createAppFromInternalGit(ctx context.Context, userID string, in
 		EnvVars:        envVars,
 		GitProvider:    "gitea",
 		PrivateKeyUUID: privateKeyUUID,
-			SSHCloneURL:    sshCloneURL,
-		})
+		SSHCloneURL:    sshCloneURL,
+		Memory:         input.Memory,
+		CPU:            input.CPU,
+		InstallCommand: input.InstallCommand,
+		BuildCommand:   input.BuildCommand,
+		StartCommand:   input.StartCommand,
+	})
 }
 
 func (s *Server) handleListApps(ctx context.Context, req *mcp.CallToolRequest, input ListAppsInput) (*mcp.CallToolResult, ListAppsOutput, error) {
@@ -405,10 +391,9 @@ func (s *Server) handleCreateResource(ctx context.Context, req *mcp.CallToolRequ
 		"region", region,
 	)
 
-	// Call the resources service to provision the database
 	result, err := s.resourcesService.ProvisionDatabase(ctx, resources.ProvisionDatabaseInput{
 		UserID:    user.ID,
-		ProjectID: nil, // TODO: resolve project from projectRef if provided
+		ProjectID: nil,
 		Name:      input.Name,
 		Type:      dbType,
 		Size:      size,
@@ -492,149 +477,6 @@ func (s *Server) handleGetResourceDetails(ctx context.Context, req *mcp.CallTool
 	return nil, output, nil
 }
 
-func (s *Server) handleCreateGitHubRepo(ctx context.Context, req *mcp.CallToolRequest, input CreateGitHubRepoInput) (*mcp.CallToolResult, CreateGitHubRepoOutput, error) {
-	user := UserFromContext(ctx)
-	if user == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	if input.Name == "" {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub not connected. Please go to https://ml.ink/settings/access"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	if creds.GithubAppInstallationID == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install at https://ml.ink/settings/github"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	hasRepoScope := slices.Contains(creds.GithubOauthScopes, "repo")
-	if !hasRepoScope {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub OAuth `repo` scope is missing. Please re-authenticate at https://ml.ink/settings/access. This tool allows to create new repositories and should only be used if `gh` CLI is not installed or configured."}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	oauthToken, err := s.authService.DecryptToken(creds.GithubOauthToken)
-	if err != nil {
-		s.logger.Error("failed to decrypt oauth token", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to decrypt GitHub token. Please re-authenticate at https://ml.ink/settings/github?q=repo"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	isPrivate := true
-	if input.Private != nil {
-		isPrivate = *input.Private
-	}
-
-	repoPayload := map[string]interface{}{
-		"name":    input.Name,
-		"private": isPrivate,
-	}
-	if input.Description != "" {
-		repoPayload["description"] = input.Description
-	}
-
-	payloadBytes, err := json.Marshal(repoPayload)
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to prepare request"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.github.com/user/repos", bytes.NewReader(payloadBytes))
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create request"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	httpReq.Header.Set("Authorization", fmt.Sprintf("Bearer %s", oauthToken))
-	httpReq.Header.Set("Accept", "application/vnd.github+json")
-	httpReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	httpReq.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		s.logger.Error("failed to create github repo", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create repository"}}}, CreateGitHubRepoOutput{}, nil
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode == http.StatusUnprocessableEntity {
-		if strings.Contains(string(respBody), "name already exists") {
-			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("Repository '%s' already exists", input.Name)}}}, CreateGitHubRepoOutput{}, nil
-		}
-	}
-
-	if resp.StatusCode != http.StatusCreated {
-		s.logger.Error("github api error", "status", resp.StatusCode, "body", string(respBody))
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("GitHub API error: %s", string(respBody))}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	var repoResp struct {
-		FullName string `json:"full_name"`
-		Name     string `json:"name"`
-	}
-	if err := json.Unmarshal(respBody, &repoResp); err != nil {
-		s.logger.Error("failed to parse github response", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to parse GitHub response"}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	installationToken, err := s.githubAppService.CreateInstallationToken(ctx, *creds.GithubAppInstallationID, []string{repoResp.Name})
-	if err != nil {
-		s.logger.Error("failed to create installation token", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create access token. The GitHub App may not have access to new repositories. Please check your installation settings."}}}, CreateGitHubRepoOutput{}, nil
-	}
-
-	output := CreateGitHubRepoOutput{
-		RepoFullName: repoResp.FullName,
-		AccessToken:  installationToken.Token,
-	}
-
-	return nil, output, nil
-}
-
-func (s *Server) handleGetGitHubPushToken(ctx context.Context, req *mcp.CallToolRequest, input GetGitHubPushTokenInput) (*mcp.CallToolResult, GetGitHubPushTokenOutput, error) {
-	user := UserFromContext(ctx)
-	if user == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	if input.Repo == "" {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "repo is required"}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	creds, err := s.authService.GetGitHubCredsByUserID(ctx, user.ID)
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Github credentials not found. Please go to https://ml.ink/settings/access."}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	if creds.GithubAppInstallationID == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub App not installed. Please install at https://ml.ink/settings/github"}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	// Extract repo name from owner/repo format
-	parts := strings.Split(input.Repo, "/")
-	repoName := input.Repo
-	if len(parts) == 2 {
-		repoName = parts[1]
-	}
-
-	installationToken, err := s.githubAppService.CreateInstallationToken(ctx, *creds.GithubAppInstallationID, []string{repoName})
-	if err != nil {
-		s.logger.Error("failed to create installation token", "error", err)
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to create access token. The GitHub App may not have access to this repository, you can grant it at https://ml.ink/settings/github. This tool allows to obtain temporary credentials to push code to your repositories and should be used only if `git` is not configured. "}}}, GetGitHubPushTokenOutput{}, nil
-	}
-
-	expiresInMinutes := int(time.Until(installationToken.ExpiresAt).Minutes())
-
-	return nil, GetGitHubPushTokenOutput{
-		AccessToken:      installationToken.Token,
-		ExpiresAt:        installationToken.ExpiresAt.UTC().Format(time.RFC3339),
-		ExpiresInMinutes: expiresInMinutes,
-	}, nil
-}
-
 func (s *Server) handleGetAppDetails(ctx context.Context, req *mcp.CallToolRequest, input GetAppDetailsInput) (*mcp.CallToolResult, GetAppDetailsOutput, error) {
 	user := UserFromContext(ctx)
 	if user == nil {
@@ -671,11 +513,11 @@ func (s *Server) handleGetAppDetails(ctx context.Context, req *mcp.CallToolReque
 
 	output := GetAppDetailsOutput{
 		AppID:         app.ID,
-		Name:          deref(app.Name),
+		Name:          helpers.Deref(app.Name),
 		Project:       project,
 		Repo:          app.Repo,
 		Branch:        app.Branch,
-		CommitHash:    deref(app.CommitHash),
+		CommitHash:    helpers.Deref(app.CommitHash),
 		BuildStatus:   app.BuildStatus,
 		RuntimeStatus: runtimeStatus,
 		URL:           app.Fqdn,

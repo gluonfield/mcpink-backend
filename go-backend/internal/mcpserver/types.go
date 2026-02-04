@@ -10,30 +10,27 @@ type WhoamiOutput struct {
 }
 
 type EnvVar struct {
-	Key   string `json:"key" jsonschema:"Environment variable name"`
-	Value string `json:"value" jsonschema:"Environment variable value"`
+	Key   string `json:"key" jsonschema:"description=Environment variable name"`
+	Value string `json:"value" jsonschema:"description=Environment variable value"`
 }
 
 type CreateAppInput struct {
-	Repo string `json:"repo" jsonschema:"Repository name (e.g. exp20) or owner/repo (required)"`
-	Host string `json:"host,omitempty" jsonschema:"Git host/provider: 'mlink' (default) or 'github'. If repo is just a name, it will be resolved under your username."`
+	Repo   string `json:"repo" jsonschema:"description=Repository name (e.g. 'myapp')"`
+	Host   string `json:"host,omitempty" jsonschema:"description=Git host,enum=ml.ink,enum=github.com,default=ml.ink"`
+	Branch string `json:"branch,omitempty" jsonschema:"description=Branch to deploy,default=main"`
+	Name   string `json:"name" jsonschema:"description=Name for the deployment"`
 
-	Branch string `json:"branch" jsonschema:"Branch to deploy"`
-	Name   string `json:"name" jsonschema:"Name for the deployment"`
+	Project   string   `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
+	BuildPack string   `json:"build_pack,omitempty" jsonschema:"description=Build pack to use,enum=nixpacks,enum=dockerfile,enum=static,enum=dockercompose,default=nixpacks"`
+	Port      int      `json:"port,omitempty" jsonschema:"description=Port the application listens on,default=3000"`
+	EnvVars   []EnvVar `json:"env_vars,omitempty" jsonschema:"description=Environment variables"`
 
-	Project   string   `json:"project,omitempty" jsonschema:"Project name to deploy to (default: user's default project)"`
-	BuildPack string   `json:"build_pack,omitempty" jsonschema:"Build pack to use: nixpacks (default) or dockerfile or static or dockercompose"`
-	Port      int      `json:"port,omitempty" jsonschema:"Port the application listens on (default: 3000)"`
-	EnvVars   []EnvVar `json:"env_vars,omitempty" jsonschema:"Environment variables"`
+	Memory string `json:"memory,omitempty" jsonschema:"description=Memory limit,enum=128m,enum=256m,enum=512m,enum=1024m,enum=2048m,enum=4096m,default=256m"`
+	CPU    string `json:"cpu,omitempty" jsonschema:"description=CPU cores,enum=0.5,enum=1,enum=2,enum=4,default=0.5"`
 
-	Memory string `json:"memory,omitempty" jsonschema:"Memory limit (e.g. 512m or 1g)"`
-	CPU    string `json:"cpu,omitempty" jsonschema:"CPU limit (e.g. 0.5 or 1)"`
-
-	InstallCommand string `json:"install_command,omitempty" jsonschema:"Custom install command"`
-	BuildCommand   string `json:"build_command,omitempty" jsonschema:"Custom build command"`
-	StartCommand   string `json:"start_command,omitempty" jsonschema:"Custom start command"`
-
-	InstantDeploy *bool `json:"instant_deploy,omitempty" jsonschema:"Start deployment immediately (default: true)"`
+	InstallCommand string `json:"install_command,omitempty" jsonschema:"description=Custom install command (overrides auto-detected)"`
+	BuildCommand   string `json:"build_command,omitempty" jsonschema:"description=Custom build command (overrides auto-detected)"`
+	StartCommand   string `json:"start_command,omitempty" jsonschema:"description=Custom start command (overrides auto-detected)"`
 }
 
 type CreateAppOutput struct {
@@ -46,8 +43,8 @@ type CreateAppOutput struct {
 }
 
 type RedeployInput struct {
-	Name    string `json:"name" jsonschema:"Name of the app to redeploy (required)"`
-	Project string `json:"project,omitempty" jsonschema:"Project name (default: default)"`
+	Name    string `json:"name" jsonschema:"description=Name of the app to redeploy (required)"`
+	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
 }
 
 type RedeployOutput struct {
@@ -79,11 +76,10 @@ const (
 )
 
 type CreateResourceInput struct {
-	Name       string `json:"name" jsonschema:"Name for the resource (required)"`
-	Type       string `json:"type,omitempty" jsonschema:"Resource type (default: sqlite, only option for now)"`
-	Size       string `json:"size,omitempty" jsonschema:"Size limit for databases (default: 100mb)"`
-	Region     string `json:"region,omitempty" jsonschema:"Region (default: eu-west, only option for now)"`
-	ProjectRef string `json:"project_ref,omitempty" jsonschema:"Project reference (default: default)"`
+	Name   string `json:"name" jsonschema:"description=Name for the resource (required)"`
+	Type   string `json:"type,omitempty" jsonschema:"description=Resource type,enum=sqlite,default=sqlite"`
+	Size   string `json:"size,omitempty" jsonschema:"description=Size limit for databases,default=100mb"`
+	Region string `json:"region,omitempty" jsonschema:"description=Region,enum=eu-west,default=eu-west"`
 }
 
 type CreateResourceOutput struct {
@@ -96,9 +92,7 @@ type CreateResourceOutput struct {
 	Status     string `json:"status"`
 }
 
-type ListResourcesInput struct {
-	Project string `json:"project,omitempty" jsonschema:"Project name (default: default)"`
-}
+type ListResourcesInput struct{}
 
 type ListResourcesOutput struct {
 	Resources []ResourceInfo `json:"resources"`
@@ -114,8 +108,7 @@ type ResourceInfo struct {
 }
 
 type GetResourceDetailsInput struct {
-	Name    string `json:"name" jsonschema:"Resource name (required)"`
-	Project string `json:"project,omitempty" jsonschema:"Project name (default: default)"`
+	Name string `json:"name" jsonschema:"description=Resource name (required)"`
 }
 
 type GetResourceDetailsOutput struct {
@@ -131,54 +124,32 @@ type GetResourceDetailsOutput struct {
 }
 
 const (
-	DefaultRegion     = "eu-west"
-	DefaultProjectRef = "default"
-	DefaultDBType     = "sqlite"
-	DefaultDBSize     = "100mb"
+	DefaultRegion = "eu-west"
+	DefaultDBType = "sqlite"
+	DefaultDBSize = "100mb"
 )
 
-type CreateGitHubRepoInput struct {
-	Name        string `json:"name" jsonschema:"Repository name (required)"`
-	Private     *bool  `json:"private,omitempty" jsonschema:"Make repository private (default: true)"`
-	Description string `json:"description,omitempty" jsonschema:"Repository description"`
-}
-
-type CreateGitHubRepoOutput struct {
-	RepoFullName string `json:"repo_full_name"`
-	AccessToken  string `json:"access_token"`
-}
-
-type GetGitHubPushTokenInput struct {
-	Repo string `json:"repo" jsonschema:"GitHub repository in owner/repo format (required)"`
-}
-
-type GetGitHubPushTokenOutput struct {
-	AccessToken      string `json:"access_token"`
-	ExpiresAt        string `json:"expires_at"`
-	ExpiresInMinutes int    `json:"expires_in_minutes"`
-}
-
 type GetAppDetailsInput struct {
-	Name            string `json:"name" jsonschema:"App name (required)"`
-	Project         string `json:"project,omitempty" jsonschema:"Project name (default: user's default project)"`
-	IncludeEnv      bool   `json:"include_env,omitempty" jsonschema:"Include environment variables (default: false)"`
-	DeployLogLines  int    `json:"deploy_log_lines,omitempty" jsonschema:"Number of deployment log lines to fetch (max: 500, default: 0)"`
-	RuntimeLogLines int    `json:"runtime_log_lines,omitempty" jsonschema:"Number of runtime log lines to fetch (max: 500, default: 0)"`
+	Name            string `json:"name" jsonschema:"description=App name (required)"`
+	Project         string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
+	IncludeEnv      bool   `json:"include_env,omitempty" jsonschema:"description=Include environment variables,default=false"`
+	DeployLogLines  int    `json:"deploy_log_lines,omitempty" jsonschema:"description=Number of deployment log lines to fetch (max: 500),default=0"`
+	RuntimeLogLines int    `json:"runtime_log_lines,omitempty" jsonschema:"description=Number of runtime log lines to fetch (max: 500),default=0"`
 }
 
 type GetAppDetailsOutput struct {
-	AppID         string       `json:"app_id"`
-	Name          string       `json:"name"`
-	Project       string       `json:"project"`
-	Repo          string       `json:"repo"`
-	Branch        string       `json:"branch"`
-	CommitHash    string       `json:"commit_hash,omitempty"`
-	BuildStatus   string       `json:"build_status"`
-	RuntimeStatus string       `json:"runtime_status"`
-	URL           *string      `json:"url,omitempty"`
-	CreatedAt     string       `json:"created_at"`
-	UpdatedAt     string       `json:"updated_at"`
-	ErrorMessage  *string      `json:"error_message,omitempty"`
+	AppID          string       `json:"app_id"`
+	Name           string       `json:"name"`
+	Project        string       `json:"project"`
+	Repo           string       `json:"repo"`
+	Branch         string       `json:"branch"`
+	CommitHash     string       `json:"commit_hash,omitempty"`
+	BuildStatus    string       `json:"build_status"`
+	RuntimeStatus  string       `json:"runtime_status"`
+	URL            *string      `json:"url,omitempty"`
+	CreatedAt      string       `json:"created_at"`
+	UpdatedAt      string       `json:"updated_at"`
+	ErrorMessage   *string      `json:"error_message,omitempty"`
 	EnvVars        []EnvVarInfo `json:"env_vars,omitempty"`
 	DeploymentLogs string       `json:"deployment_logs,omitempty"`
 	RuntimeLogs    string       `json:"runtime_logs,omitempty"`
@@ -189,17 +160,11 @@ type EnvVarInfo struct {
 	Value string `json:"value,omitempty"`
 }
 
-type LogLine struct {
-	Timestamp string `json:"timestamp,omitempty"`
-	Stream    string `json:"stream,omitempty"`
-	Message   string `json:"message"`
-}
-
 const MaxLogLines = 500
 
 type DeleteAppInput struct {
-	Name    string `json:"name" jsonschema:"Name of the app to delete (required)"`
-	Project string `json:"project,omitempty" jsonschema:"Project name (default: user's default project)"`
+	Name    string `json:"name" jsonschema:"description=Name of the app to delete (required)"`
+	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
 }
 
 type DeleteAppOutput struct {
@@ -209,8 +174,7 @@ type DeleteAppOutput struct {
 }
 
 type DeleteResourceInput struct {
-	Name    string `json:"name" jsonschema:"Resource name (required)"`
-	Project string `json:"project,omitempty" jsonschema:"Project name (default: default)"`
+	Name string `json:"name" jsonschema:"description=Resource name (required)"`
 }
 
 type DeleteResourceOutput struct {
@@ -222,10 +186,9 @@ type DeleteResourceOutput struct {
 // Unified repo tools
 
 type CreateRepoInput struct {
-	Name        string `json:"name" jsonschema:"Repository name (required)"`
-	Target      string `json:"target,omitempty" jsonschema:"'ml.ink' for private internal git (default), 'github.com' for GitHub"`
-	Description string `json:"description,omitempty" jsonschema:"Repository description"`
-	Private     *bool  `json:"private,omitempty" jsonschema:"Make repository private (default: true)"`
+	Name        string `json:"name" jsonschema:"description=Repository name (e.g. 'myapp' not 'username/myapp')"`
+	Host        string `json:"host,omitempty" jsonschema:"description=Git host,enum=ml.ink,enum=github.com,default=ml.ink"`
+	Description string `json:"description,omitempty" jsonschema:"description=Repository description"`
 }
 
 type CreateRepoOutput struct {
@@ -235,11 +198,12 @@ type CreateRepoOutput struct {
 	Message   string `json:"message"`
 }
 
-type GetPushTokenInput struct {
-	Repo string `json:"repo" jsonschema:"Full repo path: ml.ink/user/repo for private repos or github.com/owner/repo for GitHub"`
+type GetGitTokenInput struct {
+	Name string `json:"name" jsonschema:"description=Repository name (e.g. 'myapp' not 'username/myapp')"`
+	Host string `json:"host,omitempty" jsonschema:"description=Git host,enum=ml.ink,enum=github.com,default=ml.ink"`
 }
 
-type GetPushTokenOutput struct {
+type GetGitTokenOutput struct {
 	GitRemote string `json:"git_remote"`
 	ExpiresAt string `json:"expires_at"`
 }

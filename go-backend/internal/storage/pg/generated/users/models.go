@@ -42,6 +42,17 @@ type App struct {
 	CommitHash     *string            `json:"commit_hash"`
 	IsDeleted      bool               `json:"is_deleted"`
 	GitProvider    string             `json:"git_provider"`
+	CustomDomain   *string            `json:"custom_domain"`
+}
+
+type DnsRecord struct {
+	ID                 string             `json:"id"`
+	AppID              *string            `json:"app_id"`
+	CloudflareRecordID string             `json:"cloudflare_record_id"`
+	Subdomain          string             `json:"subdomain"`
+	FullDomain         string             `json:"full_domain"`
+	TargetIp           string             `json:"target_ip"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
 }
 
 type GithubCred struct {

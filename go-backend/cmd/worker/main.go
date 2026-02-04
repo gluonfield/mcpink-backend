@@ -9,6 +9,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/account"
 	"github.com/augustdev/autoclip/internal/bootstrap"
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"go.temporal.io/sdk/worker"
@@ -24,10 +25,12 @@ func main() {
 			pg.NewDatabase,
 			pg.NewAppQueries,
 			pg.NewProjectQueries,
+			pg.NewDNSRecordQueries,
 			bootstrap.CreateTemporalClient,
 			bootstrap.NewTemporalWorker,
 			bootstrap.NewNatsClient,
 			bootstrap.NewCoolifyClient,
+			cloudflare.NewClient,
 			deployments.NewActivities,
 			account.NewActivities,
 		),

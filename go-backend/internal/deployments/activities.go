@@ -4,25 +4,38 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"strings"
 	"time"
 
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"go.temporal.io/sdk/activity"
 )
 
 type Activities struct {
-	coolify *coolify.Client
-	appsQ   apps.Querier
-	logger  *slog.Logger
+	coolify    *coolify.Client
+	cloudflare *cloudflare.Client
+	appsQ      apps.Querier
+	dnsQ       dnsrecords.Querier
+	logger     *slog.Logger
 }
 
-func NewActivities(coolify *coolify.Client, appsQ apps.Querier, logger *slog.Logger) *Activities {
+func NewActivities(
+	coolify *coolify.Client,
+	cloudflare *cloudflare.Client,
+	appsQ apps.Querier,
+	dnsQ dnsrecords.Querier,
+	logger *slog.Logger,
+) *Activities {
 	return &Activities{
-		coolify: coolify,
-		appsQ:   appsQ,
-		logger:  logger,
+		coolify:    coolify,
+		cloudflare: cloudflare,
+		appsQ:      appsQ,
+		dnsQ:       dnsQ,
+		logger:     logger,
 	}
 }
 
@@ -87,23 +100,33 @@ type CreateAppRecordInput struct {
 }
 
 type CoolifyAppInput struct {
-	AppID         string
-	GitHubAppUUID string
-	Repo          string
-	Branch        string
-	Name          string
-	BuildPack     string
-	Port          string
+	AppID          string
+	GitHubAppUUID  string
+	Repo           string
+	Branch         string
+	Name           string
+	BuildPack      string
+	Port           string
+	Memory         string
+	CPU            string
+	InstallCommand string
+	BuildCommand   string
+	StartCommand   string
 }
 
 type InternalGitAppInput struct {
-	AppID            string
-	PrivateKeyUUID   string
-	SSHCloneURL      string
-	Branch           string
-	Name             string
-	BuildPack        string
-	Port             string
+	AppID          string
+	PrivateKeyUUID string
+	SSHCloneURL    string
+	Branch         string
+	Name           string
+	BuildPack      string
+	Port           string
+	Memory         string
+	CPU            string
+	InstallCommand string
+	BuildCommand   string
+	StartCommand   string
 }
 
 type CoolifyAppResult struct {
@@ -144,6 +167,11 @@ func (a *Activities) CreateAppFromPrivateGithub(ctx context.Context, input Cooli
 		BuildPack:              coolify.BuildPack(input.BuildPack),
 		Name:                   input.Name,
 		CustomDockerRunOptions: "--runtime=runsc",
+		LimitsMemory:           input.Memory,
+		LimitsCPUs:             input.CPU,
+		InstallCommand:         input.InstallCommand,
+		BuildCommand:           input.BuildCommand,
+		StartCommand:           input.StartCommand,
 	}
 
 	// Configure build server if enabled
@@ -220,6 +248,11 @@ func (a *Activities) CreateAppFromInternalGit(ctx context.Context, input Interna
 		BuildPack:              coolify.BuildPack(input.BuildPack),
 		Name:                   input.Name,
 		CustomDockerRunOptions: "--runtime=runsc",
+		LimitsMemory:           input.Memory,
+		LimitsCPUs:             input.CPU,
+		InstallCommand:         input.InstallCommand,
+		BuildCommand:           input.BuildCommand,
+		StartCommand:           input.StartCommand,
 	}
 
 	// Configure build server if enabled
@@ -544,6 +577,194 @@ func (a *Activities) MarkAppBuilding(ctx context.Context, appID string) error {
 			"error", err)
 		return fmt.Errorf("failed to mark app as building: %w", err)
 	}
+
+	return nil
+}
+
+type CreateDNSRecordInput struct {
+	AppID      string
+	AppName    string
+	ServerUUID string
+}
+
+type CreateDNSRecordResult struct {
+	FQDN             string
+	DNSRecordID      string
+	CloudflareID     string
+}
+
+func (a *Activities) CreateDNSRecord(ctx context.Context, input CreateDNSRecordInput) (*CreateDNSRecordResult, error) {
+	serverIP := a.coolify.GetServerIP(input.ServerUUID)
+	if serverIP == "" {
+		a.logger.Warn("No IP mapping for server, skipping DNS record creation",
+			"appID", input.AppID,
+			"serverUUID", input.ServerUUID)
+		return &CreateDNSRecordResult{}, nil
+	}
+
+	baseName := cloudflare.SanitizeSubdomain(input.AppName)
+
+	// Retry loop for atomic subdomain generation with collision handling
+	for attempt := 0; attempt < 10; attempt++ {
+		suffix := generateRandomSuffix(4)
+		subdomain := fmt.Sprintf("%s-%s", baseName, suffix)
+
+		a.logger.Info("Creating DNS record",
+			"appID", input.AppID,
+			"subdomain", subdomain,
+			"serverIP", serverIP,
+			"attempt", attempt+1)
+
+		// 1. Create in Cloudflare first
+		record, err := a.cloudflare.CreateARecord(ctx, subdomain, serverIP)
+		if err != nil {
+			a.logger.Warn("Cloudflare create failed, retrying",
+				"appID", input.AppID,
+				"subdomain", subdomain,
+				"attempt", attempt+1,
+				"error", err)
+			continue
+		}
+
+		// 2. Store in DB (unique constraint on subdomain catches race conditions)
+		dbRecord, err := a.dnsQ.CreateDNSRecord(ctx, dnsrecords.CreateDNSRecordParams{
+			AppID:              &input.AppID,
+			CloudflareRecordID: record.ID,
+			Subdomain:          subdomain,
+			FullDomain:         record.FullDomain,
+			TargetIp:           serverIP,
+		})
+		if err != nil {
+			// Unique constraint violation = race condition, cleanup and retry
+			_ = a.cloudflare.DeleteDNSRecord(ctx, record.ID)
+			a.logger.Warn("DB insert failed (likely collision), retrying",
+				"appID", input.AppID,
+				"subdomain", subdomain,
+				"attempt", attempt+1,
+				"error", err)
+			continue
+		}
+
+		fqdn := fmt.Sprintf("https://%s", record.FullDomain)
+
+		a.logger.Info("Created DNS record",
+			"appID", input.AppID,
+			"fqdn", fqdn,
+			"cloudflareID", record.ID,
+			"dnsRecordID", dbRecord.ID)
+
+		return &CreateDNSRecordResult{
+			FQDN:         fqdn,
+			DNSRecordID:  dbRecord.ID,
+			CloudflareID: record.ID,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("failed to create DNS record after 10 attempts for app %s", input.AppID)
+}
+
+func generateRandomSuffix(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, length)
+	for i := range b {
+		b[i] = charset[rand.Intn(len(charset))]
+	}
+	return string(b)
+}
+
+type UpdateCoolifyDomainInput struct {
+	CoolifyAppUUID string
+	Domain         string
+}
+
+func (a *Activities) UpdateCoolifyDomain(ctx context.Context, input UpdateCoolifyDomainInput) error {
+	if input.Domain == "" {
+		return nil
+	}
+
+	a.logger.Info("Updating Coolify app domain",
+		"coolifyUUID", input.CoolifyAppUUID,
+		"domain", input.Domain)
+
+	_, err := a.coolify.Applications.Update(ctx, input.CoolifyAppUUID, &coolify.UpdateApplicationRequest{
+		Domains: &input.Domain,
+	})
+	if err != nil {
+		a.logger.Error("Failed to update Coolify app domain",
+			"coolifyUUID", input.CoolifyAppUUID,
+			"domain", input.Domain,
+			"error", err)
+		return fmt.Errorf("failed to update Coolify domain: %w", err)
+	}
+
+	a.logger.Info("Updated Coolify app domain",
+		"coolifyUUID", input.CoolifyAppUUID,
+		"domain", input.Domain)
+
+	return nil
+}
+
+func (a *Activities) DeleteDNSRecord(ctx context.Context, appID string) error {
+	record, err := a.dnsQ.GetDNSRecordByAppID(ctx, &appID)
+	if err != nil {
+		// No DNS record for this app - not an error
+		a.logger.Debug("No DNS record found for app", "appID", appID)
+		return nil
+	}
+
+	a.logger.Info("Deleting DNS record",
+		"appID", appID,
+		"cloudflareID", record.CloudflareRecordID)
+
+	if err := a.cloudflare.DeleteDNSRecord(ctx, record.CloudflareRecordID); err != nil {
+		return fmt.Errorf("failed to delete DNS record from Cloudflare: %w", err)
+	}
+
+	if err := a.dnsQ.DeleteDNSRecordByAppID(ctx, &appID); err != nil {
+		return fmt.Errorf("failed to delete DNS record from database: %w", err)
+	}
+
+	a.logger.Info("Deleted DNS record", "appID", appID)
+	return nil
+}
+
+type DeleteAppFromCoolifyInput struct {
+	AppID          string
+	CoolifyAppUUID string
+}
+
+func (a *Activities) DeleteAppFromCoolify(ctx context.Context, input DeleteAppFromCoolifyInput) error {
+	a.logger.Info("Deleting app from Coolify",
+		"appID", input.AppID,
+		"coolifyUUID", input.CoolifyAppUUID)
+
+	if err := a.coolify.Applications.Delete(ctx, input.CoolifyAppUUID); err != nil {
+		a.logger.Error("Failed to delete app from Coolify",
+			"appID", input.AppID,
+			"coolifyUUID", input.CoolifyAppUUID,
+			"error", err)
+		return fmt.Errorf("failed to delete app from Coolify: %w", err)
+	}
+
+	a.logger.Info("Deleted app from Coolify",
+		"appID", input.AppID,
+		"coolifyUUID", input.CoolifyAppUUID)
+
+	return nil
+}
+
+func (a *Activities) SoftDeleteApp(ctx context.Context, appID string) error {
+	a.logger.Info("Soft deleting app", "appID", appID)
+
+	_, err := a.appsQ.SoftDeleteApp(ctx, appID)
+	if err != nil {
+		a.logger.Error("Failed to soft delete app",
+			"appID", appID,
+			"error", err)
+		return fmt.Errorf("failed to soft delete app: %w", err)
+	}
+
+	a.logger.Info("Soft deleted app", "appID", appID)
 
 	return nil
 }

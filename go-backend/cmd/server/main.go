@@ -6,6 +6,7 @@ import (
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/bootstrap"
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
@@ -30,7 +31,9 @@ func main() {
 			pg.NewGitHubCredsQueries,
 			pg.NewResourceQueries,
 			pg.NewInternalReposQueries,
+			pg.NewDNSRecordQueries,
 			bootstrap.CreateTemporalClient,
+			cloudflare.NewClient,
 			github_oauth.NewOAuthService,
 			githubapp.NewService,
 			auth.NewService,

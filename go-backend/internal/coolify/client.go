@@ -12,12 +12,17 @@ import (
 	"time"
 )
 
+type ServerEntry struct {
+	UUID string
+	IP   string
+}
+
 type Config struct {
 	BaseURL         string
 	Token           string
 	Timeout         time.Duration
 	ProjectUUID     string
-	ServerUUIDs     []string
+	Servers         []ServerEntry
 	EnvironmentName string
 	GitHubAppUUID   string
 	RegistryURL     string
@@ -76,8 +81,20 @@ func (c *Client) Config() Config {
 }
 
 func (c *Client) GetMuscleServer() string {
-	// TODO: implement server selection logic
-	return c.config.ServerUUIDs[0]
+	if len(c.config.Servers) == 0 {
+		return ""
+	}
+	// TODO: implement server selection logic (round-robin, least-loaded, etc.)
+	return c.config.Servers[0].UUID
+}
+
+func (c *Client) GetServerIP(serverUUID string) string {
+	for _, s := range c.config.Servers {
+		if s.UUID == serverUUID {
+			return s.IP
+		}
+	}
+	return ""
 }
 
 func (c *Client) GetRegistryHost() string {
