@@ -10,7 +10,7 @@ Do not start with broad full-cluster Ansible changes before manual validation of
 
 # K3s Migration Log
 
-Last updated: 2026-02-10 04:00 UTC
+Last updated: 2026-02-10 08:46 UTC
 
 ## Goal
 Implement `/Users/wins/Projects/personal/mcpdeploy/backend/infra/k3s/ARCHITECTURE_PLAN.md` with reproducible Ansible + Kubernetes manifests, while migrating safely from existing Coolify hosts.
@@ -24,7 +24,7 @@ Keep decisions aligned with `/Users/wins/Projects/personal/mcpdeploy/backend/REA
 - `buildkitd` is now scheduling/running on `build-1` after resource tuning.
 - `loki` single-binary pod is `Running` on `ops-1`.
 - Grafana pod is `Running` on `ops-1`.
-- `temporal-worker` image is now published to internal registry and deployment is `Running` on `k3s-1`.
+- `temporal-worker` image is published to internal registry and deployment is now pinned to `builder-1` (`pool=build`, `strategy=Recreate`, replicas `1`).
 - Vault decryption is now working with `.vault_pass`, and full-cluster `site.yml` apply succeeds.
 - Non-secret worker vars are now set in inventory:
   - `github_app_id: 2782695`
@@ -54,6 +54,27 @@ Keep decisions aligned with `/Users/wins/Projects/personal/mcpdeploy/backend/REA
 - Internal registry currently contains `dp-system/temporal-worker` repository.
 - Gitea deployment manifest and ingress added (`gitea.yml`, `gitea-ingress.yml`) — pending first apply.
 - Gitea is HTTPS-only (SSH disabled); all traffic via CF LB → Traefik.
+
+## Build Reliability + Speed Plan (P0)
+
+### Goals
+- Reliability first: `BuildServiceWorkflow` and `CreateServiceWorkflow` must complete without heartbeat/session failures.
+- Build throughput: reduce average wall-clock build time by removing avoidable network transfer and cache round-trips.
+- Operational safety: keep all rollout behavior reproducible via repo manifests (`infra/k8s`) and Ansible.
+
+### Execution Checklist
+- [x] Run exactly one k8s worker on the build pool (`pool=build`) and avoid overlapping pods (`strategy=Recreate`).
+- [x] Keep worker startup alive even if Temporal DNS health probe intermittently fails (lazy client continues).
+- [x] Keep clone/build workspace stable across container restarts by mounting `/tmp` as `emptyDir`.
+- [x] Remove workflow/session heartbeat dependencies from k8s-native build path.
+- [x] Convert transient source-path filesystem errors into `source_path_missing` so workflow retry logic re-clones correctly.
+- [x] Remove `.git` after clone to reduce BuildKit context transfer size.
+- [x] Add build-skip optimization: if target image tag already exists in registry, skip build and deploy directly.
+- [x] Make static builds leaner: switch to nginx static image path, generate nginx config, and skip registry cache import/export for static build pack.
+- [ ] Add explicit context-pruning (`.dockerignore`/filterfs) for large repo artifacts beyond `.git`.
+- [ ] Add build context size + transfer timing telemetry to Loki for every build.
+- [ ] Add deterministic benchmark report (`p50/p95`) for static, Dockerfile, and railpack builds and track regressions.
+- [ ] Evaluate moving clone source directly into build node filesystem/buildkit source driver to eliminate fsutil cross-node sync entirely.
 
 ## Completed
 - [x] Scaffolded Ansible roles/playbooks and Kubernetes manifests in:

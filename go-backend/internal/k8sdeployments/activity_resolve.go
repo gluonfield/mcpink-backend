@@ -7,8 +7,26 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"go.temporal.io/sdk/temporal"
 )
+
+func (a *Activities) ResolveImageRef(ctx context.Context, input ResolveImageRefInput) (*ResolveImageRefResult, error) {
+	if input.ServiceID == "" {
+		return nil, fmt.Errorf("service id is required")
+	}
+	if input.CommitSHA == "" {
+		return nil, fmt.Errorf("commit sha is required")
+	}
+
+	namespace, name, _, err := a.resolveServiceIdentity(ctx, input.ServiceID)
+	if err != nil {
+		return nil, err
+	}
+
+	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, namespace, name, input.CommitSHA)
+	return &ResolveImageRefResult{ImageRef: imageRef}, nil
+}
 
 func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuildContextInput) (*ResolveBuildContextResult, error) {
 	a.logger.Info("ResolveBuildContext activity started", "serviceID", input.ServiceID)
@@ -24,28 +42,10 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		return nil, fmt.Errorf("stat source path: %w", err)
 	}
 
-	app, err := a.appsQ.GetAppByID(ctx, input.ServiceID)
+	namespace, name, app, err := a.resolveServiceIdentity(ctx, input.ServiceID)
 	if err != nil {
-		return nil, fmt.Errorf("get app: %w", err)
+		return nil, err
 	}
-
-	project, err := a.projectsQ.GetProjectByID(ctx, app.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("get project: %w", err)
-	}
-
-	user, err := a.usersQ.GetUserByID(ctx, app.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-
-	username := resolveUsername(user)
-	if username == "" {
-		return nil, fmt.Errorf("user %s has no gitea or github username", app.UserID)
-	}
-
-	namespace := NamespaceName(username, project.Ref)
-	name := ServiceName(*app.Name)
 
 	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, namespace, name, input.CommitSHA)
 
@@ -106,4 +106,33 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		Port:      app.Port,
 		EnvVars:   envVars,
 	}, nil
+}
+
+func (a *Activities) resolveServiceIdentity(ctx context.Context, serviceID string) (namespace, name string, app apps.App, _ error) {
+	app, err := a.appsQ.GetAppByID(ctx, serviceID)
+	if err != nil {
+		return "", "", apps.App{}, fmt.Errorf("get app: %w", err)
+	}
+
+	project, err := a.projectsQ.GetProjectByID(ctx, app.ProjectID)
+	if err != nil {
+		return "", "", apps.App{}, fmt.Errorf("get project: %w", err)
+	}
+
+	user, err := a.usersQ.GetUserByID(ctx, app.UserID)
+	if err != nil {
+		return "", "", apps.App{}, fmt.Errorf("get user: %w", err)
+	}
+
+	username := resolveUsername(user)
+	if username == "" {
+		return "", "", apps.App{}, fmt.Errorf("user %s has no gitea or github username", app.UserID)
+	}
+	if app.Name == nil || *app.Name == "" {
+		return "", "", apps.App{}, fmt.Errorf("app %s has empty service name", app.ID)
+	}
+
+	namespace = NamespaceName(username, project.Ref)
+	name = ServiceName(*app.Name)
+	return namespace, name, app, nil
 }

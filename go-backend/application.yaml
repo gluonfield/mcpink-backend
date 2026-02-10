@@ -27,7 +27,6 @@ githubapp:
   privatekey: ""
   clientid: ""
   clientsecret: ""
-  coolifyprivkeyuuid: ""
   webhooksecret: ""
 
 auth:
@@ -50,20 +49,6 @@ temporal:
 nats:
   url: "nats://localhost:4222"
   token: ""
-
-coolify:
-  baseurl: ""
-  token: ""
-  timeout: "30s"
-  projectuuid: ""
-  servers:
-    - uuid: "lswwsosgs8okoog4ksg8gkog"
-      ip: "157.90.130.187"
-  # Or via env var: COOLIFY_SERVERS="lswwsosgs8okoog4ksg8gkog:157.90.130.187"
-  environmentname: "production"
-  githubappuuid: ""
-  registryurl: ""
-  usebuildserver: true
 
 cloudflare:
   apitoken: ""

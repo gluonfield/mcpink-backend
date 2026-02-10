@@ -15,10 +15,8 @@ import (
 	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
-	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
-	"github.com/augustdev/autoclip/internal/logs"
 	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/mcpserver"
 	"github.com/augustdev/autoclip/internal/storage/pg"
@@ -45,7 +43,6 @@ func NewResolver(
 	logger *slog.Logger,
 	authService *auth.Service,
 	githubAppService *githubapp.Service,
-	coolifyClient *coolify.Client,
 	appQueries apps.Querier,
 	projectQueries projects.Querier,
 	resourceQueries resources.Querier,
@@ -56,7 +53,6 @@ func NewResolver(
 		Logger:           logger,
 		AuthService:      authService,
 		GitHubAppService: githubAppService,
-		CoolifyClient:    coolifyClient,
 		AppQueries:       appQueries,
 		ProjectQueries:   projectQueries,
 		ResourceQueries:  resourceQueries,
@@ -178,23 +174,6 @@ func gqlSchema(resolver *graph.Resolver) graphql.ExecutableSchema {
 	return graph.NewExecutableSchema(c)
 }
 
-func NewCoolifyClient(config coolify.Config, logger *slog.Logger) (*coolify.Client, error) {
-	if config.BaseURL == "" {
-		return nil, fmt.Errorf("coolify: BaseURL is required")
-	}
-	if config.Token == "" {
-		return nil, fmt.Errorf("coolify: Token is required")
-	}
-
-	client, err := coolify.NewClient(config)
-	if err != nil {
-		return nil, fmt.Errorf("coolify: failed to create client: %w", err)
-	}
-
-	logger.Info("Coolify client initialized", "baseURL", config.BaseURL)
-	return client, nil
-}
-
 func NewTursoClient(config turso.Config, logger *slog.Logger) (*turso.Client, error) {
 	if config.APIKey == "" {
 		return nil, fmt.Errorf("turso: APIKey is required")
@@ -205,10 +184,6 @@ func NewTursoClient(config turso.Config, logger *slog.Logger) (*turso.Client, er
 
 	logger.Info("Turso client initialized")
 	return turso.NewClient(config, logger), nil
-}
-
-func NewLogProvider(client *coolify.Client) logs.Provider {
-	return logs.NewCoolifyProvider(client)
 }
 
 func StartServer(lc fx.Lifecycle, router *chi.Mux, config GraphQLAPIConfig, logger *slog.Logger) {

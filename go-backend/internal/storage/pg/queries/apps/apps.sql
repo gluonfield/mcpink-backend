@@ -12,9 +12,6 @@ SELECT * FROM apps WHERE id = $1 AND is_deleted = false;
 -- name: GetAppByWorkflowID :one
 SELECT * FROM apps WHERE workflow_id = $1 AND is_deleted = false;
 
--- name: GetAppByCoolifyUUID :one
-SELECT * FROM apps WHERE coolify_app_uuid = $1 AND is_deleted = false;
-
 -- name: ListAppsByUserID :many
 SELECT * FROM apps
 WHERE user_id = $1 AND is_deleted = false
@@ -42,12 +39,6 @@ RETURNING *;
 -- name: UpdateRuntimeStatus :one
 UPDATE apps
 SET runtime_status = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING *;
-
--- name: UpdateAppCoolifyUUID :one
-UPDATE apps
-SET coolify_app_uuid = $2, build_status = 'building', updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
 RETURNING *;
 
@@ -79,7 +70,7 @@ RETURNING *;
 
 -- name: GetAppsByRepoBranch :many
 SELECT * FROM apps
-WHERE repo = $1 AND branch = $2 AND coolify_app_uuid IS NOT NULL AND is_deleted = false;
+WHERE repo = $1 AND branch = $2 AND is_deleted = false;
 
 -- name: UpdateAppRedeploying :one
 UPDATE apps
@@ -89,7 +80,7 @@ RETURNING *;
 
 -- name: GetAppByNameAndProject :one
 SELECT * FROM apps
-WHERE name = $1 AND project_id = $2 AND coolify_app_uuid IS NOT NULL AND is_deleted = false;
+WHERE name = $1 AND project_id = $2 AND is_deleted = false;
 
 -- name: GetAppByNameAndUserProject :one
 SELECT a.* FROM apps a
@@ -103,7 +94,7 @@ LIMIT 1;
 
 -- name: GetAppsByRepoBranchProvider :many
 SELECT * FROM apps
-WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND coolify_app_uuid IS NOT NULL AND is_deleted = false;
+WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND is_deleted = false;
 
 -- name: UpdateAppBuildProgress :exec
 UPDATE apps

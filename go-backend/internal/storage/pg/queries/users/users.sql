@@ -18,18 +18,6 @@ RETURNING *;
 -- name: DeleteUser :exec
 DELETE FROM users WHERE id = $1;
 
--- name: SetCoolifyGitHubAppUUID :one
-UPDATE users
-SET coolify_github_app_uuid = $2, updated_at = NOW()
-WHERE id = $1
-RETURNING *;
-
--- name: ClearCoolifyGitHubAppUUID :one
-UPDATE users
-SET coolify_github_app_uuid = NULL, updated_at = NOW()
-WHERE id = $1
-RETURNING *;
-
 -- name: SetGiteaUsername :one
 UPDATE users
 SET gitea_username = $2, updated_at = NOW()

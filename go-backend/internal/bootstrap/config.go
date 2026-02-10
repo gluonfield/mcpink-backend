@@ -7,7 +7,6 @@ import (
 
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/cloudflare"
-	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
@@ -33,7 +32,6 @@ func NewConfig() (Config, error) {
 		Auth       auth.Config
 		Temporal   TemporalClientConfig
 		NATS       NATSConfig
-		Coolify    coolify.Config
 		Turso      turso.Config
 		Gitea      internalgit.Config
 		Cloudflare cloudflare.Config
@@ -54,7 +52,6 @@ func NewConfig() (Config, error) {
 		Auth:       cfg.Auth,
 		Temporal:   cfg.Temporal,
 		NATS:       cfg.NATS,
-		Coolify:    cfg.Coolify,
 		Turso:      cfg.Turso,
 		Gitea:      cfg.Gitea,
 		Cloudflare: cfg.Cloudflare,
@@ -78,7 +75,6 @@ type Config struct {
 	Auth       auth.Config
 	Temporal   TemporalClientConfig
 	NATS       NATSConfig
-	Coolify    coolify.Config
 	Turso      turso.Config
 	Gitea      internalgit.Config
 	Cloudflare cloudflare.Config
@@ -109,23 +105,4 @@ func InitConfig() error {
 type NATSConfig struct {
 	URL   string
 	Token string
-}
-
-// parseServersEnv parses "uuid1:ip1,uuid2:ip2" format into []ServerEntry
-func parseServersEnv(env string) []coolify.ServerEntry {
-	var servers []coolify.ServerEntry
-	for _, pair := range strings.Split(env, ",") {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		parts := strings.SplitN(pair, ":", 2)
-		if len(parts) == 2 {
-			servers = append(servers, coolify.ServerEntry{
-				UUID: strings.TrimSpace(parts[0]),
-				IP:   strings.TrimSpace(parts[1]),
-			})
-		}
-	}
-	return servers
 }

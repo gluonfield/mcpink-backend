@@ -18,12 +18,8 @@ func (a *Activities) RailpackBuild(ctx context.Context, input BuildImageInput) (
 		"sourcePath", input.SourcePath)
 
 	if _, err := os.Stat(input.SourcePath); err != nil {
-		if os.IsNotExist(err) {
-			return nil, temporal.NewNonRetryableApplicationError(
-				fmt.Sprintf("source path missing: %s", input.SourcePath),
-				"source_path_missing",
-				err,
-			)
+		if isPathMissingErr(err) {
+			return nil, sourcePathMissingError(input.SourcePath, err)
 		}
 		return nil, fmt.Errorf("stat source path: %w", err)
 	}
@@ -89,6 +85,9 @@ func (a *Activities) RailpackBuild(ctx context.Context, input BuildImageInput) (
 	}
 
 	if err := buildkit.BuildWithBuildkitClient(input.SourcePath, result.Plan, buildOpts); err != nil {
+		if isPathMissingErr(err) {
+			return nil, sourcePathMissingError(input.SourcePath, err)
+		}
 		lokiLogger.Log(fmt.Sprintf("BUILD FAILED: %v", err))
 		_ = lokiLogger.Flush(ctx)
 		return nil, fmt.Errorf("railpack build: %w", err)

@@ -121,7 +121,6 @@ SELECT
     u.github_id,
     u.github_username,
     u.avatar_url,
-    u.coolify_github_app_uuid,
     u.created_at,
     u.updated_at,
     gc.github_oauth_token,
@@ -138,7 +137,6 @@ type GetUserWithGitHubCredsRow struct {
 	GithubID                *int64             `json:"github_id"`
 	GithubUsername          *string            `json:"github_username"`
 	AvatarUrl               *string            `json:"avatar_url"`
-	CoolifyGithubAppUuid    *string            `json:"coolify_github_app_uuid"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
 	GithubOauthToken        string             `json:"github_oauth_token"`
@@ -155,7 +153,6 @@ func (q *Queries) GetUserWithGitHubCreds(ctx context.Context, id string) (GetUse
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.AvatarUrl,
-		&i.CoolifyGithubAppUuid,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.GithubOauthToken,

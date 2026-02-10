@@ -190,6 +190,49 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		}
 	}
 
+	trySkipBuild := func(commitSHA string) (*BuildServiceWorkflowResult, bool) {
+		if commitSHA == "" {
+			return nil, false
+		}
+
+		resolveImageInput := ResolveImageRefInput{
+			ServiceID: input.ServiceID,
+			CommitSHA: commitSHA,
+		}
+		var resolveImageResult ResolveImageRefResult
+		if err := workflow.ExecuteActivity(actCtx, activities.ResolveImageRef, resolveImageInput).Get(ctx, &resolveImageResult); err != nil {
+			logger.Warn("ResolveImageRef failed; continuing with full build",
+				"serviceID", input.ServiceID,
+				"commitSHA", commitSHA,
+				"error", err)
+			return nil, false
+		}
+
+		var exists bool
+		if err := workflow.ExecuteActivity(actCtx, activities.ImageExists, resolveImageResult.ImageRef).Get(ctx, &exists); err != nil {
+			logger.Warn("ImageExists check failed; continuing with full build",
+				"imageRef", resolveImageResult.ImageRef,
+				"error", err)
+			return nil, false
+		}
+		if !exists {
+			return nil, false
+		}
+
+		logger.Info("Skipping build; image already exists",
+			"serviceID", input.ServiceID,
+			"imageRef", resolveImageResult.ImageRef,
+			"commitSHA", commitSHA)
+		return &BuildServiceWorkflowResult{
+			ImageRef:  resolveImageResult.ImageRef,
+			CommitSHA: commitSHA,
+		}, true
+	}
+
+	if result, ok := trySkipBuild(input.CommitSHA); ok {
+		return *result, nil
+	}
+
 	for attempt := 1; attempt <= 2; attempt++ {
 		if attempt > 1 {
 			logger.Warn("Retrying build after missing source path", "serviceID", input.ServiceID, "attempt", attempt)
@@ -224,6 +267,24 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 				continue
 			}
 			return BuildServiceWorkflowResult{}, fmt.Errorf("resolve failed: %w", err)
+		}
+
+		var imageExists bool
+		err = workflow.ExecuteActivity(actCtx, activities.ImageExists, resolveResult.ImageRef).Get(ctx, &imageExists)
+		if err != nil {
+			logger.Warn("ImageExists check failed after resolve; continuing with build",
+				"imageRef", resolveResult.ImageRef,
+				"error", err)
+		} else if imageExists {
+			cleanupSource(cloneResult.SourcePath)
+			logger.Info("Skipping build after resolve; image already exists",
+				"serviceID", input.ServiceID,
+				"imageRef", resolveResult.ImageRef,
+				"commitSHA", cloneResult.CommitSHA)
+			return BuildServiceWorkflowResult{
+				ImageRef:  resolveResult.ImageRef,
+				CommitSHA: cloneResult.CommitSHA,
+			}, nil
 		}
 
 		// 3. Build based on build pack

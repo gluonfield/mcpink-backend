@@ -19,7 +19,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/augustdev/autoclip/internal/account"
-	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/helpers"
@@ -36,7 +35,6 @@ type Service struct {
 	apiKeysQ     apikeys.Querier
 	githubCredsQ githubcreds.Querier
 	githubOAuth  *github_oauth.OAuthService
-	coolify      *coolify.Client
 	githubAppCfg githubapp.Config
 	temporal     client.Client
 	logger       *slog.Logger
@@ -57,7 +55,6 @@ func NewService(
 	apiKeysQ apikeys.Querier,
 	githubCredsQ githubcreds.Querier,
 	githubOAuth *github_oauth.OAuthService,
-	coolify *coolify.Client,
 	githubAppCfg githubapp.Config,
 	temporal client.Client,
 	logger *slog.Logger,
@@ -69,7 +66,6 @@ func NewService(
 		apiKeysQ:     apiKeysQ,
 		githubCredsQ: githubCredsQ,
 		githubOAuth:  githubOAuth,
-		coolify:      coolify,
 		githubAppCfg: githubAppCfg,
 		temporal:     temporal,
 		logger:       logger,
@@ -313,68 +309,11 @@ func (s *Service) ListAPIKeys(ctx context.Context, userID string) ([]apikeys.Lis
 }
 
 func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, installationID int64, githubUsername string) (string, error) {
-	user, err := s.usersQ.GetUserByID(ctx, userID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get user: %w", err)
-	}
-
 	if installationID == 0 {
 		if _, err := s.githubCredsQ.ClearGitHubAppInstallation(ctx, userID); err != nil {
 			return "", fmt.Errorf("failed to clear github app installation: %w", err)
 		}
-		if user.CoolifyGithubAppUuid != nil {
-			return *user.CoolifyGithubAppUuid, nil
-		}
 		return "", nil
-	}
-
-	if user.CoolifyGithubAppUuid != nil && *user.CoolifyGithubAppUuid != "" {
-		s.logger.Info("updating coolify source", "uuid", *user.CoolifyGithubAppUuid, "installation_id", installationID)
-		err := s.coolify.Sources.UpdateGitHubApp(ctx, *user.CoolifyGithubAppUuid, &coolify.UpdateGitHubAppSourceRequest{
-			InstallationID: installationID,
-		})
-		if err == nil {
-			s.logger.Info("coolify source updated successfully", "uuid", *user.CoolifyGithubAppUuid)
-
-			if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
-				UserID:                  userID,
-				GithubAppInstallationID: helpers.Ptr(installationID),
-			}); err != nil {
-				return "", fmt.Errorf("failed to set github app installation: %w", err)
-			}
-			return *user.CoolifyGithubAppUuid, nil
-		}
-		s.logger.Error("failed to update coolify source", "uuid", *user.CoolifyGithubAppUuid, "error", err)
-		return "", fmt.Errorf("failed to update coolify source: %w", err)
-	}
-
-	s.logger.Info("creating new coolify source", "user_id", userID, "installation_id", installationID)
-	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
-	req := &coolify.CreateGitHubAppSourceRequest{
-		Name:           sourceName,
-		APIUrl:         "https://api.github.com",
-		HTMLUrl:        "https://github.com",
-		CustomUser:     "git",
-		CustomPort:     22,
-		AppID:          s.githubAppCfg.AppID,
-		InstallationID: installationID,
-		ClientID:       s.githubAppCfg.ClientID,
-		ClientSecret:   s.githubAppCfg.ClientSecret,
-		WebhookSecret:  "not-used",
-		PrivateKeyUUID: s.githubAppCfg.CoolifyPrivKeyUUID,
-		IsSystemWide:   false,
-	}
-
-	source, err := s.coolify.Sources.CreateGitHubApp(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("failed to create coolify source: %w", err)
-	}
-
-	if _, err := s.usersQ.SetCoolifyGitHubAppUUID(ctx, users.SetCoolifyGitHubAppUUIDParams{
-		ID:                   userID,
-		CoolifyGithubAppUuid: helpers.Ptr(source.UUID),
-	}); err != nil {
-		return "", fmt.Errorf("failed to save coolify source uuid: %w", err)
 	}
 
 	if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
@@ -384,7 +323,7 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		return "", fmt.Errorf("failed to set github app installation: %w", err)
 	}
 
-	return source.UUID, nil
+	return "", nil
 }
 
 func (s *Service) GetGitHubCredsByUserID(ctx context.Context, userID string) (*githubcreds.GithubCred, error) {

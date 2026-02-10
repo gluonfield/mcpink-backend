@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
@@ -30,15 +32,15 @@ type DbConfig struct {
 
 type DB struct {
 	*pgxpool.Pool
-	logger              *slog.Logger
-	userQueries         users.Querier
-	apiKeyQueries       apikeys.Querier
-	appQueries          apps.Querier
-	projectQueries      projects.Querier
-	githubCredsQ        githubcreds.Querier
-	resourceQueries     resources.Querier
-	internalReposQ      internalrepos.Querier
-	dnsrecordsQ         dnsrecords.Querier
+	logger          *slog.Logger
+	userQueries     users.Querier
+	apiKeyQueries   apikeys.Querier
+	appQueries      apps.Querier
+	projectQueries  projects.Querier
+	githubCredsQ    githubcreds.Querier
+	resourceQueries resources.Querier
+	internalReposQ  internalrepos.Querier
+	dnsrecordsQ     dnsrecords.Querier
 }
 
 func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, error) {
@@ -90,18 +92,28 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+	skipPing := envTrue("DB_SKIP_PING")
+	skipMigrations := envTrue("DB_SKIP_MIGRATIONS")
+
+	if !skipPing {
+		if err := pool.Ping(ctx); err != nil {
+			return nil, fmt.Errorf("failed to ping database: %w", err)
+		}
+		logger.Info("Successfully connected to database")
+	} else {
+		logger.Warn("Skipping database startup ping (DB_SKIP_PING enabled)")
 	}
 
-	logger.Info("Successfully connected to database")
-
-	logger.Info("Running database migrations...")
-	if err := RunMigrations(pool); err != nil {
-		logger.Error("Failed to run database migrations", "error", err)
-		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+	if !skipMigrations {
+		logger.Info("Running database migrations...")
+		if err := RunMigrations(pool); err != nil {
+			logger.Error("Failed to run database migrations", "error", err)
+			return nil, fmt.Errorf("failed to run database migrations: %w", err)
+		}
+		logger.Info("Database migrations completed successfully")
+	} else {
+		logger.Warn("Skipping database migrations on startup (DB_SKIP_MIGRATIONS enabled)")
 	}
-	logger.Info("Database migrations completed successfully")
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {
@@ -124,6 +136,11 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		internalReposQ:  internalrepos.New(pool),
 		dnsrecordsQ:     dnsrecords.New(pool),
 	}, nil
+}
+
+func envTrue(key string) bool {
+	value := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	return value == "1" || value == "true" || value == "yes" || value == "on"
 }
 
 func (db *DB) Health() error {

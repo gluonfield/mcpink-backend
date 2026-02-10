@@ -40,7 +40,6 @@ func main() {
 			auth.NewService,
 			auth.NewHandlers,
 			authz.NewAPIKeyValidator,
-			bootstrap.NewCoolifyClient,
 			bootstrap.NewTursoClient,
 			deployments.NewService,
 			resources.NewService,

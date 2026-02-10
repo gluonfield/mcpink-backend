@@ -38,7 +38,6 @@ SELECT
     u.github_id,
     u.github_username,
     u.avatar_url,
-    u.coolify_github_app_uuid,
     u.created_at,
     u.updated_at,
     gc.github_oauth_token,

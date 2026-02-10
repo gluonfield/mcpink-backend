@@ -32,15 +32,6 @@ func (r *mutationResolver) DeleteApp(ctx context.Context, name string, project *
 		return nil, fmt.Errorf("app not found: %s in project %s", name, projectRef)
 	}
 
-	if app.CoolifyAppUuid != nil {
-		if err := r.CoolifyClient.Applications.Delete(ctx, *app.CoolifyAppUuid); err != nil {
-			r.Logger.Warn("failed to delete app from Coolify",
-				"app_id", app.ID,
-				"coolify_uuid", *app.CoolifyAppUuid,
-				"error", err)
-		}
-	}
-
 	_, err = r.AppQueries.SoftDeleteApp(ctx, app.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete app: %w", err)

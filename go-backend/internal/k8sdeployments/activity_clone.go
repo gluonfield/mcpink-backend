@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -49,6 +50,13 @@ func (a *Activities) CloneRepo(ctx context.Context, input CloneRepoInput) (*Clon
 			return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
 		}
 		commitSHA = strings.TrimSpace(string(out))
+	}
+
+	// Keep only the working tree. Shipping git history to BuildKit is slow and
+	// doesn't change build outputs.
+	if err := os.RemoveAll(filepath.Join(dir, ".git")); err != nil {
+		os.RemoveAll(dir)
+		return nil, fmt.Errorf("cleanup .git dir: %w", err)
 	}
 
 	a.logger.Info("CloneRepo completed", "serviceID", input.ServiceID, "commitSHA", commitSHA, "dir", dir)

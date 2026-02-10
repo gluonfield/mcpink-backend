@@ -90,6 +90,15 @@ type ResolveBuildContextInput struct {
 	CommitSHA  string
 }
 
+type ResolveImageRefInput struct {
+	ServiceID string
+	CommitSHA string
+}
+
+type ResolveImageRefResult struct {
+	ImageRef string
+}
+
 type ResolveBuildContextResult struct {
 	BuildPack string
 	ImageRef  string

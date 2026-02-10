@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/augustdev/autoclip/internal/cloudflare"
-	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
@@ -29,7 +28,6 @@ type Service struct {
 	usersQ           users.Querier
 	ghCredsQ         githubcreds.Querier
 	dnsQ             dnsrecords.Querier
-	coolifyClient    *coolify.Client
 	cloudflareClient *cloudflare.Client
 	appsDomain       string
 	logger           *slog.Logger
@@ -42,7 +40,6 @@ func NewService(
 	usersQ users.Querier,
 	ghCredsQ githubcreds.Querier,
 	dnsQ dnsrecords.Querier,
-	coolifyClient *coolify.Client,
 	cloudflareClient *cloudflare.Client,
 	cfConfig cloudflare.Config,
 	logger *slog.Logger,
@@ -54,7 +51,6 @@ func NewService(
 		usersQ:           usersQ,
 		ghCredsQ:         ghCredsQ,
 		dnsQ:             dnsQ,
-		coolifyClient:    coolifyClient,
 		cloudflareClient: cloudflareClient,
 		appsDomain:       cfConfig.BaseDomain,
 		logger:           logger,

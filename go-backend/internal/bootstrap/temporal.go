@@ -111,7 +111,7 @@ func CreateTemporalClient(lc fx.Lifecycle, config TemporalClientConfig) (client.
 	healthCheckDuration := time.Since(healthCheckStart)
 
 	if err != nil {
-		slog.Error("Temporal health check failed - blocking startup",
+		slog.Warn("Temporal health check failed during startup; continuing with lazy client",
 			"address", config.Address,
 			"namespace", config.Namespace,
 			"error", err,
@@ -119,15 +119,12 @@ func CreateTemporalClient(lc fx.Lifecycle, config TemporalClientConfig) (client.
 			"contextErr", ctx.Err(),
 			"deadlineExceeded", ctx.Err() == context.DeadlineExceeded,
 			"canceled", ctx.Err() == context.Canceled)
-
-		c.Close()
-		return nil, fmt.Errorf("temporal health check failed after %v: %w", healthCheckDuration, err)
+	} else {
+		slog.Info("Temporal health check succeeded - client validated and ready",
+			"address", config.Address,
+			"namespace", config.Namespace,
+			"duration", healthCheckDuration)
 	}
-
-	slog.Info("Temporal health check succeeded - client validated and ready",
-		"address", config.Address,
-		"namespace", config.Namespace,
-		"duration", healthCheckDuration)
 
 	lc.Append(fx.Hook{
 		OnStop: func(ctx context.Context) error {

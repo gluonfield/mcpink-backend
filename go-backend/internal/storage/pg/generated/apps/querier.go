@@ -14,7 +14,6 @@ type Querier interface {
 	CountAppsByUserID(ctx context.Context, userID string) (int64, error)
 	CreateApp(ctx context.Context, arg CreateAppParams) (App, error)
 	DeleteApp(ctx context.Context, id string) error
-	GetAppByCoolifyUUID(ctx context.Context, coolifyAppUuid *string) (App, error)
 	GetAppByID(ctx context.Context, id string) (App, error)
 	GetAppByNameAndProject(ctx context.Context, arg GetAppByNameAndProjectParams) (App, error)
 	GetAppByNameAndUserProject(ctx context.Context, arg GetAppByNameAndUserProjectParams) (App, error)
@@ -25,7 +24,6 @@ type Querier interface {
 	ListAppsByUserID(ctx context.Context, arg ListAppsByUserIDParams) ([]App, error)
 	SoftDeleteApp(ctx context.Context, id string) (App, error)
 	UpdateAppBuildProgress(ctx context.Context, arg UpdateAppBuildProgressParams) error
-	UpdateAppCoolifyUUID(ctx context.Context, arg UpdateAppCoolifyUUIDParams) (App, error)
 	UpdateAppFailed(ctx context.Context, arg UpdateAppFailedParams) (App, error)
 	UpdateAppRedeploying(ctx context.Context, id string) (App, error)
 	UpdateAppRunning(ctx context.Context, arg UpdateAppRunningParams) (App, error)
