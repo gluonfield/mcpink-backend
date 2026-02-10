@@ -1,0 +1,57 @@
+---
+- name: Ensure k3s config directory exists
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render k3s server config
+  template:
+    src: config.yaml.j2
+    dest: "{{ k3s_server_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s server
+
+- name: Detect installed k3s version
+  shell: "set -o pipefail && k3s --version | awk 'NR==1{print $3}'"
+  args:
+    executable: /bin/bash
+  check_mode: false
+  register: k3s_server_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Flag whether k3s server is already installed
+  set_fact:
+    k3s_server_is_installed: "{{ (k3s_server_installed_version.stdout | default('') | trim | length) > 0 }}"
+
+- name: Install or upgrade k3s server
+  shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION='{{ k3s_version }}' \
+      INSTALL_K3S_EXEC='server' \
+      sh -
+  args:
+    executable: /bin/bash
+  when: k3s_server_installed_version.stdout != k3s_version
+
+- name: Ensure k3s server service is enabled and started
+  systemd:
+    name: "{{ k3s_server_service_name }}"
+    state: started
+    enabled: true
+  when: k3s_server_is_installed or not ansible_check_mode
+
+- name: Wait for k3s API to be ready
+  command: k3s kubectl get nodes
+  register: k3s_nodes_cmd
+  changed_when: false
+  retries: 18
+  delay: 10
+  until: k3s_nodes_cmd.rc == 0
+  when: k3s_server_is_installed or not ansible_check_mode

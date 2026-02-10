@@ -1,0 +1,36 @@
+---
+- name: Baseline all nodes
+  hosts: all
+  become: true
+  roles:
+    - role: common
+    - role: vswitch
+      when: is_dedicated | default(false) | bool
+    - role: legacy_cleanup
+      when: legacy_cleanup_enabled | default(false) | bool
+
+- name: Install and configure k3s server
+  hosts: ctrl
+  become: true
+  roles:
+    - role: k3s_server
+    - role: registry_client
+    - role: firewall
+
+- name: Install and configure k3s agents
+  hosts: ops:build:run
+  become: true
+  roles:
+    - role: k3s_agent
+    - role: gvisor
+      when: "'run' in group_names"
+    - role: registry_client
+    - role: firewall
+
+- name: Install addons and apply manifests
+  hosts: ctrl
+  become: true
+  roles:
+    - role: k8s_addons
+  vars:
+    run_k8s_addons_on_host: "{{ groups['ctrl'][0] }}"

@@ -1,0 +1,21 @@
+---
+ssh_port: 22
+metadata_ip: 169.254.169.254
+smtp_ports:
+  - "25"
+  - "465"
+  - "587"
+
+registry_allowed_cidrs:
+  - "{{ vswitch_network_cidr }}"
+
+metrics_allowed_cidrs:
+  - "{{ vswitch_network_cidr }}"
+
+traefik_public_ports:
+  - "80"
+  - "443"
+
+traefik_private_probe_ports:
+  - "8080"
+  - "19100"

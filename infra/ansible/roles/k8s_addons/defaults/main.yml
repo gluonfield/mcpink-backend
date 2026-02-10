@@ -1,0 +1,28 @@
+---
+k8s_manifests_remote_dir: /opt/deploy-k8s/manifests
+k8s_values_remote_dir: /opt/deploy-k8s/values
+k8s_manifest_src_dir: "{{ playbook_dir }}/../../k8s"
+k8s_kubeconfig_path: /etc/rancher/k3s/k3s.yaml
+
+k8s_values_files:
+  - cert-manager-values.yml
+  - traefik-values.yml
+  - loki-values.yml
+  - promtail-values.yml
+  - prometheus-values.yml
+  - grafana-values.yml
+
+k8s_manifest_apply_order:
+  - dp-system.yml
+  - gvisor-runtimeclass.yml
+  - registry.yml
+  - registry-gc.yml
+  - buildkit.yml
+  - cert-manager-issuer.yml
+  - wildcard-cert.yml
+  - traefik-tlsstore.yml
+  - temporal-worker.yml
+  - loki-ingress.yml
+  - grafana-ingress.yml
+  - gitea.yml
+  - gitea-ingress.yml

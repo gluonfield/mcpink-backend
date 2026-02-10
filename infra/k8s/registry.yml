@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry
+  namespace: dp-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: registry
+  template:
+    metadata:
+      labels:
+        app: registry
+    spec:
+      nodeSelector:
+        pool: ops
+      tolerations:
+        - key: pool
+          operator: Equal
+          value: ops
+          effect: NoSchedule
+      containers:
+        - name: registry
+          image: registry:2
+          ports:
+            - containerPort: 5000
+              hostPort: 5000
+          startupProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          env:
+            - name: REGISTRY_STORAGE_DELETE_ENABLED
+              value: "true"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/registry
+          resources:
+            requests:
+              cpu: "200m"
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+      volumes:
+        - name: data
+          hostPath:
+            path: /mnt/registry
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry
+  namespace: dp-system
+spec:
+  selector:
+    app: registry
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000

@@ -1,0 +1,21 @@
+---
+common_packages_required:
+  - ca-certificates
+  - curl
+  - iptables
+
+common_packages_optional:
+  - apt-transport-https
+  - git
+  - gnupg
+  - jq
+  - net-tools
+  - nfs-common
+  - socat
+  - unzip
+  - vim
+  - wget
+
+common_kernel_modules:
+  - overlay
+  - br_netfilter

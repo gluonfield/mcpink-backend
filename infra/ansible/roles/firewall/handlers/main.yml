@@ -1,0 +1,8 @@
+---
+- name: Persist iptables rules
+  shell: |
+    set -euo pipefail
+    iptables-save > /etc/iptables/rules.v4
+  args:
+    executable: /bin/bash
+  when: not ansible_check_mode

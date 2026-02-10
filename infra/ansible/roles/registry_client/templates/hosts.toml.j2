@@ -1,0 +1,9 @@
+server = "http://{{ registry_server }}"
+
+[host."http://{{ registry_host_fqdn }}"]
+  capabilities = ["pull", "resolve", "push"]
+  skip_verify = true
+
+[host."http://{{ registry_ip }}:{{ registry_port }}"]
+  capabilities = ["pull", "resolve", "push"]
+  skip_verify = true

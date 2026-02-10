@@ -1,0 +1,11 @@
+network:
+  version: 2
+  vlans:
+    {{ vswitch_iface_name }}:
+      id: {{ vswitch_vlan_id }}
+      link: {{ physical_nic }}
+      addresses:
+        - {{ private_ip }}/{{ vswitch_prefix }}
+      routes:
+        - to: {{ vswitch_network_cidr }}
+          via: {{ private_gateway }}

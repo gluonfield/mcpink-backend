@@ -1,0 +1,170 @@
+---
+- name: Ensure firewall persistence directory exists
+  file:
+    path: /etc/iptables
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Seed persisted firewall file when missing
+  shell: |
+    set -euo pipefail
+    if [ ! -f /etc/iptables/rules.v4 ]; then
+      iptables-save > /etc/iptables/rules.v4
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install firewall restore systemd unit
+  copy:
+    dest: /etc/systemd/system/iptables-restore.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=Restore iptables firewall rules
+      DefaultDependencies=no
+      Before=network-pre.target
+      Wants=network-pre.target
+      After=local-fs.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/sbin/iptables-restore /etc/iptables/rules.v4
+      ExecReload=/sbin/iptables-restore /etc/iptables/rules.v4
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Reload systemd to pick up firewall unit
+  systemd:
+    daemon_reload: true
+
+- name: Ensure firewall restore service is enabled
+  systemd:
+    name: iptables-restore
+    enabled: true
+    state: started
+  when: not ansible_check_mode
+
+- name: Allow established and related incoming traffic
+  ansible.builtin.iptables:
+    chain: INPUT
+    ctstate: ESTABLISHED,RELATED
+    jump: ACCEPT
+    comment: allow established inbound
+    state: present
+  notify: Persist iptables rules
+
+- name: Allow loopback traffic
+  ansible.builtin.iptables:
+    chain: INPUT
+    in_interface: lo
+    jump: ACCEPT
+    comment: allow loopback inbound
+    state: present
+  notify: Persist iptables rules
+
+- name: Allow SSH access
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ ssh_port }}"
+    jump: ACCEPT
+    comment: allow ssh inbound
+    state: present
+  notify: Persist iptables rules
+
+- name: Allow public Traefik ingress ports on run nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ item }}"
+    jump: ACCEPT
+    comment: allow traefik public ingress
+    state: present
+    action: insert
+    rule_num: 1
+  loop: "{{ traefik_public_ports }}"
+  when: "'run' in group_names"
+  notify: Persist iptables rules
+
+- name: Allow Traefik probe/metrics ports from private CIDRs on run nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "{{ item.0 }}"
+    destination_port: "{{ item.1 }}"
+    jump: ACCEPT
+    comment: allow traefik private probe/metrics
+    state: present
+    action: insert
+    rule_num: 1
+  loop: "{{ metrics_allowed_cidrs | product(traefik_private_probe_ports) | list }}"
+  when: "'run' in group_names"
+  notify: Persist iptables rules
+
+- name: Allow node-exporter metrics scraping from approved private CIDRs
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "{{ item }}"
+    destination_port: "9100"
+    jump: ACCEPT
+    comment: allow node exporter scrape
+    state: present
+    action: insert
+    rule_num: 1
+  loop: "{{ metrics_allowed_cidrs }}"
+  notify: Persist iptables rules
+
+- name: Allow registry traffic from approved private CIDRs on ops nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    source: "{{ item }}"
+    destination_port: "{{ registry_port }}"
+    jump: ACCEPT
+    comment: allow private registry access
+    state: present
+  loop: "{{ registry_allowed_cidrs }}"
+  when: "'ops' in group_names"
+  notify: Persist iptables rules
+
+- name: Drop public registry traffic on ops nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "{{ registry_port }}"
+    jump: DROP
+    comment: block public registry access
+    state: present
+  when: "'ops' in group_names"
+  notify: Persist iptables rules
+
+- name: Block metadata endpoint egress
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    destination: "{{ metadata_ip }}"
+    jump: DROP
+    comment: block metadata endpoint
+    state: present
+  when: firewall_block_metadata | bool
+  notify: Persist iptables rules
+
+- name: Block SMTP egress
+  ansible.builtin.iptables:
+    chain: OUTPUT
+    protocol: tcp
+    destination_port: "{{ item }}"
+    jump: REJECT
+    reject_with: icmp-port-unreachable
+    comment: block smtp egress
+    state: present
+  when: firewall_block_smtp | bool
+  loop: "{{ smtp_ports }}"
+  notify: Persist iptables rules

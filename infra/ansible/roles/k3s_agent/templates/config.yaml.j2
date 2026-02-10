@@ -1,0 +1,10 @@
+server: "{{ k3s_server_url }}"
+token: "{{ k3s_join_token }}"
+disable-default-registry-endpoint: {{ k3s_disable_default_registry_endpoint | default(true) | bool | lower }}
+flannel-iface: "{{ private_iface | default(k3s_flannel_iface_default) }}"
+node-label:
+  - "pool={{ node_pool_name }}"
+{% if node_taint is defined and node_taint | length > 0 %}
+node-taint:
+  - "{{ node_taint }}"
+{% endif %}

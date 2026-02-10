@@ -88,3 +88,10 @@ gitea:
 mcpoauth:
   issuer: "http://localhost:8081"
   frontendurl: "http://localhost:5001"
+
+k8sworker:
+  buildkithost: "tcp://buildkitd.dp-system:1234"
+  registryhost: "http://registry.dp-system.svc.cluster.local:5000"
+  registryaddress: "registry.internal:5000"
+  lokipushurl: "http://loki.dp-system.svc.cluster.local:3100/loki/api/v1/push"
+  lokiqueryurl: "http://loki.dp-system.svc.cluster.local:3100/loki/api/v1/query_range"

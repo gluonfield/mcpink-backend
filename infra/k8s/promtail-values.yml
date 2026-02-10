@@ -1,0 +1,7 @@
+config:
+  clients:
+    - url: http://loki.dp-system:3100/loki/api/v1/push
+
+tolerations:
+  - key: pool
+    operator: Exists

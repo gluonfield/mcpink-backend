@@ -1,0 +1,27 @@
+---
+- name: Validate dedicated node network variables are present
+  assert:
+    that:
+      - physical_nic is defined
+      - private_ip is defined
+      - vswitch_vlan_id is defined
+      - vswitch_network_cidr is defined
+      - private_gateway is defined
+    fail_msg: "Dedicated host networking requires physical_nic/private_ip/vswitch variables."
+
+- name: Ensure netplan directory exists
+  file:
+    path: /etc/netplan
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install dedicated server netplan VLAN config
+  template:
+    src: 50-vswitch.yaml.j2
+    dest: "{{ vswitch_netplan_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply netplan

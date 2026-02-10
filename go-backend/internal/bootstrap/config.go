@@ -11,6 +11,7 @@ import (
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
+	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/turso"
@@ -38,6 +39,7 @@ func NewConfig() (Config, error) {
 		Cloudflare  cloudflare.Config
 		MCPOAuth    mcp_oauth.Config
 		Firebase    FirebaseConfig
+		K8sWorker   k8sdeployments.Config
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -63,6 +65,7 @@ func NewConfig() (Config, error) {
 		Cloudflare:  cfg.Cloudflare,
 		MCPOAuth:    cfg.MCPOAuth,
 		Firebase:    cfg.Firebase,
+		K8sWorker:   cfg.K8sWorker,
 	}, nil
 }
 
@@ -86,6 +89,7 @@ type Config struct {
 	Cloudflare  cloudflare.Config
 	MCPOAuth    mcp_oauth.Config
 	Firebase    FirebaseConfig
+	K8sWorker   k8sdeployments.Config
 }
 
 func InitConfig() error {

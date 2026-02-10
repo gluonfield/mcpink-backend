@@ -1,0 +1,29 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: loki-auth
+  namespace: dp-system
+spec:
+  basicAuth:
+    secret: loki-auth-secret
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loki
+  namespace: dp-system
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: dp-system-loki-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: loki.ml.ink
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: loki
+                port:
+                  number: 3100

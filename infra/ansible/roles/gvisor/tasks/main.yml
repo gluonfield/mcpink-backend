@@ -1,0 +1,19 @@
+---
+- name: Ensure gVisor binaries are present
+  get_url:
+    url: "{{ gvisor_base_url }}/{{ item.src }}"
+    dest: "{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0755"
+    force: false
+  loop:
+    - src: runsc
+      dest: "{{ gvisor_runsc_binary }}"
+    - src: containerd-shim-runsc-v1
+      dest: "{{ gvisor_shim_binary }}"
+  notify: Restart k3s agent
+
+- name: Verify runsc installed
+  command: runsc --version
+  changed_when: false

@@ -1,0 +1,13 @@
+---
+- name: Verify baseline cluster invariants
+  hosts: ctrl
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Check nodes are visible
+      command: k3s kubectl get nodes -o wide
+      changed_when: false
+
+    - name: Check dp-system resources
+      command: k3s kubectl -n dp-system get pods
+      changed_when: false

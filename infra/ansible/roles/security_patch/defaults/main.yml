@@ -1,0 +1,6 @@
+---
+security_patch_upgrade_mode: dist
+security_patch_autoremove: true
+security_patch_autoclean: true
+security_patch_reboot_if_required: true
+security_patch_reboot_timeout: 1800

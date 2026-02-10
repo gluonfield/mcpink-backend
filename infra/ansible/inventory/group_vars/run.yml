@@ -1,0 +1,5 @@
+---
+gvisor_install_arch: x86_64
+legacy_cleanup_enabled: true
+legacy_cleanup_mask_docker: true
+legacy_cleanup_flush_docker_nat: true

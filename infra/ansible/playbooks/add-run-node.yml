@@ -1,0 +1,30 @@
+---
+- name: Add or reconcile a run node
+  hosts: "{{ target | default(ansible_limit | default('run')) }}"
+  become: true
+  roles:
+    - role: common
+    - role: vswitch
+      when: is_dedicated | default(false) | bool
+    - role: k3s_agent
+    - role: gvisor
+    - role: registry_client
+    - role: firewall
+
+  post_tasks:
+    - name: Wait for node to report Ready
+      command: >-
+        k3s kubectl get node {{ inventory_hostname }}
+        -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}'
+      register: node_status
+      changed_when: false
+      retries: 12
+      delay: 10
+      until: node_status.stdout == "True"
+      delegate_to: "{{ groups['ctrl'][0] }}"
+
+    - name: DNS reminder
+      debug:
+        msg: >-
+          {{ inventory_hostname }} is Ready.
+          Add public DNS A record for *.{{ apps_domain }} -> {{ ansible_host }}.

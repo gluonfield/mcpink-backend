@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: buildkitd
+  namespace: dp-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: buildkitd
+  template:
+    metadata:
+      labels:
+        app: buildkitd
+    spec:
+      nodeSelector:
+        pool: build
+      tolerations:
+        - key: pool
+          operator: Equal
+          value: build
+          effect: NoSchedule
+      hostAliases:
+        - ip: "10.0.1.4"
+          hostnames:
+            - "registry.internal"
+      initContainers:
+        - name: clear-stale-lock
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - rm -f /var/lib/buildkit/buildkitd.lock
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/buildkit
+      containers:
+        - name: buildkitd
+          image: moby/buildkit:latest
+          args:
+            - --addr
+            - tcp://0.0.0.0:1234
+            - --oci-worker-gc
+            - --oci-worker-gc-keepstorage=20000
+          ports:
+            - containerPort: 1234
+          startupProbe:
+            tcpSocket:
+              port: 1234
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          readinessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: 1234
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/buildkit
+          resources:
+            requests:
+              cpu: "2"
+              memory: 8Gi
+            limits:
+              cpu: "6"
+              memory: 12Gi
+      volumes:
+        - name: state
+          hostPath:
+            path: /mnt/buildkit
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: buildkitd
+  namespace: dp-system
+spec:
+  selector:
+    app: buildkitd
+  ports:
+    - name: grpc
+      port: 1234
+      targetPort: 1234

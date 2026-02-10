@@ -5,7 +5,8 @@
 | hetzner-factory      | 46.225.65.56    | 10.0.1.2             | `ssh root@46.225.65.56`    |
 | hetzner-muscle-1     | 157.90.130.187  | 10.0.1.3             | `ssh root@157.90.130.187`  |
 | hetzner-muscle-ops-1 | 116.202.163.209 | 10.0.1.4             | `ssh root@116.202.163.209` |
-| hetzner-builder-1    | 46.225.92.127   | 10.0.1.5             | `ssh root@46.225.92.127`   |
+| hetzner-builder-1    | 46.225.92.127   | 10.0.0.3             | `ssh root@46.225.92.127`   |
+| k3s-1                | 46.225.100.234  | 10.0.0.4             | `ssh root@46.225.100.234`  |
 
 ## vSwitch Private Network
 
@@ -90,6 +91,15 @@ Factory (Cloud VPS) is attached to Cloud Network #11898981 via Hetzner Cloud Con
 |-------|------|--------|---------|
 | `/` + `/data` | RAID1 | 2×960GB NVMe | OS + Docker + Registry + Gitea |
 | `/backups` | RAID1 | 2×2TB HDD | Local backup staging |
+
+### k3s-1
+
+**Hetzner Cloud VPS (CX33)**
+
+- **CPU:** x86
+- **Storage:** 80 GB local disk
+- **Location:** Germany, Nuremberg (eu-central)
+- **Role:** K3s cluster node
 
 ## Host Keys
 

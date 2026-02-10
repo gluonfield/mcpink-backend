@@ -178,13 +178,7 @@ func (h *Handlers) handlePushWebhook(w http.ResponseWriter, r *http.Request, bod
 	// Start redeploy workflow for each app
 	var deployments []DeploymentInfo
 	for _, app := range matchingApps {
-		if app.CoolifyAppUuid == nil {
-			h.logger.Warn("app has no coolify uuid, skipping",
-				"appID", app.ID)
-			continue
-		}
-
-		workflowID, err := h.deployService.RedeployFromGitHubPush(r.Context(), app.ID, *app.CoolifyAppUuid, after, delivery)
+		workflowID, err := h.deployService.RedeployFromGitHubPush(r.Context(), app.ID, after, delivery)
 		if err != nil {
 			h.logger.Error("failed to start redeploy workflow",
 				"appID", app.ID,

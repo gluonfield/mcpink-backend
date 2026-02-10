@@ -1,0 +1,4 @@
+---
+vswitch_netplan_file: /etc/netplan/50-vswitch.yaml
+vswitch_iface_name: "vlan{{ vswitch_vlan_id }}"
+vswitch_prefix: 24

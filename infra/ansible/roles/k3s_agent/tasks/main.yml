@@ -1,0 +1,72 @@
+---
+- name: Read k3s join token from server
+  command: cat /var/lib/rancher/k3s/server/node-token
+  delegate_to: "{{ groups['ctrl'][0] }}"
+  run_once: true
+  register: k3s_join_token_cmd
+  changed_when: false
+
+- name: Share join token to all hosts
+  set_fact:
+    k3s_cluster_join_token: "{{ k3s_join_token_cmd.stdout }}"
+  delegate_to: localhost
+  delegate_facts: true
+  run_once: true
+
+- name: Set host-specific join token fact
+  set_fact:
+    k3s_join_token: "{{ hostvars['localhost'].k3s_cluster_join_token }}"
+
+- name: Ensure k3s config directory exists
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Render k3s agent config
+  template:
+    src: config.yaml.j2
+    dest: "{{ k3s_agent_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Restart k3s agent
+
+- name: Detect installed k3s version
+  shell: |
+    set -o pipefail
+    if command -v k3s >/dev/null 2>&1; then
+      k3s --version | awk 'NR==1{print $3}'
+    elif command -v k3s-agent >/dev/null 2>&1; then
+      k3s-agent --version | awk 'NR==1{print $3}'
+    fi
+  args:
+    executable: /bin/bash
+  check_mode: false
+  register: k3s_agent_installed_version
+  changed_when: false
+  failed_when: false
+
+- name: Flag whether k3s agent is already installed
+  set_fact:
+    k3s_agent_is_installed: "{{ (k3s_agent_installed_version.stdout | default('') | trim | length) > 0 }}"
+
+- name: Install or upgrade k3s agent
+  shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      INSTALL_K3S_VERSION='{{ k3s_version }}' \
+      INSTALL_K3S_EXEC='agent' \
+      sh -
+  args:
+    executable: /bin/bash
+  when: k3s_agent_installed_version.stdout != k3s_version
+
+- name: Ensure k3s agent service is enabled and started
+  systemd:
+    name: "{{ k3s_agent_service_name }}"
+    state: started
+    enabled: true
+  when: k3s_agent_is_installed or not ansible_check_mode

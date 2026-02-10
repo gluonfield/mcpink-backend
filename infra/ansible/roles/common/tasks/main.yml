@@ -1,0 +1,58 @@
+---
+- name: Install required base packages
+  apt:
+    name: "{{ common_packages_required }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install optional utility packages when available
+  apt:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ common_packages_optional }}"
+  register: common_optional_pkg
+  failed_when: false
+
+- name: Ensure kernel modules are configured to load at boot
+  copy:
+    dest: /etc/modules-load.d/k8s.conf
+    mode: "0644"
+    content: |
+      {% for module in common_kernel_modules %}
+      {{ module }}
+      {% endfor %}
+
+- name: Load required kernel modules now
+  command: "modprobe {{ item }}"
+  changed_when: false
+  loop: "{{ common_kernel_modules }}"
+
+- name: Configure required sysctl settings for Kubernetes networking
+  copy:
+    dest: /etc/sysctl.d/99-k3s.conf
+    mode: "0644"
+    content: |
+      net.ipv4.ip_forward=1
+      net.bridge.bridge-nf-call-iptables=1
+      net.bridge.bridge-nf-call-ip6tables=1
+  notify: Reload sysctl
+
+- name: Disable swap immediately
+  command: swapoff -a
+  when: ansible_facts.swaptotal_mb | int > 0
+  changed_when: true
+
+- name: Disable swap persistently in fstab
+  replace:
+    path: /etc/fstab
+    regexp: '^(\S+\s+\S+\s+swap\s+\S+\s+\S+\s+\S+)$'
+    replace: '# \1'
+
+- name: Ensure /etc/rancher directory exists
+  file:
+    path: /etc/rancher
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"

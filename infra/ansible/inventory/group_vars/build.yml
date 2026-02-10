@@ -1,0 +1,7 @@
+---
+buildkit_storage_path: /mnt/buildkit
+buildkit_gc_keepstorage_mb: 20000
+buildkit_cpu_request: "4"
+buildkit_cpu_limit: "8"
+buildkit_memory_request: 16Gi
+buildkit_memory_limit: 28Gi

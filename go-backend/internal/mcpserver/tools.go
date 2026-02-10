@@ -194,6 +194,7 @@ func (s *Server) createAppFromGitHub(ctx context.Context, user *users.User, inpu
 		InstallCommand: input.InstallCommand,
 		BuildCommand:   input.BuildCommand,
 		StartCommand:   input.StartCommand,
+		InstallationID: *creds.GithubAppInstallationID,
 	})
 }
 
@@ -298,17 +299,13 @@ func (s *Server) handleRedeploy(ctx context.Context, req *mcp.CallToolRequest, i
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("app not found: %s", input.Name)}}}, RedeployOutput{}, nil
 	}
 
-	if app.CoolifyAppUuid == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "app has not been deployed yet"}}}, RedeployOutput{}, nil
-	}
-
 	s.logger.Info("starting redeploy",
 		"user_id", user.ID,
 		"app_id", app.ID,
 		"name", input.Name,
 	)
 
-	workflowID, err := s.deployService.RedeployApp(ctx, app.ID, *app.CoolifyAppUuid)
+	workflowID, err := s.deployService.RedeployApp(ctx, app.ID)
 	if err != nil {
 		s.logger.Error("failed to start redeploy", "error", err)
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to start redeploy: %v", err)}}}, RedeployOutput{}, nil

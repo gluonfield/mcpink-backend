@@ -1,0 +1,260 @@
+---
+- name: Skip addon installation on non-primary control nodes
+  meta: end_host
+  when: run_k8s_addons_on_host is defined and inventory_hostname != run_k8s_addons_on_host
+
+- name: Ensure deployment directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /opt/deploy-k8s
+    - "{{ k8s_manifests_remote_dir }}"
+    - "{{ k8s_values_remote_dir }}"
+
+- name: Install Helm v3 if missing
+  shell: |
+    set -euo pipefail
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/helm
+
+- name: Configure Helm repositories
+  shell: |
+    set -euo pipefail
+    helm repo add traefik https://traefik.github.io/charts --force-update
+    helm repo add jetstack https://charts.jetstack.io --force-update
+    helm repo add grafana https://grafana.github.io/helm-charts --force-update
+    helm repo add prometheus-community https://prometheus-community.github.io/helm-charts --force-update
+    helm repo update
+  args:
+    executable: /bin/bash
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  changed_when: false
+
+- name: Copy Helm values files to controller host
+  copy:
+    src: "{{ k8s_manifest_src_dir }}/{{ item }}"
+    dest: "{{ k8s_values_remote_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ k8s_values_files }}"
+
+- name: Copy Kubernetes manifests to controller host
+  copy:
+    src: "{{ k8s_manifest_src_dir }}/{{ item }}"
+    dest: "{{ k8s_manifests_remote_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ k8s_manifest_apply_order }}"
+
+- name: Ensure cert-manager namespace exists
+  shell: |
+    set -euo pipefail
+    k3s kubectl create namespace cert-manager --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  register: cert_manager_ns
+  changed_when: "'created' in cert_manager_ns.stdout or 'configured' in cert_manager_ns.stdout"
+
+- name: Install or upgrade cert-manager
+  command: >-
+    helm upgrade --install {{ cert_manager_release_name }} {{ cert_manager_chart_ref }}
+    --namespace cert-manager
+    --values {{ k8s_values_remote_dir }}/cert-manager-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: cert_manager_helm
+  changed_when: >-
+    'has been upgraded' in cert_manager_helm.stdout or
+    'has been installed' in cert_manager_helm.stdout
+
+- name: Ensure dp-system namespace exists
+  shell: |
+    set -euo pipefail
+    k3s kubectl create namespace dp-system --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  register: dp_system_ns
+  changed_when: "'created' in dp_system_ns.stdout or 'configured' in dp_system_ns.stdout"
+
+- name: Stage GitHub App private key on controller host
+  copy:
+    dest: /tmp/github-app-private-key.pem
+    content: "{{ github_app_private_key | default('') }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - github_app_private_key | default('') | length > 0
+    - github_app_id | default('') | length > 0
+
+- name: Create GitHub App secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic github-app \
+      --from-literal=app-id={{ (github_app_id | default('')) | quote }} \
+      --from-file=private-key=/tmp/github-app-private-key.pem \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when:
+    - github_app_private_key | default('') | length > 0
+    - github_app_id | default('') | length > 0
+
+- name: Remove staged GitHub App private key
+  file:
+    path: /tmp/github-app-private-key.pem
+    state: absent
+  when:
+    - github_app_private_key | default('') | length > 0
+    - github_app_id | default('') | length > 0
+
+- name: Create Temporal credentials secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic temporal-creds \
+      --from-literal=cloud-api-key={{ (temporal_cloud_api_key | default('')) | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: temporal_cloud_api_key | default('') | length > 0
+
+- name: Create Temporal worker config secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic temporal-worker-config \
+      --from-literal=temporal-address={{ (temporal_address | default('')) | quote }} \
+      --from-literal=temporal-namespace={{ (temporal_namespace | default('')) | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when:
+    - temporal_address | default('') | length > 0
+    - temporal_namespace | default('') | length > 0
+
+- name: Create Gitea database secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic gitea-db \
+      --from-literal=password={{ gitea_db_password | quote }} \
+      --from-literal=secret-key={{ gitea_secret_key | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: gitea_db_password | default('') | length > 0
+
+- name: Create Cloudflare token secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n cert-manager create secret generic cloudflare-api-token \
+      --from-literal=api-token={{ cloudflare_api_token | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: cloudflare_api_token | default('') | length > 0
+
+- name: Install or upgrade Traefik
+  command: >-
+    helm upgrade --install {{ traefik_release_name }} {{ traefik_chart_ref }}
+    --namespace dp-system
+    --values {{ k8s_values_remote_dir }}/traefik-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: traefik_helm
+  changed_when: >-
+    'has been upgraded' in traefik_helm.stdout or
+    'has been installed' in traefik_helm.stdout
+
+- name: Install or upgrade Loki
+  command: >-
+    helm upgrade --install {{ loki_release_name }} {{ loki_chart_ref }}
+    --namespace dp-system
+    --values {{ k8s_values_remote_dir }}/loki-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: loki_helm
+  changed_when: >-
+    'has been upgraded' in loki_helm.stdout or
+    'has been installed' in loki_helm.stdout
+
+- name: Install or upgrade Promtail
+  command: >-
+    helm upgrade --install {{ promtail_release_name }} {{ promtail_chart_ref }}
+    --namespace dp-system
+    --values {{ k8s_values_remote_dir }}/promtail-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: promtail_helm
+  changed_when: >-
+    'has been upgraded' in promtail_helm.stdout or
+    'has been installed' in promtail_helm.stdout
+
+- name: Install or upgrade Prometheus stack
+  command: >-
+    helm upgrade --install {{ prometheus_release_name }} {{ prometheus_chart_ref }}
+    --namespace dp-system
+    --values {{ k8s_values_remote_dir }}/prometheus-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: prometheus_helm
+  changed_when: >-
+    'has been upgraded' in prometheus_helm.stdout or
+    'has been installed' in prometheus_helm.stdout
+
+- name: Create Alertmanager Slack webhook secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic alertmanager-slack \
+      --from-literal=slack-webhook-url={{ slack_webhook_url | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: slack_webhook_url | default('') | length > 0
+
+- name: Create Grafana Slack webhook secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic grafana-slack \
+      --from-literal=SLACK_WEBHOOK_URL={{ slack_webhook_url | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: slack_webhook_url | default('') | length > 0
+
+- name: Install or upgrade Grafana
+  command: >-
+    helm upgrade --install {{ grafana_release_name }} {{ grafana_chart_ref }}
+    --namespace dp-system
+    --values {{ k8s_values_remote_dir }}/grafana-values.yml
+  environment:
+    KUBECONFIG: "{{ k8s_kubeconfig_path }}"
+  register: grafana_helm
+  changed_when: >-
+    'has been upgraded' in grafana_helm.stdout or
+    'has been installed' in grafana_helm.stdout
+
+- name: Create Loki basic-auth secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic loki-auth-secret \
+      --from-literal=users={{ loki_basic_auth_users | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: loki_basic_auth_users | default('') | length > 0
+
+- name: Apply Kubernetes manifests
+  command: "k3s kubectl apply -f {{ k8s_manifests_remote_dir }}/{{ item }}"
+  register: apply_manifest_cmd
+  changed_when: >-
+    ' created' in apply_manifest_cmd.stdout or
+    ' configured' in apply_manifest_cmd.stdout
+  loop: "{{ k8s_manifest_apply_order }}"

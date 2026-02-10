@@ -1,0 +1,56 @@
+---
+- name: Ensure k3s config directory exists
+  file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure registry mirror for kubelet pulls
+  template:
+    src: registries.yaml.j2
+    dest: "{{ k3s_registries_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s service
+
+- name: Ensure registry host alias resolves locally
+  lineinfile:
+    path: "{{ hosts_file_path }}"
+    regexp: "^{{ registry_ip | regex_escape() }}\\s+{{ registry_host_alias }}$"
+    line: "{{ registry_ip }} {{ registry_host_alias }}"
+    create: true
+    state: present
+
+- name: Flush handlers before containerd host overrides
+  meta: flush_handlers
+
+- name: Ensure containerd certs.d directories exist for registry endpoints
+  file:
+    path: "{{ containerd_certs_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - "{{ registry_host_fqdn }}"
+    - "{{ registry_ip }}:{{ registry_port }}"
+
+- name: Override containerd registry hosts configuration for plain HTTP registry
+  template:
+    src: hosts.toml.j2
+    dest: "{{ containerd_certs_dir }}/{{ item.registry }}/hosts.toml"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - registry: "{{ registry_host_fqdn }}"
+      server: "{{ registry_host_fqdn }}"
+    - registry: "{{ registry_ip }}:{{ registry_port }}"
+      server: "{{ registry_ip }}:{{ registry_port }}"
+  loop_control:
+    label: "{{ item.registry }}"
+  vars:
+    registry_server: "{{ item.server }}"

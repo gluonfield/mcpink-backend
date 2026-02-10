@@ -1,0 +1,53 @@
+nodeSelector:
+  pool: ops
+
+tolerations:
+  - key: pool
+    operator: Equal
+    value: ops
+    effect: NoSchedule
+
+persistence:
+  enabled: true
+  size: 10Gi
+
+# Existing PVCs can block recursive chown in init-chown-data.
+# Grafana runs as uid/gid 472 by default, so skip the init chown step.
+initChownData:
+  enabled: false
+
+envFromSecret: grafana-slack
+
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus-kube-prometheus-prometheus.dp-system.svc.cluster.local:9090
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://loki.dp-system.svc.cluster.local:3100
+
+alerting:
+  contactpoints.yaml:
+    apiVersion: 1
+    contactPoints:
+      - orgId: 1
+        name: slack
+        receivers:
+          - uid: slack-default
+            type: slack
+            settings:
+              url: ${SLACK_WEBHOOK_URL}
+  policies.yaml:
+    apiVersion: 1
+    policies:
+      - orgId: 1
+        receiver: slack
+        group_by:
+          - grafana_folder
+          - alertname

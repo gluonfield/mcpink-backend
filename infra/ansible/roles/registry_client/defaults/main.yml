@@ -1,0 +1,4 @@
+---
+k3s_registries_file: /etc/rancher/k3s/registries.yaml
+hosts_file_path: /etc/hosts
+containerd_certs_dir: /var/lib/rancher/k3s/agent/etc/containerd/certs.d

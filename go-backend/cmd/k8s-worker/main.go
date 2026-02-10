@@ -8,7 +8,9 @@ import (
 	"time"
 
 	"github.com/augustdev/autoclip/internal/bootstrap"
+	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
+	"github.com/augustdev/autoclip/internal/storage/pg"
 	"go.temporal.io/sdk/worker"
 	"go.uber.org/fx"
 )
@@ -21,6 +23,13 @@ func main() {
 			bootstrap.NewConfig,
 			bootstrap.CreateTemporalClient,
 			bootstrap.NewK8sTemporalWorker,
+			bootstrap.NewK8sClient,
+			pg.NewDatabase,
+			pg.NewAppQueries,
+			pg.NewProjectQueries,
+			pg.NewUserQueries,
+			githubapp.NewService,
+			bootstrap.NewInternalGitService,
 			k8sdeployments.NewActivities,
 		),
 		fx.Invoke(

@@ -6,9 +6,6 @@ func RegisterWorkflowsAndActivities(w worker.Worker, activities *Activities) {
 	w.RegisterWorkflow(CreateServiceWorkflow)
 	w.RegisterWorkflow(RedeployServiceWorkflow)
 	w.RegisterWorkflow(DeleteServiceWorkflow)
-	w.RegisterActivity(activities.CloneRepo)
-	w.RegisterActivity(activities.BuildAndPush)
-	w.RegisterActivity(activities.Deploy)
-	w.RegisterActivity(activities.WaitForRollout)
-	w.RegisterActivity(activities.DeleteService)
+	w.RegisterWorkflow(BuildServiceWorkflow)
+	w.RegisterActivity(activities)
 }

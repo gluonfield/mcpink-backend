@@ -1,0 +1,7 @@
+---
+- name: Apply OS security updates and vulnerability patches
+  hosts: "{{ target | default('all') }}"
+  become: true
+  serial: "{{ serial | default(1) }}"
+  roles:
+    - role: security_patch

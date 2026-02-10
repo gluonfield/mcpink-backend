@@ -1,0 +1,6 @@
+---
+- name: Restart k3s service
+  systemd:
+    name: "{{ 'k3s' if 'ctrl' in group_names else 'k3s-agent' }}"
+    state: restarted
+  when: not ansible_check_mode

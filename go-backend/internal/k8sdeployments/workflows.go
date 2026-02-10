@@ -1,6 +1,7 @@
 package k8sdeployments
 
 import (
+	"fmt"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -17,7 +18,30 @@ func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceWorkflowInpu
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting CreateServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
 
-	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+	// Child workflow: build
+	buildInput := BuildServiceWorkflowInput{
+		ServiceID:      input.ServiceID,
+		Repo:           input.Repo,
+		Branch:         input.Branch,
+		GitProvider:    input.GitProvider,
+		InstallationID: input.InstallationID,
+		CommitSHA:      input.CommitSHA,
+	}
+	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID: fmt.Sprintf("build-%s-%s", input.ServiceID, input.CommitSHA),
+	})
+	var buildResult BuildServiceWorkflowResult
+	err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, buildInput).Get(ctx, &buildResult)
+	if err != nil {
+		return CreateServiceWorkflowResult{
+			ServiceID:    input.ServiceID,
+			Status:       StatusFailed,
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	// Deploy
+	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second,
@@ -26,49 +50,16 @@ func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceWorkflowInpu
 			MaximumAttempts:    3,
 		},
 	})
-
 	var activities *Activities
 
-	cloneInput := CloneRepoInput{
-		ServiceID:      input.ServiceID,
-		Repo:           input.Repo,
-		Branch:         input.Branch,
-		GitProvider:    input.GitProvider,
-		InstallationID: input.InstallationID,
-		CommitSHA:      input.CommitSHA,
-	}
-	var cloneResult CloneRepoResult
-	err := workflow.ExecuteActivity(ctx, activities.CloneRepo, cloneInput).Get(ctx, &cloneResult)
-	if err != nil {
-		return CreateServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
-	buildInput := BuildAndPushInput{
-		ServiceID:  input.ServiceID,
-		SourcePath: cloneResult.SourcePath,
-		CommitSHA:  cloneResult.CommitSHA,
-	}
-	var buildResult BuildAndPushResult
-	err = workflow.ExecuteActivity(ctx, activities.BuildAndPush, buildInput).Get(ctx, &buildResult)
-	if err != nil {
-		return CreateServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
 	deployInput := DeployInput{
-		ServiceID: input.ServiceID,
-		ImageRef:  buildResult.ImageRef,
-		CommitSHA: input.CommitSHA,
+		ServiceID:  input.ServiceID,
+		ImageRef:   buildResult.ImageRef,
+		CommitSHA:  buildResult.CommitSHA,
+		AppsDomain: input.AppsDomain,
 	}
 	var deployResult DeployResult
-	err = workflow.ExecuteActivity(ctx, activities.Deploy, deployInput).Get(ctx, &deployResult)
+	err = workflow.ExecuteActivity(actCtx, activities.Deploy, deployInput).Get(ctx, &deployResult)
 	if err != nil {
 		return CreateServiceWorkflowResult{
 			ServiceID:    input.ServiceID,
@@ -77,12 +68,13 @@ func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceWorkflowInpu
 		}, err
 	}
 
+	// WaitForRollout
 	waitInput := WaitForRolloutInput{
 		Namespace:      deployResult.Namespace,
 		DeploymentName: deployResult.DeploymentName,
 	}
 	var waitResult WaitForRolloutResult
-	err = workflow.ExecuteActivity(ctx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
+	err = workflow.ExecuteActivity(actCtx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
 	if err != nil {
 		return CreateServiceWorkflowResult{
 			ServiceID:    input.ServiceID,
@@ -95,7 +87,7 @@ func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceWorkflowInpu
 		ServiceID: input.ServiceID,
 		Status:    waitResult.Status,
 		URL:       deployResult.URL,
-		CommitSHA: input.CommitSHA,
+		CommitSHA: buildResult.CommitSHA,
 	}, nil
 }
 
@@ -103,7 +95,28 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting RedeployServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
 
-	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+	buildInput := BuildServiceWorkflowInput{
+		ServiceID:      input.ServiceID,
+		Repo:           input.Repo,
+		Branch:         input.Branch,
+		GitProvider:    input.GitProvider,
+		InstallationID: input.InstallationID,
+		CommitSHA:      input.CommitSHA,
+	}
+	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID: fmt.Sprintf("build-%s-%s", input.ServiceID, input.CommitSHA),
+	})
+	var buildResult BuildServiceWorkflowResult
+	err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, buildInput).Get(ctx, &buildResult)
+	if err != nil {
+		return RedeployServiceWorkflowResult{
+			ServiceID:    input.ServiceID,
+			Status:       StatusFailed,
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second,
@@ -112,49 +125,16 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 			MaximumAttempts:    3,
 		},
 	})
-
 	var activities *Activities
 
-	cloneInput := CloneRepoInput{
-		ServiceID:      input.ServiceID,
-		Repo:           input.Repo,
-		Branch:         input.Branch,
-		GitProvider:    input.GitProvider,
-		InstallationID: input.InstallationID,
-		CommitSHA:      input.CommitSHA,
-	}
-	var cloneResult CloneRepoResult
-	err := workflow.ExecuteActivity(ctx, activities.CloneRepo, cloneInput).Get(ctx, &cloneResult)
-	if err != nil {
-		return RedeployServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
-	buildInput := BuildAndPushInput{
-		ServiceID:  input.ServiceID,
-		SourcePath: cloneResult.SourcePath,
-		CommitSHA:  cloneResult.CommitSHA,
-	}
-	var buildResult BuildAndPushResult
-	err = workflow.ExecuteActivity(ctx, activities.BuildAndPush, buildInput).Get(ctx, &buildResult)
-	if err != nil {
-		return RedeployServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
 	deployInput := DeployInput{
-		ServiceID: input.ServiceID,
-		ImageRef:  buildResult.ImageRef,
-		CommitSHA: input.CommitSHA,
+		ServiceID:  input.ServiceID,
+		ImageRef:   buildResult.ImageRef,
+		CommitSHA:  buildResult.CommitSHA,
+		AppsDomain: input.AppsDomain,
 	}
 	var deployResult DeployResult
-	err = workflow.ExecuteActivity(ctx, activities.Deploy, deployInput).Get(ctx, &deployResult)
+	err = workflow.ExecuteActivity(actCtx, activities.Deploy, deployInput).Get(ctx, &deployResult)
 	if err != nil {
 		return RedeployServiceWorkflowResult{
 			ServiceID:    input.ServiceID,
@@ -168,7 +148,7 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 		DeploymentName: deployResult.DeploymentName,
 	}
 	var waitResult WaitForRolloutResult
-	err = workflow.ExecuteActivity(ctx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
+	err = workflow.ExecuteActivity(actCtx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
 	if err != nil {
 		return RedeployServiceWorkflowResult{
 			ServiceID:    input.ServiceID,
@@ -181,7 +161,80 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 		ServiceID: input.ServiceID,
 		Status:    waitResult.Status,
 		URL:       deployResult.URL,
-		CommitSHA: input.CommitSHA,
+		CommitSHA: buildResult.CommitSHA,
+	}, nil
+}
+
+func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput) (BuildServiceWorkflowResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting BuildServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo)
+
+	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+		HeartbeatTimeout:    30 * time.Second,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    30 * time.Second,
+			MaximumAttempts:    2,
+		},
+	})
+	var activities *Activities
+
+	// 1. Clone
+	cloneInput := CloneRepoInput{
+		ServiceID:      input.ServiceID,
+		Repo:           input.Repo,
+		Branch:         input.Branch,
+		GitProvider:    input.GitProvider,
+		InstallationID: input.InstallationID,
+		CommitSHA:      input.CommitSHA,
+	}
+	var cloneResult CloneRepoResult
+	err := workflow.ExecuteActivity(actCtx, activities.CloneRepo, cloneInput).Get(ctx, &cloneResult)
+	if err != nil {
+		return BuildServiceWorkflowResult{}, fmt.Errorf("clone failed: %w", err)
+	}
+
+	// 2. Resolve build context
+	resolveInput := ResolveBuildContextInput{
+		ServiceID:  input.ServiceID,
+		SourcePath: cloneResult.SourcePath,
+		CommitSHA:  cloneResult.CommitSHA,
+	}
+	var resolveResult ResolveBuildContextResult
+	err = workflow.ExecuteActivity(actCtx, activities.ResolveBuildContext, resolveInput).Get(ctx, &resolveResult)
+	if err != nil {
+		return BuildServiceWorkflowResult{}, fmt.Errorf("resolve failed: %w", err)
+	}
+
+	// 3. Build based on build pack
+	buildInput := BuildImageInput{
+		SourcePath: cloneResult.SourcePath,
+		ImageRef:   resolveResult.ImageRef,
+		BuildPack:  resolveResult.BuildPack,
+		Name:       resolveResult.Name,
+		Namespace:  resolveResult.Namespace,
+		EnvVars:    resolveResult.EnvVars,
+	}
+	var buildResult BuildImageResult
+	switch resolveResult.BuildPack {
+	case "railpack":
+		err = workflow.ExecuteActivity(actCtx, activities.RailpackBuild, buildInput).Get(ctx, &buildResult)
+	case "dockerfile":
+		err = workflow.ExecuteActivity(actCtx, activities.DockerfileBuild, buildInput).Get(ctx, &buildResult)
+	case "static":
+		err = workflow.ExecuteActivity(actCtx, activities.StaticBuild, buildInput).Get(ctx, &buildResult)
+	default:
+		return BuildServiceWorkflowResult{}, fmt.Errorf("unsupported build pack: %s", resolveResult.BuildPack)
+	}
+	if err != nil {
+		return BuildServiceWorkflowResult{}, fmt.Errorf("build failed (%s): %w", resolveResult.BuildPack, err)
+	}
+
+	return BuildServiceWorkflowResult{
+		ImageRef:  buildResult.ImageRef,
+		CommitSHA: cloneResult.CommitSHA,
 	}, nil
 }
 

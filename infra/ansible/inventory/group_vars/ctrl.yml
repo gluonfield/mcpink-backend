@@ -1,0 +1,3 @@
+---
+# Control-plane specific overrides can be added here.
+# Intentionally minimal for now; ctrl mostly uses all-group defaults.

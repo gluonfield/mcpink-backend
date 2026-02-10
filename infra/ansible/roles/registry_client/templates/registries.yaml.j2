@@ -1,0 +1,12 @@
+mirrors:
+  "{{ registry_host_fqdn }}":
+    endpoint:
+      - "http://{{ registry_host_fqdn }}"
+      - "{{ registry_mirror_endpoint }}"
+configs:
+  "{{ registry_host_fqdn }}":
+    tls:
+      insecure_skip_verify: true
+  "{{ registry_ip }}:{{ registry_port }}":
+    tls:
+      insecure_skip_verify: true

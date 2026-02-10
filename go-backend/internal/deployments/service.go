@@ -2,6 +2,7 @@ package deployments
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -9,9 +10,12 @@ import (
 
 	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/coolify"
+	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
 	"github.com/lithammer/shortuuid/v4"
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
@@ -22,9 +26,12 @@ type Service struct {
 	temporalClient   client.Client
 	appsQ            apps.Querier
 	projectsQ        projects.Querier
+	usersQ           users.Querier
+	ghCredsQ         githubcreds.Querier
 	dnsQ             dnsrecords.Querier
 	coolifyClient    *coolify.Client
 	cloudflareClient *cloudflare.Client
+	appsDomain       string
 	logger           *slog.Logger
 }
 
@@ -32,18 +39,24 @@ func NewService(
 	temporalClient client.Client,
 	appsQ apps.Querier,
 	projectsQ projects.Querier,
+	usersQ users.Querier,
+	ghCredsQ githubcreds.Querier,
 	dnsQ dnsrecords.Querier,
 	coolifyClient *coolify.Client,
 	cloudflareClient *cloudflare.Client,
+	cfConfig cloudflare.Config,
 	logger *slog.Logger,
 ) *Service {
 	return &Service{
 		temporalClient:   temporalClient,
 		appsQ:            appsQ,
 		projectsQ:        projectsQ,
+		usersQ:           usersQ,
+		ghCredsQ:         ghCredsQ,
 		dnsQ:             dnsQ,
 		coolifyClient:    coolifyClient,
 		cloudflareClient: cloudflareClient,
+		appsDomain:       cfConfig.BaseDomain,
 		logger:           logger,
 	}
 }
@@ -66,6 +79,7 @@ type CreateAppInput struct {
 	InstallCommand string
 	BuildCommand   string
 	StartCommand   string
+	InstallationID int64
 }
 
 type CreateAppResult struct {
@@ -100,33 +114,41 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 		gitProvider = "github"
 	}
 
-	workflowInput := DeployWorkflowInput{
-		AppID:          appID,
-		UserID:         input.UserID,
-		ProjectID:      projectID,
-		GitHubAppUUID:  input.GitHubAppUUID,
+	envVarsJSON, _ := json.Marshal(input.EnvVars)
+
+	_, err := s.appsQ.CreateApp(ctx, apps.CreateAppParams{
+		ID:          appID,
+		UserID:      input.UserID,
+		ProjectID:   projectID,
+		Repo:        input.Repo,
+		Branch:      input.Branch,
+		ServerUuid:  "k8s",
+		Name:        &input.Name,
+		BuildPack:   input.BuildPack,
+		Port:        input.Port,
+		EnvVars:     envVarsJSON,
+		WorkflowID:  workflowID,
+		GitProvider: gitProvider,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create app record: %w", err)
+	}
+
+	workflowInput := k8sdeployments.CreateServiceWorkflowInput{
+		ServiceID:      appID,
 		Repo:           input.Repo,
 		Branch:         input.Branch,
-		Name:           input.Name,
-		BuildPack:      input.BuildPack,
-		Port:           input.Port,
-		EnvVars:        input.EnvVars,
 		GitProvider:    gitProvider,
-		PrivateKeyUUID: input.PrivateKeyUUID,
-		SSHCloneURL:    input.SSHCloneURL,
-		Memory:         input.Memory,
-		CPU:            input.CPU,
-		InstallCommand: input.InstallCommand,
-		BuildCommand:   input.BuildCommand,
-		StartCommand:   input.StartCommand,
+		InstallationID: input.InstallationID,
+		AppsDomain:     s.appsDomain,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: "default",
+		TaskQueue: k8sdeployments.TaskQueue,
 	}
 
-	run, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, DeployToCoolifyWorkflow, workflowInput)
+	run, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, k8sdeployments.CreateServiceWorkflow, workflowInput)
 	if err != nil {
 		s.logger.Error("failed to start deploy workflow",
 			"workflowID", workflowID,
@@ -218,16 +240,16 @@ func (s *Service) GetAppByName(ctx context.Context, params GetAppByNameParams) (
 	return &app, nil
 }
 
-func (s *Service) RedeployApp(ctx context.Context, appID, coolifyAppUUID string) (string, error) {
+func (s *Service) RedeployApp(ctx context.Context, appID string) (string, error) {
 	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, shortuuid.New())
-	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+	return s.RedeployAppWithWorkflowID(ctx, appID, workflowID)
 }
 
 // RedeployFromGitHubPush starts (or reuses) a redeploy workflow triggered by a GitHub push.
 //
 // GitHub delivery is at-least-once, so we treat it as potentially duplicated and use a deterministic workflow ID
 // derived from the commit SHA (preferred) or delivery ID (fallback).
-func (s *Service) RedeployFromGitHubPush(ctx context.Context, appID, coolifyAppUUID, afterSHA, deliveryID string) (string, error) {
+func (s *Service) RedeployFromGitHubPush(ctx context.Context, appID, afterSHA, deliveryID string) (string, error) {
 	key := strings.TrimSpace(afterSHA)
 	if key == "" || key == "0000000000000000000000000000000000000000" {
 		key = strings.TrimSpace(deliveryID)
@@ -237,34 +259,51 @@ func (s *Service) RedeployFromGitHubPush(ctx context.Context, appID, coolifyAppU
 	}
 
 	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, key)
-	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+	return s.RedeployAppWithWorkflowID(ctx, appID, workflowID)
 }
 
 // RedeployFromInternalGitPush starts (or reuses) a redeploy workflow triggered by an internal git (Gitea) push.
-func (s *Service) RedeployFromInternalGitPush(ctx context.Context, appID, coolifyAppUUID, afterSHA string) (string, error) {
+func (s *Service) RedeployFromInternalGitPush(ctx context.Context, appID, afterSHA string) (string, error) {
 	key := strings.TrimSpace(afterSHA)
 	if key == "" || key == "0000000000000000000000000000000000000000" {
 		key = shortuuid.New()
 	}
 
 	workflowID := fmt.Sprintf("redeploy-%s-%s", appID, key)
-	return s.RedeployAppWithWorkflowID(ctx, appID, coolifyAppUUID, workflowID)
+	return s.RedeployAppWithWorkflowID(ctx, appID, workflowID)
 }
 
-func (s *Service) RedeployAppWithWorkflowID(ctx context.Context, appID, coolifyAppUUID, workflowID string) (string, error) {
+func (s *Service) RedeployAppWithWorkflowID(ctx context.Context, appID, workflowID string) (string, error) {
 	if workflowID == "" {
 		workflowID = fmt.Sprintf("redeploy-%s-%s", appID, shortuuid.New())
 	}
 
+	app, err := s.appsQ.GetAppByID(ctx, appID)
+	if err != nil {
+		return "", fmt.Errorf("app not found: %w", err)
+	}
+
+	var installationID int64
+	if app.GitProvider == "github" {
+		creds, err := s.ghCredsQ.GetGitHubCredsByUserID(ctx, app.UserID)
+		if err == nil && creds.GithubAppInstallationID != nil {
+			installationID = *creds.GithubAppInstallationID
+		}
+	}
+
 	workflowOptions := client.StartWorkflowOptions{
 		ID:                    workflowID,
-		TaskQueue:             "default",
+		TaskQueue:             k8sdeployments.TaskQueue,
 		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 	}
 
-	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, RedeployToCoolifyWorkflow, RedeployWorkflowInput{
-		AppID:          appID,
-		CoolifyAppUUID: coolifyAppUUID,
+	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, k8sdeployments.RedeployServiceWorkflow, k8sdeployments.RedeployServiceWorkflowInput{
+		ServiceID:      appID,
+		Repo:           app.Repo,
+		Branch:         app.Branch,
+		GitProvider:    app.GitProvider,
+		InstallationID: installationID,
+		AppsDomain:     s.appsDomain,
 	})
 	if err != nil {
 		var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
@@ -320,24 +359,38 @@ func (s *Service) DeleteApp(ctx context.Context, params DeleteAppParams) (*Delet
 		name = *app.Name
 	}
 
-	coolifyUUID := ""
-	if app.CoolifyAppUuid != nil {
-		coolifyUUID = *app.CoolifyAppUuid
+	user, err := s.usersQ.GetUserByID(ctx, app.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
 	}
+
+	proj, err := s.projectsQ.GetProjectByID(ctx, app.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+
+	githubUsername := ""
+	if user.GithubUsername != nil {
+		githubUsername = *user.GithubUsername
+	}
+
+	namespace := k8sdeployments.NamespaceName(githubUsername, proj.Ref)
+	serviceName := k8sdeployments.ServiceName(name)
 
 	workflowID := fmt.Sprintf("delete-app-%s", app.ID)
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: "default",
+		TaskQueue: k8sdeployments.TaskQueue,
 	}
 
-	input := DeleteAppWorkflowInput{
-		AppID:          app.ID,
-		CoolifyAppUUID: coolifyUUID,
+	input := k8sdeployments.DeleteServiceWorkflowInput{
+		ServiceID: app.ID,
+		Namespace: namespace,
+		Name:      serviceName,
 	}
 
-	run, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, DeleteAppWorkflow, input)
+	run, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, k8sdeployments.DeleteServiceWorkflow, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to start delete workflow: %w", err)
 	}
