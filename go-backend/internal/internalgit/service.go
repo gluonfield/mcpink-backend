@@ -47,10 +47,10 @@ func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description 
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	githubUsername := user.GithubUsername
-	if githubUsername == "" {
+	if user.GithubUsername == nil || *user.GithubUsername == "" {
 		return nil, fmt.Errorf("user has no github username")
 	}
+	githubUsername := *user.GithubUsername
 
 	fullName := fmt.Sprintf("%s/%s", githubUsername, repoName)
 

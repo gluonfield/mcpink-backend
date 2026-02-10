@@ -15,7 +15,9 @@ scalar Time
 
 type User {
   id: ID!
-  githubUsername: String!
+  email: String
+  displayName: String
+  githubUsername: String
   avatarUrl: String
   createdAt: Time!
   githubAppInstallationId: String @goField(forceResolver: true)

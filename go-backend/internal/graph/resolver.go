@@ -3,6 +3,7 @@ package graph
 import (
 	"log/slog"
 
+	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/coolify"
 	"github.com/augustdev/autoclip/internal/githubapp"
@@ -21,4 +22,5 @@ type Resolver struct {
 	AppQueries       apps.Querier
 	ProjectQueries   projects.Querier
 	ResourceQueries  resources.Querier
+	FirebaseAuth     *firebaseauth.Client
 }

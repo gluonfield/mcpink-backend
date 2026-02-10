@@ -10,11 +10,13 @@ import (
 
 type Querier interface {
 	ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (User, error)
+	CreateFirebaseUser(ctx context.Context, arg CreateFirebaseUserParams) (User, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	DeleteUser(ctx context.Context, id string) error
-	GetUserByGitHubID(ctx context.Context, githubID int64) (User, error)
+	GetUserByGitHubID(ctx context.Context, githubID *int64) (User, error)
 	GetUserByGiteaUsername(ctx context.Context, giteaUsername *string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
+	LinkGitHub(ctx context.Context, arg LinkGitHubParams) (User, error)
 	SetCoolifyGitHubAppUUID(ctx context.Context, arg SetCoolifyGitHubAppUUIDParams) (User, error)
 	SetGiteaUsername(ctx context.Context, arg SetGiteaUsernameParams) (User, error)
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)

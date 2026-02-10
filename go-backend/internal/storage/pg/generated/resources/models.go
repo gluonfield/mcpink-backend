@@ -107,10 +107,12 @@ type Resource struct {
 type User struct {
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-	GithubID             int64              `json:"github_id"`
-	GithubUsername       string             `json:"github_username"`
+	GithubID             *int64             `json:"github_id"`
+	GithubUsername       *string            `json:"github_username"`
 	AvatarUrl            *string            `json:"avatar_url"`
 	ID                   string             `json:"id"`
 	CoolifyGithubAppUuid *string            `json:"coolify_github_app_uuid"`
 	GiteaUsername        *string            `json:"gitea_username"`
+	Email                *string            `json:"email"`
+	DisplayName          *string            `json:"display_name"`
 }

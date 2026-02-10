@@ -135,8 +135,8 @@ WHERE u.id = $1
 
 type GetUserWithGitHubCredsRow struct {
 	ID                      string             `json:"id"`
-	GithubID                int64              `json:"github_id"`
-	GithubUsername          string             `json:"github_username"`
+	GithubID                *int64             `json:"github_id"`
+	GithubUsername          *string            `json:"github_username"`
 	AvatarUrl               *string            `json:"avatar_url"`
 	CoolifyGithubAppUuid    *string            `json:"coolify_github_app_uuid"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`

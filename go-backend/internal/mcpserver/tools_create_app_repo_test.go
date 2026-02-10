@@ -7,7 +7,8 @@ import (
 )
 
 func TestNormalizeCreateAppRepo(t *testing.T) {
-	u := &users.User{GithubUsername: "gluonfield"}
+	ghUsername := "gluonfield"
+	u := &users.User{GithubUsername: &ghUsername}
 
 	cases := []struct {
 		name     string

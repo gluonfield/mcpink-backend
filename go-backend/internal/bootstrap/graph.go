@@ -12,6 +12,7 @@ import (
 	"github.com/99designs/gqlgen/graphql/handler/extension"
 	"github.com/99designs/gqlgen/graphql/handler/transport"
 	"github.com/99designs/gqlgen/graphql/playground"
+	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/coolify"
@@ -48,6 +49,7 @@ func NewResolver(
 	appQueries apps.Querier,
 	projectQueries projects.Querier,
 	resourceQueries resources.Querier,
+	firebaseAuth *firebaseauth.Client,
 ) *graph.Resolver {
 	return &graph.Resolver{
 		Db:               pgdb,
@@ -58,6 +60,7 @@ func NewResolver(
 		AppQueries:       appQueries,
 		ProjectQueries:   projectQueries,
 		ResourceQueries:  resourceQueries,
+		FirebaseAuth:     firebaseAuth,
 	}
 }
 
@@ -79,6 +82,7 @@ func NewGraphQLRouter(
 	authRouter chi.Router,
 	authConfig auth.Config,
 	authService *auth.Service,
+	authHandlers *auth.Handlers,
 	mcpServer *mcpserver.Server,
 	webhookHandlers *webhooks.Handlers,
 	mcpOAuthHandlers *mcp_oauth.Handlers,
@@ -139,22 +143,20 @@ func NewGraphQLRouter(
 		return resp
 	})
 
-	cookieValidateFunc := func(token string) (string, error) {
-		userID, err := authService.ValidateJWT(token)
-		if err != nil {
-			return "", err
-		}
-		return userID, nil
-	}
-
-	authMiddleware := authz.MiddlewareWithConfig(srv, tokenValidator.ValidateToken, logger, &authz.MiddlewareConfig{
-		Cookie: &authz.CookieConfig{
-			CookieName:   authConfig.SessionCookieName,
-			ValidateFunc: cookieValidateFunc,
-		},
-	})
+	// Bearer-only auth middleware (no cookie fallback)
+	authMiddleware := authz.MiddlewareWithConfig(srv, tokenValidator.ValidateToken, logger, nil)
 	router.Handle("/", playground.Handler("GraphQL playground", "/graphql"))
 	router.Handle("/graphql", authMiddleware)
+
+	// Authenticated endpoint for GitHub connect (requires Bearer token)
+	getUserID := func(r *http.Request) string {
+		sc, err := authz.ForErr(r.Context())
+		if err != nil {
+			return ""
+		}
+		return sc.GetUserID()
+	}
+	router.With(authz.NewAuthMiddleware(tokenValidator, logger)).Post("/auth/github/connect", authHandlers.HandleGitHubConnect(getUserID))
 
 	// Mount MCP OAuth routes (must be before /mcp to handle /.well-known)
 	mcpOAuthHandlers.RegisterRoutes(router)
@@ -227,7 +229,6 @@ func StartServer(lc fx.Lifecycle, router *chi.Mux, config GraphQLAPIConfig, logg
 		},
 		OnStop: func(ctx context.Context) error {
 			logger.Info("Shutting down HTTP server, draining connections...")
-			// Disable keep-alives to prevent new persistent connections during shutdown
 			server.SetKeepAlivesEnabled(false)
 
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)

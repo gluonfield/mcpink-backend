@@ -13,7 +13,7 @@ const clearCoolifyGitHubAppUUID = `-- name: ClearCoolifyGitHubAppUUID :one
 UPDATE users
 SET coolify_github_app_uuid = NULL, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
 `
 
 func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (User, error) {
@@ -28,6 +28,42 @@ func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (Use
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
+	)
+	return i, err
+}
+
+const createFirebaseUser = `-- name: CreateFirebaseUser :one
+INSERT INTO users (id, email, display_name, avatar_url) VALUES ($1, $2, $3, $4) RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
+`
+
+type CreateFirebaseUserParams struct {
+	ID          string  `json:"id"`
+	Email       *string `json:"email"`
+	DisplayName *string `json:"display_name"`
+	AvatarUrl   *string `json:"avatar_url"`
+}
+
+func (q *Queries) CreateFirebaseUser(ctx context.Context, arg CreateFirebaseUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createFirebaseUser,
+		arg.ID,
+		arg.Email,
+		arg.DisplayName,
+		arg.AvatarUrl,
+	)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.AvatarUrl,
+		&i.ID,
+		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -35,13 +71,13 @@ func (q *Queries) ClearCoolifyGitHubAppUUID(ctx context.Context, id string) (Use
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, github_id, github_username, avatar_url)
 VALUES ($1, $2, $3, $4)
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
 `
 
 type CreateUserParams struct {
 	ID             string  `json:"id"`
-	GithubID       int64   `json:"github_id"`
-	GithubUsername string  `json:"github_username"`
+	GithubID       *int64  `json:"github_id"`
+	GithubUsername *string `json:"github_username"`
 	AvatarUrl      *string `json:"avatar_url"`
 }
 
@@ -62,6 +98,8 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -76,10 +114,10 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getUserByGitHubID = `-- name: GetUserByGitHubID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE github_id = $1
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name FROM users WHERE github_id = $1
 `
 
-func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, error) {
+func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID *int64) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByGitHubID, githubID)
 	var i User
 	err := row.Scan(
@@ -91,12 +129,14 @@ func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID int64) (User, 
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByGiteaUsername = `-- name: GetUserByGiteaUsername :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE gitea_username = $1
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name FROM users WHERE gitea_username = $1
 `
 
 func (q *Queries) GetUserByGiteaUsername(ctx context.Context, giteaUsername *string) (User, error) {
@@ -111,12 +151,14 @@ func (q *Queries) GetUserByGiteaUsername(ctx context.Context, giteaUsername *str
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username FROM users WHERE id = $1
+SELECT created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
@@ -131,6 +173,45 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
+	)
+	return i, err
+}
+
+const linkGitHub = `-- name: LinkGitHub :one
+UPDATE users
+SET github_id = $2, github_username = $3, avatar_url = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
+`
+
+type LinkGitHubParams struct {
+	ID             string  `json:"id"`
+	GithubID       *int64  `json:"github_id"`
+	GithubUsername *string `json:"github_username"`
+	AvatarUrl      *string `json:"avatar_url"`
+}
+
+func (q *Queries) LinkGitHub(ctx context.Context, arg LinkGitHubParams) (User, error) {
+	row := q.db.QueryRow(ctx, linkGitHub,
+		arg.ID,
+		arg.GithubID,
+		arg.GithubUsername,
+		arg.AvatarUrl,
+	)
+	var i User
+	err := row.Scan(
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.GithubID,
+		&i.GithubUsername,
+		&i.AvatarUrl,
+		&i.ID,
+		&i.CoolifyGithubAppUuid,
+		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -139,7 +220,7 @@ const setCoolifyGitHubAppUUID = `-- name: SetCoolifyGitHubAppUUID :one
 UPDATE users
 SET coolify_github_app_uuid = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
 `
 
 type SetCoolifyGitHubAppUUIDParams struct {
@@ -159,6 +240,8 @@ func (q *Queries) SetCoolifyGitHubAppUUID(ctx context.Context, arg SetCoolifyGit
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -167,7 +250,7 @@ const setGiteaUsername = `-- name: SetGiteaUsername :one
 UPDATE users
 SET gitea_username = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
 `
 
 type SetGiteaUsernameParams struct {
@@ -187,6 +270,8 @@ func (q *Queries) SetGiteaUsername(ctx context.Context, arg SetGiteaUsernamePara
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }
@@ -195,12 +280,12 @@ const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
 SET github_username = $2, avatar_url = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username
+RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, coolify_github_app_uuid, gitea_username, email, display_name
 `
 
 type UpdateUserProfileParams struct {
 	ID             string  `json:"id"`
-	GithubUsername string  `json:"github_username"`
+	GithubUsername *string `json:"github_username"`
 	AvatarUrl      *string `json:"avatar_url"`
 }
 
@@ -216,6 +301,8 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.ID,
 		&i.CoolifyGithubAppUuid,
 		&i.GiteaUsername,
+		&i.Email,
+		&i.DisplayName,
 	)
 	return i, err
 }

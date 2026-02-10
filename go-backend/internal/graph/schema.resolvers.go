@@ -50,26 +50,28 @@ func (r *mutationResolver) RecheckGithubAppInstallation(ctx context.Context) (*s
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
+	if user.GithubUsername == nil || *user.GithubUsername == "" {
+		return nil, nil
+	}
+
 	creds, err := r.AuthService.GetGitHubCredsByUserID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get github creds: %w", err)
 	}
 
-	// Check with GitHub API if the user has installed the app
-	installationID, err := r.GitHubAppService.GetUserInstallation(ctx, user.GithubUsername)
+	installationID, err := r.GitHubAppService.GetUserInstallation(ctx, *user.GithubUsername)
 	if err != nil {
-		r.Logger.Error("failed to check GitHub App installation", "error", err, "username", user.GithubUsername)
+		r.Logger.Error("failed to check GitHub App installation", "error", err, "username", *user.GithubUsername)
 		return nil, nil
 	}
 
-	// Only sync if installation state changed
 	storedID := int64(0)
 	if creds.GithubAppInstallationID != nil {
 		storedID = *creds.GithubAppInstallationID
 	}
 
 	if storedID != installationID {
-		if _, err := r.AuthService.SyncGitHubAppInstallation(ctx, userID, installationID, user.GithubUsername); err != nil {
+		if _, err := r.AuthService.SyncGitHubAppInstallation(ctx, userID, installationID, *user.GithubUsername); err != nil {
 			r.Logger.Error("failed to sync github app installation", "error", err, "user_id", userID)
 		}
 	}
@@ -84,13 +86,28 @@ func (r *mutationResolver) RecheckGithubAppInstallation(ctx context.Context) (*s
 
 // Me is the resolver for the me field.
 func (r *queryResolver) Me(ctx context.Context) (*model1.User, error) {
-	user, err := r.AuthService.GetUserByID(ctx, authz.For(ctx).GetUserID())
+	uid := authz.For(ctx).GetUserID()
+	user, err := r.AuthService.GetUserByID(ctx, uid)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+		// Auto-create: get user details from Firebase Admin SDK
+		if r.FirebaseAuth != nil {
+			firebaseUser, fbErr := r.FirebaseAuth.GetUser(ctx, uid)
+			if fbErr != nil {
+				return nil, fmt.Errorf("failed to get Firebase user: %w", fbErr)
+			}
+			user, err = r.AuthService.GetOrCreateUser(ctx, uid, firebaseUser.Email, firebaseUser.DisplayName, firebaseUser.PhotoURL)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, fmt.Errorf("failed to get user: %w", err)
+		}
 	}
 
 	return &model1.User{
 		ID:             user.ID,
+		Email:          user.Email,
+		DisplayName:    user.DisplayName,
 		GithubUsername: user.GithubUsername,
 		AvatarURL:      user.AvatarUrl,
 		CreatedAt:      user.CreatedAt.Time,
@@ -133,7 +150,6 @@ func (r *userResolver) GithubAppInstallationID(ctx context.Context, obj *model1.
 		return nil, nil
 	}
 
-	// Return cached value if present
 	if creds.GithubAppInstallationID != nil {
 		id := fmt.Sprintf("%d", *creds.GithubAppInstallationID)
 		return &id, nil

@@ -15,7 +15,8 @@ func NewInternalGitService(config internalgit.Config, db *pg.DB, logger *slog.Lo
 
 	client, err := internalgit.NewClient(config)
 	if err != nil {
-		return nil, err
+		logger.Warn("Internal git (Gitea) unavailable, skipping", "error", err)
+		return nil, nil
 	}
 
 	webhookURL := "https://api.ml.ink/webhooks/internal-git"

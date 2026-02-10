@@ -111,7 +111,9 @@ type ResourceMetadata struct {
 
 type User struct {
 	ID                      string    `json:"id"`
-	GithubUsername          string    `json:"githubUsername"`
+	Email                   *string   `json:"email,omitempty"`
+	DisplayName             *string   `json:"displayName,omitempty"`
+	GithubUsername          *string   `json:"githubUsername,omitempty"`
 	AvatarURL               *string   `json:"avatarUrl,omitempty"`
 	CreatedAt               time.Time `json:"createdAt"`
 	GithubAppInstallationID *string   `json:"githubAppInstallationId,omitempty"`

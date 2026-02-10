@@ -37,6 +37,7 @@ func NewConfig() (Config, error) {
 		Gitea       internalgit.Config
 		Cloudflare  cloudflare.Config
 		MCPOAuth    mcp_oauth.Config
+		Firebase    FirebaseConfig
 	}
 
 	if err := viper.Unmarshal(&cfg); err != nil {
@@ -61,7 +62,12 @@ func NewConfig() (Config, error) {
 		Gitea:       cfg.Gitea,
 		Cloudflare:  cfg.Cloudflare,
 		MCPOAuth:    cfg.MCPOAuth,
+		Firebase:    cfg.Firebase,
 	}, nil
+}
+
+type FirebaseConfig struct {
+	ServiceAccountJSON string
 }
 
 type Config struct {
@@ -79,6 +85,7 @@ type Config struct {
 	Gitea       internalgit.Config
 	Cloudflare  cloudflare.Config
 	MCPOAuth    mcp_oauth.Config
+	Firebase    FirebaseConfig
 }
 
 func InitConfig() error {

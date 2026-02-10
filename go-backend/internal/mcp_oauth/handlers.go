@@ -8,6 +8,7 @@ import (
 	"net/url"
 
 	"github.com/augustdev/autoclip/internal/auth"
+	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -71,8 +72,6 @@ func (h *Handlers) HandleAuthServerMetadata(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(metadata)
 }
 
-// HandleRegister implements RFC 7591 Dynamic Client Registration.
-// MCP clients register themselves before starting the OAuth flow.
 func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RedirectURIs []string `json:"redirect_uris"`
@@ -90,7 +89,6 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate redirect URIs - ensure valid URL format
 	for _, uri := range req.RedirectURIs {
 		if _, err := url.Parse(uri); err != nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -103,8 +101,6 @@ func (h *Handlers) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Generate a client_id - we don't store this since we use PKCE
-	// The client_id is just used for display purposes in the consent screen
 	clientID := req.ClientName
 	if clientID == "" {
 		clientID = "mcp-client"
@@ -146,7 +142,7 @@ func (h *Handlers) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Store OAuth params in cookie for retrieval after GitHub OAuth
+	// Store OAuth params in cookie for retrieval after Firebase login
 	oauthContext := url.Values{
 		"client_id":      {clientID},
 		"redirect_uri":   {redirectURI},
@@ -160,36 +156,22 @@ func (h *Handlers) HandleAuthorize(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   600,
 		HttpOnly: true,
-		Secure:   h.authConfig.SessionCookieSecure,
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	// Set redirect cookie so GitHub callback goes to /oauth/consent
-	http.SetCookie(w, &http.Cookie{
-		Name:     "oauth_redirect",
-		Value:    "/oauth/consent",
-		Path:     "/",
-		MaxAge:   600,
-		HttpOnly: true,
-		Secure:   h.authConfig.SessionCookieSecure,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	http.Redirect(w, r, h.config.Issuer+"/auth/github", http.StatusTemporaryRedirect)
+	// Redirect to frontend for Firebase login, then consent
+	http.Redirect(w, r, h.config.FrontendURL+"/?return=/oauth/consent", http.StatusTemporaryRedirect)
 }
 
+// HandleContext returns the MCP OAuth context for the consent screen.
+// User identification comes from the auth middleware (Bearer token).
 func (h *Handlers) HandleContext(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(h.authConfig.SessionCookieName)
+	sc, err := authz.ForErr(r.Context())
 	if err != nil {
 		http.Error(w, "not authenticated", http.StatusUnauthorized)
 		return
 	}
-
-	userID, err := h.authService.ValidateJWT(cookie.Value)
-	if err != nil {
-		http.Error(w, "invalid session", http.StatusUnauthorized)
-		return
-	}
+	userID := sc.GetUserID()
 
 	oauthCookie, err := r.Cookie("mcp_oauth_context")
 	if err != nil {
@@ -203,7 +185,6 @@ func (h *Handlers) HandleContext(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check if user needs onboarding (no API keys = new user)
 	needsOnboarding := false
 	apiKeys, err := h.authService.ListAPIKeys(r.Context(), userID)
 	if err == nil && len(apiKeys) == 0 {
@@ -226,18 +207,15 @@ type CompleteRequest struct {
 	APIKeyName string `json:"api_key_name"`
 }
 
+// HandleComplete finalizes the MCP OAuth flow.
+// User identification comes from the auth middleware (Bearer token).
 func (h *Handlers) HandleComplete(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(h.authConfig.SessionCookieName)
+	sc, err := authz.ForErr(r.Context())
 	if err != nil {
 		http.Error(w, "not authenticated", http.StatusUnauthorized)
 		return
 	}
-
-	userID, err := h.authService.ValidateJWT(cookie.Value)
-	if err != nil {
-		http.Error(w, "invalid session", http.StatusUnauthorized)
-		return
-	}
+	userID := sc.GetUserID()
 
 	oauthCookie, err := r.Cookie("mcp_oauth_context")
 	if err != nil {

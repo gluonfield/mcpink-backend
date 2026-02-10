@@ -1,8 +1,11 @@
 graphqlapi:
   port: 8081
-  validatortype: "jwk"
+  validatortype: "firebase"
   jwtjwksurl: ""
   enableintrospection: true
+
+firebase:
+  serviceaccountjson: ""
 
 db:
   url: "postgres://deploy:deploy@localhost:5432/deploymcp?sslmode=disable"
@@ -31,9 +34,6 @@ auth:
   jwtsecret: ""
   jwtexpiry: "24h"
   apikeyencryptionkey: ""
-  sessioncookiename: "deploy_session"
-  sessioncookiesecure: false
-  sessioncookiedomain: ""
   frontendurl: "http://localhost:5001"
 
 openrouter:

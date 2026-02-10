@@ -86,8 +86,8 @@ type GetAPIKeyWithUserRow struct {
 	RevokedAt      pgtype.Timestamptz `json:"revoked_at"`
 	UserID         string             `json:"user_id"`
 	ID             string             `json:"id"`
-	GithubID       int64              `json:"github_id"`
-	GithubUsername string             `json:"github_username"`
+	GithubID       *int64             `json:"github_id"`
+	GithubUsername *string            `json:"github_username"`
 	AvatarUrl      *string            `json:"avatar_url"`
 }
 

@@ -177,7 +177,11 @@ func (s *Server) getPrivateGitToken(ctx context.Context, user *users.User, repoN
 	}
 
 	// Build full name: username/repoName
-	fullName := fmt.Sprintf("%s/%s", user.GithubUsername, repoName)
+	ghUsername := ""
+	if user.GithubUsername != nil {
+		ghUsername = *user.GithubUsername
+	}
+	fullName := fmt.Sprintf("%s/%s", ghUsername, repoName)
 
 	result, err := s.internalGitSvc.GetPushToken(ctx, user.ID, fullName)
 	if err != nil {
@@ -207,7 +211,11 @@ func (s *Server) getGitHubGitToken(ctx context.Context, user *users.User, repoNa
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to get git token: %v", err)}}}, GetGitTokenOutput{}, nil
 	}
 
-	fullRepo := fmt.Sprintf("%s/%s", user.GithubUsername, repoName)
+	ghUser := ""
+	if user.GithubUsername != nil {
+		ghUser = *user.GithubUsername
+	}
+	fullRepo := fmt.Sprintf("%s/%s", ghUser, repoName)
 
 	return nil, GetGitTokenOutput{
 		GitRemote: fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", installationToken.Token, fullRepo),

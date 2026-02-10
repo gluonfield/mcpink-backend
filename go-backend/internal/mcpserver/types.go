@@ -4,7 +4,7 @@ type WhoamiInput struct{}
 
 type WhoamiOutput struct {
 	UserID         string  `json:"user_id"`
-	GitHubUsername string  `json:"github_username"`
+	GitHubUsername *string `json:"github_username,omitempty"`
 	AvatarURL      *string `json:"avatar_url,omitempty"`
 	HasGitHubApp   bool    `json:"has_github_app"`
 }

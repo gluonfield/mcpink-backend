@@ -42,11 +42,6 @@ type Service struct {
 	logger       *slog.Logger
 }
 
-type Session struct {
-	Token  string
-	UserID string
-}
-
 type APIKeyResult struct {
 	ID        string
 	Name      string
@@ -81,43 +76,110 @@ func NewService(
 	}
 }
 
-func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Session, error) {
+// CreateOAuthState creates a signed JWT state token for OAuth flows.
+func (s *Service) CreateOAuthState(userID string) (string, error) {
+	claims := jwt.RegisteredClaims{
+		Subject:   userID,
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(10 * time.Minute)),
+		ID:        shortuuid.New(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	return token.SignedString([]byte(s.config.JWTSecret))
+}
+
+// ValidateOAuthState validates a signed JWT state token and returns the userID.
+func (s *Service) ValidateOAuthState(state string) (string, error) {
+	token, err := jwt.Parse(state, func(token *jwt.Token) (interface{}, error) {
+		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
+		}
+		return []byte(s.config.JWTSecret), nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("invalid state token: %w", err)
+	}
+
+	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
+		if sub, ok := claims["sub"].(string); ok {
+			return sub, nil
+		}
+		return "", fmt.Errorf("invalid subject claim")
+	}
+	return "", fmt.Errorf("invalid state token")
+}
+
+// GetOrCreateUser finds an existing user by ID or creates one with the given Firebase details.
+func (s *Service) GetOrCreateUser(ctx context.Context, uid, email, displayName, avatarURL string) (*users.User, error) {
+	user, err := s.usersQ.GetUserByID(ctx, uid)
+	if err == nil {
+		return &user, nil
+	}
+
+	var emailPtr, displayNamePtr, avatarURLPtr *string
+	if email != "" {
+		emailPtr = &email
+	}
+	if displayName != "" {
+		displayNamePtr = &displayName
+	}
+	if avatarURL != "" {
+		avatarURLPtr = &avatarURL
+	}
+
+	newUser, err := s.usersQ.CreateFirebaseUser(ctx, users.CreateFirebaseUserParams{
+		ID:          uid,
+		Email:       emailPtr,
+		DisplayName: displayNamePtr,
+		AvatarUrl:   avatarURLPtr,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create user: %w", err)
+	}
+
+	s.triggerAccountSetup(uid)
+
+	return &newUser, nil
+}
+
+// LinkGitHub exchanges a GitHub OAuth code, links the GitHub account to the user, and stores credentials.
+func (s *Service) LinkGitHub(ctx context.Context, userID, code string) error {
 	tokenResp, err := s.githubOAuth.ExchangeCode(ctx, code)
 	if err != nil {
-		return nil, fmt.Errorf("failed to exchange code: %w", err)
+		return fmt.Errorf("failed to exchange code: %w", err)
 	}
 
 	ghUser, err := s.githubOAuth.GetUser(ctx, tokenResp.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get github user: %w", err)
+		return fmt.Errorf("failed to get github user: %w", err)
 	}
 
 	encryptedToken, err := s.encryptToken(tokenResp.AccessToken)
 	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt token: %w", err)
+		return fmt.Errorf("failed to encrypt token: %w", err)
 	}
 
 	newScopes := parseScopes(tokenResp.Scope)
 
-	var userID string
-	user, err := s.usersQ.GetUserByGitHubID(ctx, ghUser.ID)
+	// Update user with GitHub info
+	var avatarURL *string
+	if ghUser.AvatarURL != "" {
+		avatarURL = helpers.Ptr(ghUser.AvatarURL)
+	}
+
+	_, err = s.usersQ.LinkGitHub(ctx, users.LinkGitHubParams{
+		ID:             userID,
+		GithubID:       helpers.Ptr(ghUser.ID),
+		GithubUsername: helpers.Ptr(ghUser.Login),
+		AvatarUrl:      avatarURL,
+	})
 	if err != nil {
-		userID = shortuuid.New()
-		var avatarURL *string
-		if ghUser.AvatarURL != "" {
-			avatarURL = helpers.Ptr(ghUser.AvatarURL)
-		}
+		return fmt.Errorf("failed to link github: %w", err)
+	}
 
-		_, err = s.usersQ.CreateUser(ctx, users.CreateUserParams{
-			ID:             userID,
-			GithubID:       ghUser.ID,
-			GithubUsername: ghUser.Login,
-			AvatarUrl:      avatarURL,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to create user: %w", err)
-		}
-
+	// Check if github creds already exist
+	existingCreds, credsErr := s.githubCredsQ.GetGitHubCredsByUserID(ctx, userID)
+	if credsErr != nil {
+		// No existing creds — create new
 		_, err = s.githubCredsQ.CreateGitHubCreds(ctx, githubcreds.CreateGitHubCredsParams{
 			UserID:            userID,
 			GithubID:          ghUser.ID,
@@ -125,18 +187,10 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 			GithubOauthScopes: newScopes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to create github creds: %w", err)
+			return fmt.Errorf("failed to create github creds: %w", err)
 		}
-
-		s.triggerAccountSetup(userID)
 	} else {
-		userID = user.ID
-
-		existingCreds, credsErr := s.githubCredsQ.GetGitHubCredsByUserID(ctx, user.ID)
-		if credsErr != nil {
-			return nil, fmt.Errorf("failed to get github creds: %w", credsErr)
-		}
-
+		// Existing creds — preserve repo scope if needed
 		finalToken := encryptedToken
 		finalScopes := newScopes
 
@@ -148,40 +202,20 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code string) (*Sessio
 			}
 		}
 
-		var avatarURLUpdate *string
-		if ghUser.AvatarURL != "" {
-			avatarURLUpdate = helpers.Ptr(ghUser.AvatarURL)
-		}
-		_, err = s.usersQ.UpdateUserProfile(ctx, users.UpdateUserProfileParams{
-			ID:             user.ID,
-			GithubUsername: ghUser.Login,
-			AvatarUrl:      avatarURLUpdate,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to update user profile: %w", err)
-		}
-
 		_, err = s.githubCredsQ.UpdateGitHubOAuthToken(ctx, githubcreds.UpdateGitHubOAuthTokenParams{
-			UserID:            user.ID,
+			UserID:            userID,
 			GithubOauthToken:  finalToken,
 			GithubOauthScopes: finalScopes,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to update github creds: %w", err)
+			return fmt.Errorf("failed to update github creds: %w", err)
 		}
 	}
 
-	token, err := s.generateJWT(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate jwt: %w", err)
-	}
-
-	return &Session{
-		Token:  token,
-		UserID: userID,
-	}, nil
+	return nil
 }
 
+// ValidateJWT validates a session JWT (used by MCP OAuth internally).
 func (s *Service) ValidateJWT(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -278,17 +312,12 @@ func (s *Service) ListAPIKeys(ctx context.Context, userID string) ([]apikeys.Lis
 	return s.apiKeysQ.ListAPIKeysByUserID(ctx, userID)
 }
 
-// SyncGitHubAppInstallation synchronizes GitHub App installation state.
-// - If installationID > 0: updates installation ID in DB and Coolify source
-// - If installationID == 0: clears installation ID in DB (keeps Coolify source for future reconnect)
-// Returns the Coolify source UUID.
 func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, installationID int64, githubUsername string) (string, error) {
 	user, err := s.usersQ.GetUserByID(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get user: %w", err)
 	}
 
-	// Handle disconnect - just clear installation ID, keep the source
 	if installationID == 0 {
 		if _, err := s.githubCredsQ.ClearGitHubAppInstallation(ctx, userID); err != nil {
 			return "", fmt.Errorf("failed to clear github app installation: %w", err)
@@ -299,7 +328,6 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		return "", nil
 	}
 
-	// Update existing Coolify source if we have one
 	if user.CoolifyGithubAppUuid != nil && *user.CoolifyGithubAppUuid != "" {
 		s.logger.Info("updating coolify source", "uuid", *user.CoolifyGithubAppUuid, "installation_id", installationID)
 		err := s.coolify.Sources.UpdateGitHubApp(ctx, *user.CoolifyGithubAppUuid, &coolify.UpdateGitHubAppSourceRequest{
@@ -308,7 +336,6 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		if err == nil {
 			s.logger.Info("coolify source updated successfully", "uuid", *user.CoolifyGithubAppUuid)
 
-			// Only mark the installation as active in our DB after Coolify accepts the update.
 			if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
 				UserID:                  userID,
 				GithubAppInstallationID: helpers.Ptr(installationID),
@@ -317,13 +344,10 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 			}
 			return *user.CoolifyGithubAppUuid, nil
 		}
-		// Don't create a new source - existing apps would break
-		// Return the error so caller knows sync failed
 		s.logger.Error("failed to update coolify source", "uuid", *user.CoolifyGithubAppUuid, "error", err)
 		return "", fmt.Errorf("failed to update coolify source: %w", err)
 	}
 
-	// Create new Coolify source (first time or if previous was deleted externally)
 	s.logger.Info("creating new coolify source", "user_id", userID, "installation_id", installationID)
 	sourceName := fmt.Sprintf("gh-%s-%d", githubUsername, installationID)
 	req := &coolify.CreateGitHubAppSourceRequest{
@@ -353,7 +377,6 @@ func (s *Service) SyncGitHubAppInstallation(ctx context.Context, userID string, 
 		return "", fmt.Errorf("failed to save coolify source uuid: %w", err)
 	}
 
-	// Mark the installation as active in our DB after Coolify source exists.
 	if _, err := s.githubCredsQ.SetGitHubAppInstallation(ctx, githubcreds.SetGitHubAppInstallationParams{
 		UserID:                  userID,
 		GithubAppInstallationID: helpers.Ptr(installationID),
@@ -374,18 +397,6 @@ func (s *Service) GetGitHubCredsByUserID(ctx context.Context, userID string) (*g
 
 func (s *Service) EncryptToken(token string) (string, error) {
 	return s.encryptToken(token)
-}
-
-func (s *Service) generateJWT(userID string) (string, error) {
-	now := time.Now()
-	claims := jwt.RegisteredClaims{
-		Subject:   userID,
-		IssuedAt:  jwt.NewNumericDate(now),
-		ExpiresAt: jwt.NewNumericDate(now.Add(s.config.JWTExpiry)),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString([]byte(s.config.JWTSecret))
 }
 
 func (s *Service) encryptToken(token string) (string, error) {
@@ -439,6 +450,10 @@ func (s *Service) DecryptToken(encrypted string) (string, error) {
 	}
 
 	return string(plaintext), nil
+}
+
+func (s *Service) GetGitHubOAuth() *github_oauth.OAuthService {
+	return s.githubOAuth
 }
 
 func parseScopes(scopeStr string) []string {

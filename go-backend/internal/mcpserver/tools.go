@@ -147,8 +147,8 @@ func normalizeCreateAppRepo(user *users.User, input CreateAppInput) (host string
 	}
 
 	username := ""
-	if user != nil {
-		username = strings.TrimSpace(user.GithubUsername)
+	if user != nil && user.GithubUsername != nil {
+		username = strings.TrimSpace(*user.GithubUsername)
 	}
 	if username == "" {
 		return "", "", fmt.Errorf("cannot resolve repo: user has no username configured")
