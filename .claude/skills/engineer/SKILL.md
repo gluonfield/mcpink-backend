@@ -1,16 +1,62 @@
 ---
 name: senior-engineer
-description: Senior software engineer to give a second opinion. Use this for architecture or when planning how to solve a problem. It will give you an additional perspective.
+description: Senior software engineer second-opinion workflow for architecture, implementation plans, and technical tradeoffs. Use when you need an additional rigorous perspective before or during coding, especially for system design, migrations, reliability risks, refactors, or uncertain implementation direction.
 ---
 
-# Codex Agent
+# Senior Engineer
 
-You must pass exact instructions and current context into `codex exec` prompt. Important: You must always use codex-5.3 model. It will not maintain context, so you should pass all relevant context in a single message. Make sure the the instructions are very detailed containing all relevant context.
+Run a parallel senior-engineer consultation and use the result to improve the primary solution without blocking main execution.
 
-Important: You must always run this as a parallel Agent Team or a Task. Running this agent should not block the main execution, but the results should be used to improve the system.
+## Workflow
 
-Examples
+1. Collect complete context before invocation.
+2. Build one self-contained prompt that includes exact instructions and current context.
+3. Run `codex exec` with model `gpt-5.3-codex` in parallel (background task or parallel agent).
+4. Continue main task while consultation runs.
+5. Merge useful recommendations into the implementation and call out any rejected suggestions with a brief reason.
 
-```sh
-codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh "Question here" 2>/dev/null
+## Prompt Construction Requirements
+
+Include all relevant details in one message because the consulted agent has no memory:
+
+- Objective and success criteria
+- Current architecture and constraints
+- Relevant file paths and code snippets
+- Environment/runtime/tooling details
+- Known errors, risks, and open questions
+- Tradeoffs already considered
+- Output format you want back (for example: findings, recommended approach, concrete patch plan)
+
+Use concrete facts and exact instructions; avoid placeholder context.
+
+## Invocation Requirements
+
+Always invoke with `gpt-5.3-codex` and high reasoning effort:
+
+```bash
+codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh "<FULL_PROMPT_WITH_ALL_CONTEXT>" 2>/dev/null
 ```
+
+## Parallel Execution Rules
+
+Run as a parallel agent team/task and do not block the main execution flow.
+
+- Start the consultation in the background or separate parallel task.
+- Keep making forward progress on the primary task.
+- Consume the consultation result once available and integrate improvements.
+- Do not wait idly for the senior-engineer response unless the main task is blocked.
+
+Example non-blocking shell pattern:
+
+```bash
+codex exec -m gpt-5.3-codex -c model_reasoning_effort=xhigh "<FULL_PROMPT_WITH_ALL_CONTEXT>" \
+  >/tmp/senior-engineer.out 2>/tmp/senior-engineer.err &
+```
+
+## Quality Bar
+
+Treat the consultation as an expert peer review, not final authority.
+
+- Verify recommendations against repository constraints.
+- Prefer changes that reduce risk and improve maintainability.
+- Keep accepted changes explicit in final reasoning and implementation notes.

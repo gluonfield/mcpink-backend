@@ -78,9 +78,48 @@ Managed by `roles/k8s_addons`:
 - `temporal-worker-config` (`dp-system`): `temporal_address` + `temporal_namespace`
 - `cloudflare-api-token` (`cert-manager`): `cloudflare_api_token`
 - `loki-auth-secret` (`dp-system`): `loki_basic_auth_users`
+- `ghcr-pull-secret` (`dp-system`): `ghcr_pull_token` (docker-registry secret for ghcr.io)
 
 After setting values in inventory/vault (or via `-e`), re-run:
 
 ```bash
 ansible-playbook playbooks/site.yml
 ```
+
+## CI/CD deploy user
+
+The `k8s_addons` role provisions a restricted `deploy` Linux user on the control plane node for GitHub Actions to SSH into and run `kubectl set image`. This is fully automated — no manual setup needed.
+
+What gets created:
+
+- Linux user `deploy` with SSH authorized_keys derived from `deploy_ssh_private_key`
+- RBAC-limited ServiceAccount (`ci-deployer`) that can only `get/patch` deployer-worker and deployer-server deployments in `dp-system`
+- Restricted kubeconfig at `/home/deploy/.kube/config` using the ci-deployer token
+- `ghcr-pull-secret` docker-registry secret for pulling images from ghcr.io
+
+### Vault variables for CI/CD
+
+Add these to `inventory/group_vars/all/secrets.yml`:
+
+```yaml
+# CI/CD deploy — SSH key for GitHub Actions
+# Generate: ssh-keygen -t ed25519 -f deploy_key -N "" -C "ci-deploy"
+deploy_ssh_private_key: |
+  -----BEGIN OPENSSH PRIVATE KEY-----
+  ...
+  -----END OPENSSH PRIVATE KEY-----
+
+# ghcr.io — pull token for deployer images
+# Create at: GitHub → Settings → Developer settings → Personal access tokens
+# Scope: read:packages
+ghcr_pull_token: "ghp_..."
+```
+
+### GitHub Secrets
+
+The same `deploy_ssh_private_key` value must also be added as a GitHub Actions secret:
+
+| Secret | Value |
+|--------|-------|
+| `K3S_HOST` | `46.225.100.234` |
+| `DEPLOY_SSH_KEY` | Same value as `deploy_ssh_private_key` in vault |

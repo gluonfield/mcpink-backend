@@ -10,6 +10,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/helpers"
+	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -59,13 +60,13 @@ func (s *Server) handleCreateService(ctx context.Context, req *mcp.CallToolReque
 	}
 	input.Repo = repo
 
-	buildPack := "nixpacks"
+	buildPack := "railpack"
 	if input.BuildPack != "" {
 		switch input.BuildPack {
-		case "nixpacks", "dockerfile", "static", "dockercompose":
+		case "railpack", "dockerfile", "static", "dockercompose":
 			buildPack = input.BuildPack
 		default:
-			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("invalid build_pack: %s. Valid options: nixpacks, dockerfile, static, dockercompose", input.BuildPack)}}}, CreateServiceOutput{}, nil
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("invalid build_pack: %s. Valid options: railpack, dockerfile, static, dockercompose", input.BuildPack)}}}, CreateServiceOutput{}, nil
 		}
 	}
 
@@ -248,10 +249,14 @@ func (s *Server) handleListServices(ctx context.Context, req *mcp.CallToolReques
 		if app.Name != nil {
 			name = *app.Name
 		}
+		status := app.BuildStatus
+		if app.RuntimeStatus != nil && *app.RuntimeStatus != "" {
+			status = *app.RuntimeStatus
+		}
 		services[i] = ServiceInfo{
 			ServiceID:  app.ID,
 			Name:       name,
-			Status:     app.BuildStatus,
+			Status:     status,
 			Repo:       app.Repo,
 			URL:        app.Fqdn,
 			CommitHash: app.CommitHash,
@@ -502,6 +507,26 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 			for i, ev := range envVars {
 				output.EnvVars[i] = EnvVarInfo{Key: ev.Key, Value: ev.Value}
 			}
+		}
+	}
+
+	if input.DeployLogLines > 0 {
+		limit := min(input.DeployLogLines, MaxLogLines)
+		ns := k8sdeployments.NamespaceName(k8sdeployments.ResolveUsername(*user), project)
+		svc := k8sdeployments.ServiceName(helpers.Deref(app.Name))
+		lines, err := k8sdeployments.QueryBuildLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svc, 24*time.Hour, limit)
+		if err == nil && len(lines) > 0 {
+			output.DeploymentLogs = strings.Join(lines, "\n")
+		}
+	}
+
+	if input.RuntimeLogLines > 0 {
+		limit := min(input.RuntimeLogLines, MaxLogLines)
+		ns := k8sdeployments.NamespaceName(k8sdeployments.ResolveUsername(*user), project)
+		svc := k8sdeployments.ServiceName(helpers.Deref(app.Name))
+		lines, err := k8sdeployments.QueryRunLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svc, 24*time.Hour, limit)
+		if err == nil && len(lines) > 0 {
+			output.RuntimeLogs = strings.Join(lines, "\n")
 		}
 	}
 

@@ -21,7 +21,9 @@ k8s_manifest_apply_order:
   - cert-manager-issuer.yml
   - wildcard-cert.yml
   - traefik-tlsstore.yml
-  - temporal-worker.yml
+  - ci-deployer-rbac.yml
+  - deployer-worker.yml
+  - deployer-server.yml
   - loki-ingress.yml
   - grafana-ingress.yml
   - gitea.yml

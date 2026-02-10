@@ -135,10 +135,8 @@ func hashEnvVars(envVars map[string]string) string {
 
 	h := sha256.New()
 	for _, k := range keys {
-		h.Write([]byte(k))
-		h.Write([]byte("="))
 		h.Write([]byte(envVars[k]))
 		h.Write([]byte("\n"))
 	}
-	return fmt.Sprintf("%x", h.Sum(nil))[:16]
+	return fmt.Sprintf("%x", h.Sum(nil))
 }

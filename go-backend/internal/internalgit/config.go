@@ -7,6 +7,7 @@ type Config struct {
 	AdminToken    string
 	UserPrefix    string
 	WebhookSecret string
+	WebhookURL    string
 }
 
 const (

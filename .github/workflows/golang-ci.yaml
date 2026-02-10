@@ -2,9 +2,17 @@ name: Go CI
 
 on:
   pull_request:
-    branches: [main, master]
+    branches: [main]
+    paths:
+      - "go-backend/**"
   push:
-    branches: [main, master]
+    branches: [main]
+    paths:
+      - "go-backend/**"
+
+defaults:
+  run:
+    working-directory: go-backend
 
 jobs:
   lint:
@@ -14,7 +22,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: go-backend/go.mod
           cache: true
 
       - name: golangci-lint
@@ -22,6 +30,10 @@ jobs:
         with:
           version: latest
           args: --timeout=10m ./...
+          working-directory: go-backend
+
+      - name: go vet
+        run: go vet ./...
 
   test:
     runs-on: ubuntu-latest
@@ -30,7 +42,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version-file: go-backend/go.mod
           cache: true
 
       - name: go test

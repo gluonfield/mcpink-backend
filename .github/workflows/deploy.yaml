@@ -1,0 +1,78 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "go-backend/**"
+
+env:
+  WORKER_IMAGE: ghcr.io/augustdev/deployer-worker
+  SERVER_IMAGE: ghcr.io/augustdev/deployer-server
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-backend/go.mod
+          cache: true
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set short SHA
+        run: echo "SHORT_SHA=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: Build binaries
+        working-directory: go-backend
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/deployer-worker ./cmd/deployer-worker
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /tmp/deployer-server ./cmd/deployer-server
+
+      - name: Build & push deployer-worker
+        working-directory: go-backend
+        run: |
+          cp /tmp/deployer-worker .tmp-deployer-worker-image/deployer-worker
+          cp application.yaml .tmp-deployer-worker-image/application.yaml
+          docker build --platform linux/amd64 \
+            -t ${{ env.WORKER_IMAGE }}:${{ env.SHORT_SHA }} \
+            .tmp-deployer-worker-image/
+          docker push ${{ env.WORKER_IMAGE }}:${{ env.SHORT_SHA }}
+
+      - name: Build & push deployer-server
+        working-directory: go-backend
+        run: |
+          cp /tmp/deployer-server .tmp-deployer-server-image/deployer-server
+          cp application.yaml .tmp-deployer-server-image/application.yaml
+          docker build --platform linux/amd64 \
+            -t ${{ env.SERVER_IMAGE }}:${{ env.SHORT_SHA }} \
+            .tmp-deployer-server-image/
+          docker push ${{ env.SERVER_IMAGE }}:${{ env.SHORT_SHA }}
+
+      - name: Deploy to k3s
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.K3S_HOST }}
+          username: deploy
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            kubectl set image deployment/deployer-worker \
+              worker=${{ env.WORKER_IMAGE }}:${{ env.SHORT_SHA }} \
+              -n dp-system
+            kubectl set image deployment/deployer-server \
+              deployer-server=${{ env.SERVER_IMAGE }}:${{ env.SHORT_SHA }} \
+              -n dp-system
+            kubectl rollout status deployment/deployer-worker -n dp-system --timeout=120s
+            kubectl rollout status deployment/deployer-server -n dp-system --timeout=120s

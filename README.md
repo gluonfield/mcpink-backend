@@ -32,8 +32,8 @@ Human: *waits for SSL*
 → 2 hours later: "It's live"
 
 # With Deploy MCP
-Agent: create_app(repo="my-saas", host="mlink", name="my-saas", branch="main")
-→ 60 seconds later: "https://my-saas.s1.ml.ink is live"
+Agent: create_service(repo="my-saas", name="my-saas")
+→ 60 seconds later: "https://my-saas.ml.ink is live"
 ```
 
 ---
@@ -65,117 +65,71 @@ Deploy MCP is a **platform**, not just a tool:
 
 ## Authentication
 
-Deploy MCP uses a two-part authentication system:
+Deploy MCP supports two git providers, each with its own auth model:
 
-1. **GitHub OAuth** — For user identity and session management
-2. **GitHub App** — For repository access (clone, webhooks, push tokens)
+### Git Providers
 
-### Why Two Systems?
+| Provider | Identity | Repo Access | Webhooks |
+|----------|----------|-------------|----------|
+| **GitHub** (`host=github.com`) | GitHub OAuth | GitHub App (installation tokens) | GitHub App webhook |
+| **Gitea** (`host=ml.ink`, default) | Firebase Auth | Admin-issued HTTPS tokens via Gitea API | Gitea push webhook |
 
-| Concern | GitHub OAuth | GitHub App |
-|---------|--------------|------------|
-| User identity | ✅ Primary purpose | ❌ Not designed for this |
-| Clone/push to repos | ❌ Requires broad `repo` scope | ✅ Fine-grained per-repo access |
-| Create new repos | ✅ With `repo` scope (current impl) | ✅ With GitHub App user access tokens (requires App “Administration: write”) |
-| Webhook delivery | ❌ Not supported | ✅ Built-in |
-| Installation tokens | ❌ Not available | ✅ Short-lived, scoped tokens |
+**GitHub flow:** User signs in via GitHub OAuth, installs the GitHub App for repo access, then deploys with `host=github.com`.
 
-**Summary:** GitHub App handles day-to-day repository operations (clone, push, webhooks). Today, this codebase uses GitHub OAuth `repo` scope to create new repositories, but GitHub’s REST API also supports creating repos using **GitHub App user access tokens** (user-to-server flow) if the App has the right permissions.
+**Gitea flow (default):** User signs in via Firebase, gets an auto-provisioned Gitea account (petname username like `awake-dassie`). Repos are created/cloned using admin-minted HTTPS tokens. No GitHub account needed.
 
-### Authentication Flow
+### MCP Authentication
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         USER ONBOARDING FLOW                                │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-1. SIGN IN (GitHub OAuth)
-   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │  User    │────▶│  ml.ink  │────▶│  GitHub  │────▶│  ml.ink  │
-   │  clicks  │     │ /auth/   │     │  OAuth   │     │ callback │
-   │ "Sign in"│     │ github   │     │  consent │     │          │
-   └──────────┘     └──────────┘     └──────────┘     └──────────┘
-                                                            │
-                                                            ▼
-                                                    ┌──────────────┐
-                                                    │ Create user  │
-                                                    │ Store OAuth  │
-                                                    │ token (enc)  │
-                                                    │ Set session  │
-                                                    └──────────────┘
-
-2. INSTALL GITHUB APP (Repository Access)
-   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │  User    │────▶│  GitHub  │────▶│  User    │────▶│  ml.ink  │
-   │  clicks  │     │  App     │     │ selects  │     │ /auth/   │
-   │"Install" │     │  install │     │  repos   │     │ githubapp│
-   └──────────┘     └──────────┘     └──────────┘     │ callback │
-                                                       └──────────┘
-                                                            │
-                                                            ▼
-                                                    ┌──────────────┐
-                                                    │ Store        │
-                                                    │ installation │
-                                                    │ ID           │
-                                                    │              │
-                                                    │ Create       │
-                                                    │ Coolify      │
-                                                    │ source       │
-                                                    └──────────────┘
-
-3. (OPTIONAL) GRANT REPO SCOPE (for create_github_repo tool)
-   ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │  User    │────▶│  ml.ink  │────▶│  GitHub  │────▶│  ml.ink  │
-   │  clicks  │     │ /auth/   │     │  OAuth   │     │ callback │
-   │ "Grant"  │     │ github   │     │  +repo   │     │          │
-   └──────────┘     │ ?scope=  │     │  scope   │     └──────────┘
-                    │ repo     │     └──────────┘          │
-                    └──────────┘                           ▼
-                                                    ┌──────────────┐
-                                                    │ Update OAuth │
-                                                    │ token with   │
-                                                    │ repo scope   │
-                                                    │              │
-                                                    │ Downgrade    │
-                                                    │ protection:  │
-                                                    │ keeps repo   │
-                                                    │ scope on     │
-                                                    │ re-login     │
-                                                    └──────────────┘
-
-4. GENERATE API KEY (for MCP/CLI)
-   ┌──────────┐     ┌──────────┐
-   │  User    │────▶│  ml.ink  │────▶ API Key: dk_live_abc123...
-   │ dashboard│     │ /settings│
-   └──────────┘     └──────────┘
-```
-
-> **Note:** Step 3 is optional. The `repo` scope allows agents to create new GitHub repositories via the `create_github_repo` tool. Without it, agents can only deploy to existing repositories. The system implements "downgrade protection" — if a user later signs in without the repo scope, their existing repo-scoped token is preserved if still valid.
-
-### API Key Authentication (MCP)
-
-Agents authenticate via API key in the `Authorization` header:
+Agents authenticate to the MCP server (`/mcp`) via API key:
 
 ```
 Authorization: Bearer dk_live_abc123...
 ```
 
-API keys are:
-- Generated per-user from the dashboard
-- Hashed with bcrypt (only prefix stored for lookup)
-- Validated on every MCP request
+API keys are hashed with bcrypt (only prefix stored for lookup) and validated on every request.
 
-### GitHub App Webhooks
+There are two ways to obtain an API key:
 
-The GitHub App receives webhooks for:
+**1. Manual** — Generate from the dashboard (`/settings`)
 
-| Event | Action |
-|-------|--------|
-| `push` | Triggers auto-redeploy for matching apps |
-| `installation.created` | Stores installation ID, creates Coolify source |
-| `installation.deleted` | Clears installation ID |
+**2. MCP OAuth** — Automatic via OAuth 2.0 Authorization Code + PKCE (for MCP clients like Claude Desktop):
 
-Webhooks are verified using HMAC-SHA256 with the configured webhook secret.
+```
+MCP Client                    Product Server              Frontend            User
+    │                              │                          │                 │
+    │─── GET /.well-known/ ───────▶│                          │                 │
+    │◀── auth server metadata ─────│                          │                 │
+    │                              │                          │                 │
+    │─── POST /oauth/register ────▶│                          │                 │
+    │◀── client_id ────────────────│                          │                 │
+    │                              │                          │                 │
+    │─── GET /oauth/authorize ────▶│                          │                 │
+    │    (client_id, redirect_uri, │                          │                 │
+    │     code_challenge, state)   │── store in cookie ──────▶│                 │
+    │                              │── redirect ─────────────▶│── Firebase ────▶│
+    │                              │                          │◀── login ───────│
+    │                              │                          │                 │
+    │                              │◀── POST /oauth/complete ─│  (consent)      │
+    │                              │── generate API key ──────│                 │
+    │                              │── generate auth code ────│                 │
+    │                              │── return redirect_url ──▶│                 │
+    │◀── redirect with code ───────────────────────────────────                 │
+    │                              │                                            │
+    │─── POST /oauth/token ───────▶│                                            │
+    │    (code, code_verifier)     │── verify PKCE                              │
+    │◀── access_token (API key) ───│                                            │
+```
+
+The OAuth flow creates an API key behind the scenes — the `access_token` returned is a real API key (`dk_live_...`), so both auth methods use the same underlying mechanism.
+
+### Webhooks (Auto-Redeploy)
+
+| Source | Event | Verification |
+|--------|-------|-------------|
+| GitHub App | `push`, `installation.created/deleted` | HMAC-SHA256 (webhook secret) |
+| Gitea | `push` | HMAC-SHA256 (webhook secret) |
+
+Both trigger the same Temporal redeploy workflow with deterministic workflow IDs for deduplication.
 
 ---
 
@@ -184,9 +138,13 @@ Webhooks are verified using HMAC-SHA256 with the configured webhook secret.
 - **Language**: Go
 - **MCP Framework**: [mcp-go](https://github.com/modelcontextprotocol/go-sdk)
 - **Database**: Postgres (with sqlc)
-- **Auth**: GitHub OAuth + GitHub App + JWT sessions
+- **Auth**: Firebase Auth + GitHub OAuth + GitHub App
 - **Orchestration**: Temporal (deployment workflows)
-- **Deployment Backend**: Coolify
+- **Container Orchestration**: k3s
+- **Build**: BuildKit + Railpack
+- **Ingress**: Traefik + Cloudflare LB
+- **Git**: Gitea (internal)
+- **IaC**: Ansible
 - **Compute**: Hetzner (dedicated + cloud)
 - **Database Provisioning**: Turso (SQLite)
 
@@ -197,17 +155,17 @@ Webhooks are verified using HMAC-SHA256 with the configured webhook secret.
 | Tool | Description | Requirements |
 |------|-------------|--------------|
 | `whoami` | Get current user info and GitHub App status | API key |
-| `create_app` | Deploy an app from a GitHub repository | GitHub App installed |
-| `list_apps` | List all deployed apps | API key |
-| `get_app_details` | Get app details including logs | API key |
-| `redeploy` | Trigger a redeploy of an existing app | GitHub App installed |
-| `delete_app` | Delete an app | API key |
+| `create_service` | Deploy a service from a git repo (`host=ml.ink` or `github.com`) | API key |
+| `list_services` | List all deployed services | API key |
+| `get_service` | Get service details including build/runtime logs | API key |
+| `redeploy_service` | Redeploy a service to pull latest code | API key |
+| `delete_service` | Delete a service and its k8s resources | API key |
 | `create_resource` | Provision a database (SQLite via Turso) | API key |
 | `list_resources` | List all provisioned resources | API key |
-| `get_resource_details` | Get resource connection details | API key |
+| `get_resource` | Get resource connection details (URL + auth token) | API key |
 | `delete_resource` | Delete a resource | API key |
-| `create_github_repo` | Create a new GitHub repository | `repo` OAuth scope |
-| `get_github_push_token` | Get a temporary token to push to a repository | GitHub App installed |
+| `create_repo` | Create a git repo (`host=ml.ink` default, or `github.com`) | API key |
+| `get_git_token` | Get a temporary git token to push code | API key |
 
 ### Adding MCP Server to Claude Code
 
@@ -219,54 +177,68 @@ claude mcp add --transport http mcpdeploy https://api.ml.ink/mcp --header "Autho
 claude mcp add --transport http mcpdeploy http://localhost:8081/mcp --header "Authorization: Bearer <your-api-key>"
 ```
 
+## Application Binaries
+
+There are 4 separate binaries:
+
+| Binary | Path | Purpose | Task Queue | K8s Manifest |
+|--------|------|---------|-----------|--------------|
+| `server` | `cmd/server/main.go` | Product API — GraphQL, MCP server, OAuth, Firebase auth | — | `infra/k8s/api-server.yml` |
+| `worker` | `cmd/worker/main.go` | Product Temporal worker — account workflows | `default` | — |
+| `deployer-server` | `cmd/deployer-server/main.go` | Webhook receiver (GitHub + Gitea), kicks off Temporal workflows | — | `infra/k8s/deployer-server.yml` |
+| `deployer-worker` | `cmd/deployer-worker/main.go` | K8s deployment worker — build, deploy, delete, status | `k8s-native` | `infra/k8s/deployer-worker.yml` |
+
+The deployer-server is **not** the product server. It only handles webhooks and `/healthz` — no GraphQL, no MCP, no OAuth.
+
 ---
 
 ## Deployment Workflow
 
-When an agent calls `create_app`, the following happens:
+When an agent calls `create_service`, the following happens:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                           DEPLOYMENT FLOW                                    │
 └─────────────────────────────────────────────────────────────────────────────┘
 
-1. AGENT CALLS create_app
+1. AGENT CALLS create_service
    ┌──────────┐     ┌──────────┐     ┌──────────┐
    │  Agent   │────▶│   MCP    │────▶│ Temporal │
    │  (via    │     │  Server  │     │ Workflow │
    │  Claude) │     │          │     │  Start   │
    └──────────┘     └──────────┘     └──────────┘
 
-2. TEMPORAL WORKFLOW EXECUTES
+2. TEMPORAL WORKER (on k3s-1) PICKS UP TASK
    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │ Create   │────▶│ Create   │────▶│ Start    │────▶│ Wait for │
-   │ App in   │     │ Coolify  │     │ Deploy   │     │ Build    │
-   │ Postgres │     │ App      │     │          │     │ Complete │
+   │ Create   │────▶│ Clone    │────▶│ Resolve  │────▶│ Build    │
+   │ App in   │     │ Repo     │     │ Build    │     │ via      │
+   │ Postgres │     │ (HTTPS)  │     │ Pack     │     │ BuildKit │
    └──────────┘     └──────────┘     └──────────┘     └──────────┘
-                          │
-                          ▼
-                    Uses GitHub App
-                    installation token
-                    to clone repo
+                         │                                  │
+                         ▼                                  ▼
+                   Mints token (GitHub App       Push image to
+                   or Gitea HTTPS token)         internal registry
 
-3. BUILD & DEPLOY (Coolify)
+3. DEPLOY TO K8S
    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │ Clone    │────▶│ Build    │────▶│ Push     │────▶│ Deploy   │
-   │ Repo     │     │ (Nix-    │     │ Image    │     │ to       │
-   │          │     │ packs)   │     │          │     │ Muscle   │
+   │ kubectl  │────▶│ Create   │────▶│ Wait for │────▶│ Return   │
+   │ apply    │     │ NS, Dep, │     │ Rollout  │     │ URL +    │
+   │          │     │ Svc, Ing │     │ Ready    │     │ Status   │
    └──────────┘     └──────────┘     └──────────┘     └──────────┘
 
-4. AUTO-REDEPLOY (Push to GitHub)
+4. AUTO-REDEPLOY (Push to GitHub/Gitea)
    ┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-   │ Git Push │────▶│ GitHub   │────▶│ Webhook  │────▶│ Temporal │
-   │          │     │ Webhook  │     │ Handler  │     │ Redeploy │
-   └──────────┘     └──────────┘     └──────────┘     │ Workflow │
-                                                       └──────────┘
+   │ Git Push │────▶│ Webhook  │────▶│ Webhook  │────▶│ Temporal │
+   │          │     │ (GitHub  │     │ Handler  │     │ Redeploy │
+   └──────────┘     │ or Gitea)│     │          │     │ Workflow │
+                    └──────────┘     └──────────┘     └──────────┘
+                                     Deterministic workflow ID
+                                     from commit SHA (dedup)
 ```
 
 ### Workflow Idempotency
 
-GitHub webhook delivery is at-least-once, so the same push event may be delivered multiple times. The deployment service handles this by:
+GitHub/Gitea webhook delivery is at-least-once, so the same push event may be delivered multiple times. The deployment service handles this by:
 
 1. Deriving a deterministic workflow ID from the commit SHA
 2. Using Temporal's `REJECT_DUPLICATE` policy
@@ -276,7 +248,7 @@ GitHub webhook delivery is at-least-once, so the same push event may be delivere
 
 # Architecture
 
-Deploy MCP uses a 3-plane architecture separating control, build, and run concerns.
+Deploy MCP uses a 4-pool k3s cluster separating control, ops, build, and run concerns.
 
 ## Core Philosophy
 
@@ -286,8 +258,8 @@ Deploy MCP uses a 3-plane architecture separating control, build, and run concer
 
 2. **Safety**
    - User code runs with strong guardrails
-   - **gVisor** sandboxes protect against kernel exploits (implemented via custom Coolify fork)
-   - Egress firewall rules block metadata endpoints, SMTP, mining pools
+   - Drop ALL capabilities, no privilege escalation, no SA token
+   - NetworkPolicy blocks private network, k8s API, and metadata endpoints
 
 3. **Workflow Orchestration**
    - Deployments run as Temporal workflows for reliability
@@ -301,10 +273,9 @@ Deploy MCP supports multiple build strategies:
 
 | Build Pack | Use Case |
 |------------|----------|
-| `nixpacks` | Auto-detect language and build (default) |
-| `dockerfile` | Custom Dockerfile |
-| `static` | Static files served by Caddy |
-| `dockercompose` | Multi-container apps |
+| `railpack` (default) | Auto-detect language, generate BuildKit plan |
+| `dockerfile` | Custom Dockerfile via BuildKit |
+| `static` | Static files served by nginx |
 
 ---
 
@@ -322,89 +293,67 @@ Deploy MCP supports multiple build strategies:
 
 ---
 
-## Physical Architecture (3-plane)
+## Physical Architecture (4-pool k3s)
 
-We separate control, build, and run so CPU-heavy builds never lag a live game.
+We separate control, ops, build, and run across dedicated node pools so CPU-heavy builds never lag a live app.
 
 ### Topology
 
-```mermaid
-graph TD
-    subgraph PlaneA ["Plane A: Control Plane (You own)"]
-        InkAPI[InkMCP API - MCP Server]
-        InkDB[(InkMCP Metadata DB)]
-        Auth[Auth & Billing - Stripe Credits]
-        InkAPI --> InkDB
-        InkAPI --> Auth
-        InkAPI -->|Deploy intent| Coolify
-    end
-
-    subgraph PlaneB ["Plane B: Factory (Hetzner Cloud)"]
-        Coolify[Coolify Master - UI + API]
-        Builder[Nixpacks / Docker Build Engine]
-        Registry[(Container Registry)]
-        Coolify -->|Trigger build| Builder
-        Builder -->|Push image| Registry
-    end
-
-    subgraph PlaneC ["Plane C: Muscle (Hetzner Auction Dedicated)"]
-        Proxy[Traefik Proxy]
-        Sablier[Sablier - on_demand scaler]
-        Runtime[Container Runtime - runc / runsc]
-        Proxy --> Sablier
-        Sablier --> Runtime
-    end
-
-    InkAPI -->|Provision DB| Neon[(Neon Postgres)]
+```
+┌──────────────────────────────────────────────────────────────┐
+│  k3s-1 (ctrl) — k3s Server (Hetzner Cloud CX32)             │
+│                                                              │
+│  k3s server process (etcd, API server, scheduler)            │
+│  Temporal Worker                                             │
+│  cert-manager, CoreDNS, metrics-server                       │
+│                                                              │
+│  Labels: pool=ctrl                                           │
+└──────────────────────────────────────────────────────────────┘
+         │ private network (Hetzner vSwitch, 10.0.0.0/16)
+         │
+┌────────┴─────────────────────────────────────────────────────┐
+│  ops-1 (ops) — Storage & Observability (Hetzner Dedicated)   │
+│                                                              │
+│  Docker Registry v2 (NVMe-backed)                            │
+│  Loki, Prometheus, Grafana                                   │
+│  Gitea                                                       │
+│                                                              │
+│  Labels: pool=ops    Taint: pool=ops:NoSchedule              │
+└──────────────────────────────────────────────────────────────┘
+         │
+┌────────┴─────────────────────────────────────────────────────┐
+│  build-1 (build) — Builder (Hetzner Cloud CCX, dedicated CPU)│
+│                                                              │
+│  BuildKit daemon (local cache + registry cache)              │
+│                                                              │
+│  Labels: pool=build    Taint: pool=build:NoSchedule          │
+└──────────────────────────────────────────────────────────────┘
+         │
+┌────────┴─────────────────────────────────────────────────────┐
+│  run-1+ (run) — Runners (Hetzner Dedicated)                  │
+│                                                              │
+│  Traefik (DaemonSet, hostNetwork)                            │
+│  Customer containers                                         │
+│                                                              │
+│  Labels: pool=run                                            │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-### What runs where (explicit)
+### What runs where
 
-**Plane A — Control Plane**
+**ctrl (k3s-1)** — k3s server, Temporal worker, cert-manager, CoreDNS
 
-- InkMCP API
-- InkMCP metadata DB (projects/resources/usage/audit)
-- Auth + billing + credits ledger
-- Scheduler / placement logic (when multiple run nodes exist)
+**ops (ops-1)** — Docker Registry, Loki, Prometheus, Grafana, Gitea
 
-**Plane B — Factory**
+**build (build-1)** — BuildKit daemon with persistent local cache + registry cache
 
-- Coolify "master" instance (UI + API) orchestrating deployments via SSH to other servers
-  Coolify uses **SSH** for deployments and management. ([Coolify][1])
-- Build engine (Nixpacks / Dockerfile / Compose build packs) ([Coolify][2])
-- Container registry (shared image store; required once you have multiple run servers/build servers) ([Coolify][3])
+**run (run-1+)** — Traefik DaemonSet (ingress), customer containers
 
-**Plane C — Muscle**
+### Networking
 
-- Docker engine + proxy on each run server
-- User containers (apps, backends, workers)
-- On-demand scaling middleware (Sablier) for `on_demand` services
-- Optional sandbox runtime (`runsc` / gVisor target)
-
-> Coolify design note: each server runs its **own proxy**, and app traffic goes directly to the server hosting that app (not through the main Coolify server). DNS must point to the correct server. ([Coolify][4])
-
----
-
-## Runtime Modes: Technical Behavior
-
-### `static`
-
-- Build output served by a lightweight web server container
-- Very low CPU/RAM
-- Best for docs, SPAs, landing pages
-
-### `on_demand`
-
-- Requests hit **Traefik → Sablier**
-- Service sleeps after idle window
-- Wakes on request (cold start ~seconds)
-- Best for "mostly idle" Next.js SSR, admin panels, internal tools
-
-### `persistent`
-
-- Always-on container (reserved RAM/CPU)
-- No sleeping
-- Best for WebSocket games, chat, bots, workers, realtime APIs
+- **Private network**: Hetzner vSwitch (`10.0.0.0/16`) bridges cloud and dedicated servers
+- **Public ingress**: Cloudflare LB (`*.ml.ink`) → run node origin pool → Traefik → k8s Service
+- **TLS**: Wildcard Let's Encrypt cert via cert-manager DNS-01, served by Traefik TLSStore
 
 ---
 
@@ -412,33 +361,33 @@ graph TD
 
 ### Principles
 
-- **Name-based** — Agents reference apps by name, not IDs
+- **Name-based** — Agents reference services by name, not IDs
 - **Discoverable** — `list_*`, `get_*` tools for exploration
-- **Logs are first-class** — Agents can self-debug via `get_app_details`
+- **Logs are first-class** — Agents can self-debug via `get_service`
 
-### Implemented Tools
+### Tool Signatures
 
-#### Apps
+#### Services
 ```
-create_app(repo, host?, branch, name, project?, build_pack?, port?, env_vars?)
-list_apps()
-get_app_details(name, project?, include_env?, runtime_log_lines?, deploy_log_lines?)
-redeploy(name, project?)
-delete_app(name, project?)
+create_service(repo, host?, branch?, name, project?, build_pack?, port?, env_vars?, memory?, cpu?, install_command?, build_command?, start_command?)
+list_services()
+get_service(name, project?, include_env?, deploy_log_lines?, runtime_log_lines?)
+redeploy_service(name, project?)
+delete_service(name, project?)
 ```
 
 #### Resources (Databases)
 ```
 create_resource(name, type?, size?, region?)
 list_resources()
-get_resource_details(name)
+get_resource(name)
 delete_resource(name)
 ```
 
-#### GitHub Integration
+#### Git
 ```
-create_github_repo(name, description?, private?)
-get_github_push_token(repo)
+create_repo(name, host?, description?)
+get_git_token(name, host?)
 ```
 
 #### Identity
@@ -470,227 +419,119 @@ Returns:
 
 ---
 
-## Container Registry & Artifact Storage
+## Container Registry
 
-Once you have:
+Internal Docker Registry v2 running on ops-1 (NVMe-backed), accessible only on the private network (`10.0.1.4:5000`). Host firewall blocks port 5000 from the public internet.
 
-- multiple run servers, and/or
-- a dedicated build server
+A nightly GC CronJob keeps the last 2 tags per service via `registry garbage-collect --delete-untagged`.
 
-…you need a shared registry so run servers can pull the built images. Coolify's build server flow explicitly assumes images are pushed to a registry. ([Coolify][3])
-
-### Recommended approach
-
-- Use a registry with durable storage (local NVMe + backups, or object-storage-backed registry).
-- Avoid relying on flaky network mounts for hot-path registry storage.
-
-> Note: "Storage Box mounted via CIFS" can work for backups/archives, but CIFS mounts are commonly reported as brittle for container hot paths (stale mounts, permissions, disconnects). Treat it as **backup storage**, not a live registry datastore.
-
-### Registry via Coolify API
-
-When deploying via API, specify the registry image directly:
-
-```json
-{
-  "docker_registry_image_name": "ghcr.io/user/app:latest"
-}
-```
-
-Coolify can pull from any registry configured in its settings (Docker Hub, GHCR, custom registries).
+Images are treated as cache/artifacts, not the source of truth — they can always be rebuilt from source.
 
 ---
 
 ## Ops Manual
 
-### Connecting Auction (Dedicated) servers to Cloud (Factory) via vSwitch
+### Adding Run Nodes
 
-Dedicated auction servers and cloud servers sit on different networks. Hetzner supports bridging them using a Robot vSwitch connected to a Cloud Network subnet. ([Hetzner Docs][5])
+New run nodes are provisioned via Ansible:
 
-High-level steps:
+```bash
+# 1. Buy Hetzner Auction server, attach to Robot vSwitch
+# 2. Add to inventory under run.hosts in infra/ansible/inventory/hosts.yml
+# 3. Run the playbook:
+ansible-playbook playbooks/add-run-node.yml --limit run-2
+# 4. Add run-2 public IP to Cloudflare origin pool (Traffic → Load Balancing → run-nodes pool)
+```
 
-1. In Hetzner Cloud Console: create a Network (e.g. `ink-vpc`, `10.0.0.0/16`)
-2. Add a subnet and enable "Dedicated server vSwitch connection" (select your Robot vSwitch) ([Hetzner Docs][5])
-3. In Robot: create/configure vSwitch and attach dedicated servers ([Hetzner Docs][6])
-4. On the dedicated server OS: configure VLAN/Netplan for that vSwitch VLAN, assign a private IP
-5. In Coolify: add the server via its private IP as a deployment destination
+The playbook applies: common hardening, vSwitch networking, k3s agent join, registry client config, and firewall rules.
 
-### Adding multiple Hetzner machines to Coolify
+### Cloudflare LB Pool Management
 
-- Coolify manages remote servers via SSH ([Coolify][1])
-- Each run server hosts its own proxy and serves traffic directly ([Coolify][4])
-- InkMCP must implement placement logic (which server to deploy to)
+All public traffic flows through Cloudflare LB (`*.ml.ink` → run-node origin pool). To add or remove run nodes, update the `run-nodes` origin pool in the Cloudflare dashboard (Traffic → Load Balancing → Pools). No DNS records to manage.
 
-DNS strategy (simplest):
+### Cluster Management
 
-- `*.s1.apps.example.com` → run server #1
-- `*.s2.apps.example.com` → run server #2
-  InkMCP returns the correct hostname base depending on placement.
+Infrastructure is managed via Ansible playbooks in `infra/ansible/`:
+- `site.yml` — Full cluster setup
+- `add-run-node.yml` — Add a new run node
+- `upgrade-k3s.yml` — Rolling k3s upgrade
+
+K8s manifests live in `infra/k8s/` and are applied by Ansible.
 
 ---
 
 ## Backups & Restore
 
-### What we back up (by category)
+### What we back up
 
-1. **InkMCP State (critical)**
+1. **MCP State (critical)** — Postgres on Supabase (projects, resources, users, API keys). Supabase handles backups.
 
-   - metadata DB (projects/resources/usage/audit)
-   - credits ledger + billing webhook state
-   - encryption keys/secrets
+2. **User Data (critical)** — Turso databases. Provider-native backups.
 
-2. **Coolify State (critical)**
+3. **Gitea Repos (important)** — Hosted on ops-1 with NVMe RAID1 for built-in redundancy.
 
-   - Coolify configuration + metadata
-   - Use Coolify's S3-compatible backup feature ([Coolify][7])
-
-3. **User Data (critical)**
-
-   - Databases: provider-native backups (Neon), and/or scheduled dumps
-   - Persistent volumes: only if explicitly supported; define policy
-
-4. **Images (important but rebuildable)**
-   - images should be treated as cache/artifacts, not the source of truth
+4. **Registry Images (rebuildable)** — Treated as cache/artifacts. Can always be rebuilt from source.
 
 ### Restore procedure (disaster recovery)
 
-**Scenario: Factory (Coolify master) lost**
+**Scenario: ctrl node (k3s-1) lost**
 
-1. Provision a fresh Factory server
-2. Install Coolify
-3. Restore from S3 backup (Coolify supports backup/restore workflows) ([Coolify][7])
-4. Reconnect run servers (if not automatically restored)
-5. Validate proxies/DNS
+1. Provision a fresh Cloud server
+2. Run `ansible-playbook site.yml --limit k3s-1`
+3. Restore etcd from backup or re-apply k8s manifests
+4. Redeploy Temporal worker
 
 **Downtime reality check**
 
-- Existing apps on run servers can continue serving traffic because each run server has its own proxy and traffic does not depend on the master. ([Coolify][4])
-- You _do_ lose management/deploy capability until restore.
+- Existing apps on run nodes continue serving traffic — Traefik runs independently on each run node
+- You lose deploy/management capability until the ctrl node is restored
 
 ---
 
 ## Security Configuration
 
-### Coolify Native Resource Limits
+### Pod Security (k8s-native)
 
-Coolify supports container resource limits via API:
+Customer pods run with defense-in-depth isolation:
 
-| Setting               | Coolify Field               | Example                           |
-| --------------------- | --------------------------- | --------------------------------- |
-| Memory limit          | `limits_memory`             | `512m`                            |
-| Memory + swap         | `limits_memory_swap`        | `512m`                            |
-| CPU limit             | `limits_cpus`               | `0.5`                             |
-| CPU pinning           | `limits_cpuset`             | `0,1`                             |
-| Custom Docker options | `custom_docker_run_options` | `--cap-drop=ALL --pids-limit=256` |
+| Layer | Protection |
+|-------|-----------|
+| **Container security** | Drop ALL capabilities, `allowPrivilegeEscalation: false`, `automountServiceAccountToken: false` |
+| **Network ingress** | NetworkPolicy: default-deny, allow only same-namespace + Traefik |
+| **Network egress** | NetworkPolicy: allow DNS + public internet, block `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, metadata (`169.254.169.254`) |
+| **Registry** | Host firewall: port 5000 only from `10.0.0.0/16` |
+| **Quotas** | Per-namespace ResourceQuota: 8 CPU limits, 4 CPU requests, 8Gi memory limits, 4Gi requests, 20 pods |
 
 ### Host-Level Hardening
 
-See `infra/hetzner/hardening/` for complete setup scripts including:
-
-- Egress restrictions (iptables rules for metadata service, SMTP)
-- gVisor integration (`runsc` runtime)
-- Least-privilege container policies
-
----
-
-## Coolify API Integration
-
-InkMCP deploys applications via Coolify's REST API.
-
-### Authentication
-
-All API requests require a Bearer token (Laravel Sanctum):
-
-```
-Authorization: Bearer <coolify-api-token>
-```
-
-### Key Endpoints
-
-| Endpoint                           | Method | Purpose                     |
-| ---------------------------------- | ------ | --------------------------- |
-| `/api/v1/applications/dockerimage` | POST   | Deploy from Docker image    |
-| `/api/v1/applications/public`      | POST   | Deploy from public Git repo |
-| `/api/v1/applications/{uuid}`      | PATCH  | Update application settings |
-| `/api/v1/deploy`                   | POST   | Trigger deployment          |
-
-### Deploying an Application
-
-```bash
-curl -X POST https://coolify.example.com/api/v1/applications/dockerimage \
-  -H "Authorization: Bearer $COOLIFY_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_uuid": "abc123",
-    "server_uuid": "def456",
-    "environment_name": "production",
-    "docker_registry_image_name": "ghcr.io/user/app:latest",
-    "ports_exposes": "3000",
-    "limits_memory": "512m",
-    "limits_cpus": "0.5",
-    "custom_docker_run_options": "--cap-drop=ALL --pids-limit=256 --runtime=runsc",
-    "instant_deploy": true
-  }'
-```
-
-### Persistent Storage
-
-Coolify supports two volume types:
-
-- **LocalPersistentVolume** - Docker named volume or host path bind mount
-- **LocalFileVolume** - Embed file content (for configs)
-
-For disk-backed user storage:
-
-```json
-{
-  "name": "user-data",
-  "mount_path": "/data",
-  "host_path": "/mnt/persistent/{project-id}"
-}
-```
-
-Host path volumes require cleanup when project is deleted (Coolify handles named volumes automatically).
+See `infra/ansible/roles/firewall/` for iptables rules blocking metadata endpoints and restricting registry access to the private network.
 
 ---
 
 ## Non-goals (for sanity)
 
-- Replacing GitHub (we integrate via GitHub App)
-- Building a full PaaS UI for users (MCP is the interface; Coolify is the backend)
+- Replacing GitHub/Gitea (we integrate with both)
+- Building a full PaaS UI for users (MCP is the interface)
 - Solving arbitrary sandboxing perfectly on day 1 (ship baseline + iterate)
 
 ---
 
 ## Design Notes
 
-### 3-Plane Architecture
-The separation of control, build, and run planes matches Coolify's recommendation that builds can make servers unresponsive if mixed with runtime workloads.
-
-### gVisor Integration
-gVisor is **implemented** via a custom Coolify fork that adds `--runtime` support to Custom Docker Run Options:
-- **Fork:** https://github.com/gluonfield/coolify/tree/feature/add-runtime-option
-- **PR:** https://github.com/coollabsio/coolify/pull/8113
-- Uses `hostinet` mode for DNS compatibility with Docker networks
-
-See `infra/hetzner/hardening/` for complete setup documentation.
+### 4-Pool Architecture
+The separation of ctrl, ops, build, and run pools ensures CPU-heavy builds never compete with customer workloads or infrastructure services.
 
 ### Temporal Workflows
 All deployments run as Temporal workflows, providing:
 - Automatic retries on transient failures
-- Idempotency for webhook-triggered deploys
+- Idempotency for webhook-triggered deploys (deterministic workflow ID from commit SHA)
 - Visibility into deployment progress
 - Clean separation of orchestration from business logic
+- No secrets in workflow history — tokens minted inside activities from k8s Secrets
 
 ---
 
 ## References
 
-[1]: https://coolify.io/docs/knowledge-base/server/openssh "OpenSSH | Coolify Docs"
-[2]: https://coolify.io/docs/applications/build-packs/overview "Build Packs | Coolify Docs"
-[3]: https://coolify.io/docs/knowledge-base/server/build-server "Build Server | Coolify Docs"
-[4]: https://coolify.io/docs/knowledge-base/server/introduction "Introduction | Coolify Docs"
-[5]: https://docs.hetzner.com/networking/networks/connect-dedi-vswitch/ "Connect Dedicated Servers (vSwitch)"
-[6]: https://docs.hetzner.com/robot/dedicated-server/network/vswitch/ "vSwitch"
-[7]: https://coolify.io/docs/knowledge-base/how-to/backup-restore-coolify "Backup and Restore Your Coolify Instance"
-[8]: https://gvisor.dev/docs/ "What is gVisor?"
-[9]: https://coolify.io/docs/knowledge-base/docker/custom-commands "Custom Commands | Coolify Docs"
+[1]: https://docs.hetzner.com/networking/networks/connect-dedi-vswitch/ "Connect Dedicated Servers (vSwitch)"
+[2]: https://docs.hetzner.com/robot/dedicated-server/network/vswitch/ "vSwitch"

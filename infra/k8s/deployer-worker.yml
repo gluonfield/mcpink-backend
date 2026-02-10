@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: temporal-worker
+  name: deployer-worker
   namespace: dp-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: temporal-worker
+  name: deployer-worker
 rules:
   - apiGroups: [""]
     resources: ["namespaces", "services", "secrets", "resourcequotas"]
@@ -22,20 +22,20 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: temporal-worker
+  name: deployer-worker
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: temporal-worker
+  name: deployer-worker
 subjects:
   - kind: ServiceAccount
-    name: temporal-worker
+    name: deployer-worker
     namespace: dp-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: temporal-worker
+  name: deployer-worker
   namespace: dp-system
 spec:
   strategy:
@@ -43,11 +43,11 @@ spec:
   replicas: 1
   selector:
     matchLabels:
-      app: temporal-worker
+      app: deployer-worker
   template:
     metadata:
       labels:
-        app: temporal-worker
+        app: deployer-worker
     spec:
       nodeSelector:
         pool: build
@@ -56,11 +56,12 @@ spec:
           operator: Equal
           value: build
           effect: NoSchedule
-      serviceAccountName: temporal-worker
+      serviceAccountName: deployer-worker
+      imagePullSecrets:
+        - name: ghcr-pull-secret
       containers:
         - name: worker
-          image: registry.internal:5000/dp-system/temporal-worker:latest
-          imagePullPolicy: Always
+          image: ghcr.io/augustdev/deployer-worker:initial
           volumeMounts:
             - name: worker-tmp
               mountPath: /tmp
@@ -87,6 +88,11 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: url
+            # Worker startup resiliency (avoid crash loops on transient DNS/network)
+            - name: DB_SKIP_PING
+              value: "true"
+            - name: DB_SKIP_MIGRATIONS
+              value: "true"
             # GitHub App (viper: githubapp.*)
             - name: GITHUBAPP_PRIVATEKEY
               valueFrom:

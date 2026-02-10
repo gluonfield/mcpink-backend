@@ -1,3 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: buildkitd-config
+  namespace: dp-system
+data:
+  buildkitd.toml: |
+    [registry."registry.internal:5000"]
+      http = true
+      insecure = true
+    [registry."10.0.1.4:5000"]
+      http = true
+      insecure = true
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,6 +28,8 @@ spec:
     metadata:
       labels:
         app: buildkitd
+      annotations:
+        buildkitd-config-hash: "v1-insecure-registry"
     spec:
       nodeSelector:
         pool: build
@@ -38,12 +54,15 @@ spec:
               mountPath: /var/lib/buildkit
       containers:
         - name: buildkitd
-          image: moby/buildkit:latest
+          image: moby/buildkit:v0.20.2
           args:
             - --addr
             - tcp://0.0.0.0:1234
             - --oci-worker-gc
             - --oci-worker-gc-keepstorage=20000
+            - --debug
+            - --config
+            - /etc/buildkit/buildkitd.toml
           ports:
             - containerPort: 1234
           startupProbe:
@@ -71,6 +90,9 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /var/lib/buildkit
+            - name: config
+              mountPath: /etc/buildkit
+              readOnly: true
           resources:
             requests:
               cpu: "2"
@@ -83,6 +105,9 @@ spec:
           hostPath:
             path: /mnt/buildkit
             type: DirectoryOrCreate
+        - name: config
+          configMap:
+            name: buildkitd-config
 ---
 apiVersion: v1
 kind: Service

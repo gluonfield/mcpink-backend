@@ -14,12 +14,14 @@ func NewInternalGitService(config internalgit.Config, db *pg.DB, logger *slog.Lo
 		return nil, fmt.Errorf("internal git client: %w", err)
 	}
 
-	webhookURL := "https://api.ml.ink/webhooks/internal-git"
+	if config.WebhookURL == "" {
+		return nil, fmt.Errorf("internal git webhook URL is required (GITEA_WEBHOOK_URL)")
+	}
 
 	svc := internalgit.NewService(internalgit.ServiceConfig{
 		Client:     client,
 		DB:         db.Pool,
-		WebhookURL: webhookURL,
+		WebhookURL: config.WebhookURL,
 	})
 
 	logger.Info("Internal git service initialized", "baseURL", config.BaseURL)

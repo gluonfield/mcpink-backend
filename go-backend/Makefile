@@ -4,8 +4,11 @@ run-server:
 run-worker:
 	@go run cmd/worker/main.go
 
-run-k8s-worker:
-	@go run cmd/k8s-worker/main.go
+run-deployer-server:
+	@go run cmd/deployer-server/main.go
+
+run-deployer-worker:
+	@go run cmd/deployer-worker/main.go
 
 sqlc:
 	@go run github.com/sqlc-dev/sqlc/cmd/sqlc@latest generate

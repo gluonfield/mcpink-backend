@@ -21,7 +21,7 @@ type CreateServiceInput struct {
 	Name   string `json:"name" jsonschema:"description=Name for the deployment"`
 
 	Project   string   `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
-	BuildPack string   `json:"build_pack,omitempty" jsonschema:"description=Build pack to use,enum=nixpacks,enum=dockerfile,enum=static,enum=dockercompose,default=nixpacks"`
+	BuildPack string   `json:"build_pack,omitempty" jsonschema:"description=Build pack to use,enum=railpack,enum=dockerfile,enum=static,enum=dockercompose,default=railpack"`
 	Port      int      `json:"port,omitempty" jsonschema:"description=Port the application listens on,default=3000"`
 	EnvVars   []EnvVar `json:"env_vars,omitempty" jsonschema:"description=Environment variables"`
 
@@ -79,7 +79,7 @@ type ServiceInfo struct {
 
 const (
 	DefaultPort      = 3000
-	DefaultBuildPack = "nixpacks"
+	DefaultBuildPack = "railpack"
 )
 
 type CreateResourceInput struct {

@@ -29,9 +29,18 @@ type Server struct {
 	githubAppService *githubapp.Service
 	internalGitSvc   *internalgit.Service
 	logger           *slog.Logger
+	lokiQueryURL     string
+	lokiUsername      string
+	lokiPassword      string
 }
 
-func NewServer(authService *auth.Service, deployService *deployments.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, internalGitSvc *internalgit.Service, logger *slog.Logger) *Server {
+type LokiConfig struct {
+	QueryURL string
+	Username string
+	Password string
+}
+
+func NewServer(authService *auth.Service, deployService *deployments.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, internalGitSvc *internalgit.Service, lokiCfg LokiConfig, logger *slog.Logger) *Server {
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "Ink MCP",
@@ -51,6 +60,9 @@ func NewServer(authService *auth.Service, deployService *deployments.Service, re
 		githubAppService: githubAppService,
 		internalGitSvc:   internalGitSvc,
 		logger:           logger,
+		lokiQueryURL:     lokiCfg.QueryURL,
+		lokiUsername:      lokiCfg.Username,
+		lokiPassword:      lokiCfg.Password,
 	}
 
 	s.registerTools()

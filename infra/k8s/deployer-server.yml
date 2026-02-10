@@ -1,0 +1,169 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: deployer-server
+  namespace: dp-system
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: deployer-server
+  template:
+    metadata:
+      labels:
+        app: deployer-server
+    spec:
+      nodeSelector:
+        pool: ops
+      tolerations:
+        - key: pool
+          operator: Equal
+          value: ops
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: deployer-server
+          image: ghcr.io/augustdev/deployer-server:initial
+          ports:
+            - containerPort: 8081
+          env:
+            # Database (viper: db.*)
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+            # Temporal (viper: temporal.*)
+            - name: TEMPORAL_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-worker-config
+                  key: temporal-address
+            - name: TEMPORAL_NAMESPACE
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-worker-config
+                  key: temporal-namespace
+            - name: TEMPORAL_CLOUDAPIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-creds
+                  key: cloud-api-key
+            # GitHub App (viper: githubapp.*)
+            - name: GITHUBAPP_APPID
+              valueFrom:
+                secretKeyRef:
+                  name: github-app
+                  key: app-id
+            - name: GITHUBAPP_PRIVATEKEY
+              valueFrom:
+                secretKeyRef:
+                  name: github-app
+                  key: private-key
+            # Gitea / internal git (viper: gitea.*)
+            - name: GITEA_BASEURL
+              valueFrom:
+                secretKeyRef:
+                  name: gitea-creds
+                  key: base-url
+            - name: GITEA_ADMINTOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: gitea-creds
+                  key: admin-token
+            - name: GITEA_WEBHOOKSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gitea-creds
+                  key: webhook-secret
+            # Gitea webhook URL (cluster-internal, no DNS roundtrip)
+            - name: GITEA_WEBHOOKURL
+              value: "http://deployer-server.dp-system:8081/webhooks/internal-git"
+            # GitHub App webhook verification
+            - name: GITHUBAPP_WEBHOOKSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: githubapp-webhook-secret
+            # Cloudflare (used by deployments.Service for DNS)
+            - name: CLOUDFLARE_APITOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: cloudflare-api-token
+            - name: CLOUDFLARE_ZONEID
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: cloudflare-zone-id
+            - name: CLOUDFLARE_BASEDOMAIN
+              value: "ml.ink"
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: deployer-server
+  namespace: dp-system
+spec:
+  type: ClusterIP
+  selector:
+    app: deployer-server
+  ports:
+    - port: 8081
+      targetPort: 8081
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: deployer-server
+  namespace: dp-system
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: api.ml.ink
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: deployer-server
+                port:
+                  number: 8081

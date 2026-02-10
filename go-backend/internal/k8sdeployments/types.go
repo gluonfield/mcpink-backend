@@ -2,9 +2,7 @@ package k8sdeployments
 
 const TaskQueue = "k8s-native"
 
-// --- Parent Workflow types ---
-
-type CreateServiceWorkflowInput struct {
+type DeployServiceInput struct {
 	ServiceID      string
 	Repo           string
 	Branch         string
@@ -14,7 +12,7 @@ type CreateServiceWorkflowInput struct {
 	AppsDomain     string
 }
 
-type CreateServiceWorkflowResult struct {
+type DeployServiceResult struct {
 	ServiceID    string
 	Status       string
 	URL          string
@@ -22,23 +20,14 @@ type CreateServiceWorkflowResult struct {
 	ErrorMessage string
 }
 
-type RedeployServiceWorkflowInput struct {
-	ServiceID      string
-	Repo           string
-	Branch         string
-	GitProvider    string
-	InstallationID int64
-	CommitSHA      string
-	AppsDomain     string
-}
+// Type aliases preserve backward compatibility for callers and Temporal registration.
+type (
+	CreateServiceWorkflowInput  = DeployServiceInput
+	CreateServiceWorkflowResult = DeployServiceResult
 
-type RedeployServiceWorkflowResult struct {
-	ServiceID    string
-	Status       string
-	URL          string
-	CommitSHA    string
-	ErrorMessage string
-}
+	RedeployServiceWorkflowInput  = DeployServiceInput
+	RedeployServiceWorkflowResult = DeployServiceResult
+)
 
 type DeleteServiceWorkflowInput struct {
 	ServiceID string
@@ -51,8 +40,6 @@ type DeleteServiceWorkflowResult struct {
 	Status       string
 	ErrorMessage string
 }
-
-// --- BuildServiceWorkflow (child) types ---
 
 type BuildServiceWorkflowInput struct {
 	ServiceID      string
@@ -67,8 +54,6 @@ type BuildServiceWorkflowResult struct {
 	ImageRef  string
 	CommitSHA string
 }
-
-// --- Activity types ---
 
 type CloneRepoInput struct {
 	ServiceID      string
@@ -151,4 +136,20 @@ type DeleteServiceInput struct {
 
 type DeleteServiceResult struct {
 	Status string
+}
+
+type UpdateBuildStatusInput struct {
+	ServiceID   string
+	BuildStatus string
+}
+
+type MarkAppRunningInput struct {
+	ServiceID string
+	URL       string
+	CommitSHA string
+}
+
+type MarkAppFailedInput struct {
+	ServiceID    string
+	ErrorMessage string
 }

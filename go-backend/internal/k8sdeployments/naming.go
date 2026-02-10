@@ -30,8 +30,8 @@ func ServiceName(appName string) string {
 	return sanitizeDNS(appName)
 }
 
-// resolveUsername returns the user's GiteaUsername, falling back to GithubUsername.
-func resolveUsername(user users.User) string {
+// ResolveUsername returns the user's GiteaUsername, falling back to GithubUsername.
+func ResolveUsername(user users.User) string {
 	if user.GiteaUsername != nil && *user.GiteaUsername != "" {
 		return *user.GiteaUsername
 	}

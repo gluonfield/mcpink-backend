@@ -16,105 +16,64 @@ const (
 )
 
 func CreateServiceWorkflow(ctx workflow.Context, input CreateServiceWorkflowInput) (CreateServiceWorkflowResult, error) {
-	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting CreateServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
-
-	// Child workflow: build
-	buildInput := BuildServiceWorkflowInput{
-		ServiceID:      input.ServiceID,
-		Repo:           input.Repo,
-		Branch:         input.Branch,
-		GitProvider:    input.GitProvider,
-		InstallationID: input.InstallationID,
-		CommitSHA:      input.CommitSHA,
-	}
-	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-		WorkflowID: fmt.Sprintf("build-%s-%s", input.ServiceID, input.CommitSHA),
-	})
-	var buildResult BuildServiceWorkflowResult
-	err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, buildInput).Get(ctx, &buildResult)
-	if err != nil {
-		return CreateServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
-	// Deploy
-	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout: 5 * time.Minute,
-		RetryPolicy: &temporal.RetryPolicy{
-			InitialInterval:    time.Second,
-			BackoffCoefficient: 2.0,
-			MaximumInterval:    30 * time.Second,
-			MaximumAttempts:    3,
-		},
-	})
-	var activities *Activities
-
-	deployInput := DeployInput{
-		ServiceID:  input.ServiceID,
-		ImageRef:   buildResult.ImageRef,
-		CommitSHA:  buildResult.CommitSHA,
-		AppsDomain: input.AppsDomain,
-	}
-	var deployResult DeployResult
-	err = workflow.ExecuteActivity(actCtx, activities.Deploy, deployInput).Get(ctx, &deployResult)
-	if err != nil {
-		return CreateServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
-	// WaitForRollout
-	waitInput := WaitForRolloutInput{
-		Namespace:      deployResult.Namespace,
-		DeploymentName: deployResult.DeploymentName,
-	}
-	var waitResult WaitForRolloutResult
-	err = workflow.ExecuteActivity(actCtx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
-	if err != nil {
-		return CreateServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
-	}
-
-	return CreateServiceWorkflowResult{
-		ServiceID: input.ServiceID,
-		Status:    waitResult.Status,
-		URL:       deployResult.URL,
-		CommitSHA: buildResult.CommitSHA,
-	}, nil
+	return deployService(ctx, input)
 }
 
 func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflowInput) (RedeployServiceWorkflowResult, error) {
-	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting RedeployServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
+	return deployService(ctx, input)
+}
 
-	buildInput := BuildServiceWorkflowInput{
+func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServiceResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting deploy", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
+
+	var activities *Activities
+
+	statusCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Second,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: 3},
+	})
+
+	markFailed := func(errMsg string) {
+		_ = workflow.ExecuteActivity(statusCtx, activities.MarkAppFailed, MarkAppFailedInput{
+			ServiceID:    input.ServiceID,
+			ErrorMessage: errMsg,
+		}).Get(ctx, nil)
+	}
+
+	fail := func(err error) (DeployServiceResult, error) {
+		markFailed(err.Error())
+		return DeployServiceResult{
+			ServiceID:    input.ServiceID,
+			Status:       StatusFailed,
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	if err := workflow.ExecuteActivity(statusCtx, activities.UpdateBuildStatus, UpdateBuildStatusInput{
+		ServiceID:   input.ServiceID,
+		BuildStatus: "building",
+	}).Get(ctx, nil); err != nil {
+		return DeployServiceResult{
+			ServiceID:    input.ServiceID,
+			Status:       StatusFailed,
+			ErrorMessage: fmt.Sprintf("update build status: %v", err),
+		}, fmt.Errorf("update build status: %w", err)
+	}
+
+	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
+		WorkflowID: fmt.Sprintf("build-%s-%s", input.ServiceID, input.CommitSHA),
+	})
+	var buildResult BuildServiceWorkflowResult
+	if err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, BuildServiceWorkflowInput{
 		ServiceID:      input.ServiceID,
 		Repo:           input.Repo,
 		Branch:         input.Branch,
 		GitProvider:    input.GitProvider,
 		InstallationID: input.InstallationID,
 		CommitSHA:      input.CommitSHA,
-	}
-	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
-		WorkflowID: fmt.Sprintf("build-%s-%s", input.ServiceID, input.CommitSHA),
-	})
-	var buildResult BuildServiceWorkflowResult
-	err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, buildInput).Get(ctx, &buildResult)
-	if err != nil {
-		return RedeployServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
+	}).Get(ctx, &buildResult); err != nil {
+		return fail(err)
 	}
 
 	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
@@ -126,39 +85,38 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 			MaximumAttempts:    3,
 		},
 	})
-	var activities *Activities
 
-	deployInput := DeployInput{
+	var deployResult DeployResult
+	if err := workflow.ExecuteActivity(actCtx, activities.Deploy, DeployInput{
 		ServiceID:  input.ServiceID,
 		ImageRef:   buildResult.ImageRef,
 		CommitSHA:  buildResult.CommitSHA,
 		AppsDomain: input.AppsDomain,
-	}
-	var deployResult DeployResult
-	err = workflow.ExecuteActivity(actCtx, activities.Deploy, deployInput).Get(ctx, &deployResult)
-	if err != nil {
-		return RedeployServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
+	}).Get(ctx, &deployResult); err != nil {
+		return fail(err)
 	}
 
-	waitInput := WaitForRolloutInput{
+	var waitResult WaitForRolloutResult
+	if err := workflow.ExecuteActivity(actCtx, activities.WaitForRollout, WaitForRolloutInput{
 		Namespace:      deployResult.Namespace,
 		DeploymentName: deployResult.DeploymentName,
-	}
-	var waitResult WaitForRolloutResult
-	err = workflow.ExecuteActivity(actCtx, activities.WaitForRollout, waitInput).Get(ctx, &waitResult)
-	if err != nil {
-		return RedeployServiceWorkflowResult{
-			ServiceID:    input.ServiceID,
-			Status:       StatusFailed,
-			ErrorMessage: err.Error(),
-		}, err
+	}).Get(ctx, &waitResult); err != nil {
+		return fail(err)
 	}
 
-	return RedeployServiceWorkflowResult{
+	if err := workflow.ExecuteActivity(statusCtx, activities.MarkAppRunning, MarkAppRunningInput{
+		ServiceID: input.ServiceID,
+		URL:       deployResult.URL,
+		CommitSHA: buildResult.CommitSHA,
+	}).Get(ctx, nil); err != nil {
+		return DeployServiceResult{
+			ServiceID:    input.ServiceID,
+			Status:       StatusFailed,
+			ErrorMessage: fmt.Sprintf("mark app running: %v", err),
+		}, fmt.Errorf("mark app running: %w", err)
+	}
+
+	return DeployServiceResult{
 		ServiceID: input.ServiceID,
 		Status:    waitResult.Status,
 		URL:       deployResult.URL,
@@ -168,7 +126,7 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 
 func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput) (BuildServiceWorkflowResult, error) {
 	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting BuildServiceWorkflow", "serviceID", input.ServiceID, "repo", input.Repo)
+	logger.Info("Starting build", "serviceID", input.ServiceID, "repo", input.Repo)
 
 	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 10 * time.Minute,
@@ -185,8 +143,8 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		if path == "" {
 			return
 		}
-		if cleanupErr := workflow.ExecuteActivity(actCtx, activities.CleanupSource, path).Get(ctx, nil); cleanupErr != nil {
-			logger.Warn("CleanupSource failed", "sourcePath", path, "error", cleanupErr)
+		if err := workflow.ExecuteActivity(actCtx, activities.CleanupSource, path).Get(ctx, nil); err != nil {
+			logger.Warn("CleanupSource failed", "sourcePath", path, "error", err)
 		}
 	}
 
@@ -195,24 +153,20 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 			return nil, false
 		}
 
-		resolveImageInput := ResolveImageRefInput{
+		var resolveResult ResolveImageRefResult
+		if err := workflow.ExecuteActivity(actCtx, activities.ResolveImageRef, ResolveImageRefInput{
 			ServiceID: input.ServiceID,
 			CommitSHA: commitSHA,
-		}
-		var resolveImageResult ResolveImageRefResult
-		if err := workflow.ExecuteActivity(actCtx, activities.ResolveImageRef, resolveImageInput).Get(ctx, &resolveImageResult); err != nil {
+		}).Get(ctx, &resolveResult); err != nil {
 			logger.Warn("ResolveImageRef failed; continuing with full build",
-				"serviceID", input.ServiceID,
-				"commitSHA", commitSHA,
-				"error", err)
+				"serviceID", input.ServiceID, "commitSHA", commitSHA, "error", err)
 			return nil, false
 		}
 
 		var exists bool
-		if err := workflow.ExecuteActivity(actCtx, activities.ImageExists, resolveImageResult.ImageRef).Get(ctx, &exists); err != nil {
+		if err := workflow.ExecuteActivity(actCtx, activities.ImageExists, resolveResult.ImageRef).Get(ctx, &exists); err != nil {
 			logger.Warn("ImageExists check failed; continuing with full build",
-				"imageRef", resolveImageResult.ImageRef,
-				"error", err)
+				"imageRef", resolveResult.ImageRef, "error", err)
 			return nil, false
 		}
 		if !exists {
@@ -220,11 +174,9 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		}
 
 		logger.Info("Skipping build; image already exists",
-			"serviceID", input.ServiceID,
-			"imageRef", resolveImageResult.ImageRef,
-			"commitSHA", commitSHA)
+			"serviceID", input.ServiceID, "imageRef", resolveResult.ImageRef, "commitSHA", commitSHA)
 		return &BuildServiceWorkflowResult{
-			ImageRef:  resolveImageResult.ImageRef,
+			ImageRef:  resolveResult.ImageRef,
 			CommitSHA: commitSHA,
 		}, true
 	}
@@ -238,29 +190,25 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 			logger.Warn("Retrying build after missing source path", "serviceID", input.ServiceID, "attempt", attempt)
 		}
 
-		// 1. Clone
-		cloneInput := CloneRepoInput{
+		var cloneResult CloneRepoResult
+		err := workflow.ExecuteActivity(actCtx, activities.CloneRepo, CloneRepoInput{
 			ServiceID:      input.ServiceID,
 			Repo:           input.Repo,
 			Branch:         input.Branch,
 			GitProvider:    input.GitProvider,
 			InstallationID: input.InstallationID,
 			CommitSHA:      input.CommitSHA,
-		}
-		var cloneResult CloneRepoResult
-		err := workflow.ExecuteActivity(actCtx, activities.CloneRepo, cloneInput).Get(ctx, &cloneResult)
+		}).Get(ctx, &cloneResult)
 		if err != nil {
 			return BuildServiceWorkflowResult{}, fmt.Errorf("clone failed: %w", err)
 		}
 
-		// 2. Resolve build context
-		resolveInput := ResolveBuildContextInput{
+		var resolveResult ResolveBuildContextResult
+		err = workflow.ExecuteActivity(actCtx, activities.ResolveBuildContext, ResolveBuildContextInput{
 			ServiceID:  input.ServiceID,
 			SourcePath: cloneResult.SourcePath,
 			CommitSHA:  cloneResult.CommitSHA,
-		}
-		var resolveResult ResolveBuildContextResult
-		err = workflow.ExecuteActivity(actCtx, activities.ResolveBuildContext, resolveInput).Get(ctx, &resolveResult)
+		}).Get(ctx, &resolveResult)
 		if err != nil {
 			cleanupSource(cloneResult.SourcePath)
 			if isSourcePathMissing(err) && attempt < 2 {
@@ -273,21 +221,17 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		err = workflow.ExecuteActivity(actCtx, activities.ImageExists, resolveResult.ImageRef).Get(ctx, &imageExists)
 		if err != nil {
 			logger.Warn("ImageExists check failed after resolve; continuing with build",
-				"imageRef", resolveResult.ImageRef,
-				"error", err)
+				"imageRef", resolveResult.ImageRef, "error", err)
 		} else if imageExists {
 			cleanupSource(cloneResult.SourcePath)
 			logger.Info("Skipping build after resolve; image already exists",
-				"serviceID", input.ServiceID,
-				"imageRef", resolveResult.ImageRef,
-				"commitSHA", cloneResult.CommitSHA)
+				"serviceID", input.ServiceID, "imageRef", resolveResult.ImageRef, "commitSHA", cloneResult.CommitSHA)
 			return BuildServiceWorkflowResult{
 				ImageRef:  resolveResult.ImageRef,
 				CommitSHA: cloneResult.CommitSHA,
 			}, nil
 		}
 
-		// 3. Build based on build pack
 		buildInput := BuildImageInput{
 			SourcePath: cloneResult.SourcePath,
 			ImageRef:   resolveResult.ImageRef,
@@ -332,7 +276,7 @@ func isSourcePathMissing(err error) bool {
 
 func DeleteServiceWorkflow(ctx workflow.Context, input DeleteServiceWorkflowInput) (DeleteServiceWorkflowResult, error) {
 	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting DeleteServiceWorkflow", "serviceID", input.ServiceID, "namespace", input.Namespace, "name", input.Name)
+	logger.Info("Starting delete", "serviceID", input.ServiceID, "namespace", input.Namespace, "name", input.Name)
 
 	ctx = workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 5 * time.Minute,
@@ -345,15 +289,12 @@ func DeleteServiceWorkflow(ctx workflow.Context, input DeleteServiceWorkflowInpu
 	})
 
 	var activities *Activities
-
-	deleteInput := DeleteServiceInput{
+	var deleteResult DeleteServiceResult
+	if err := workflow.ExecuteActivity(ctx, activities.DeleteService, DeleteServiceInput{
 		ServiceID: input.ServiceID,
 		Namespace: input.Namespace,
 		Name:      input.Name,
-	}
-	var deleteResult DeleteServiceResult
-	err := workflow.ExecuteActivity(ctx, activities.DeleteService, deleteInput).Get(ctx, &deleteResult)
-	if err != nil {
+	}).Get(ctx, &deleteResult); err != nil {
 		return DeleteServiceWorkflowResult{
 			ServiceID:    input.ServiceID,
 			Status:       StatusFailed,
@@ -361,13 +302,12 @@ func DeleteServiceWorkflow(ctx workflow.Context, input DeleteServiceWorkflowInpu
 		}, err
 	}
 
-	status := deleteResult.Status
-	if status == "" {
-		status = StatusDeleted
+	if err := workflow.ExecuteActivity(ctx, activities.SoftDeleteApp, input.ServiceID).Get(ctx, nil); err != nil {
+		logger.Error("Failed to soft-delete app record", "serviceID", input.ServiceID, "error", err)
 	}
 
 	return DeleteServiceWorkflowResult{
 		ServiceID: input.ServiceID,
-		Status:    status,
+		Status:    StatusDeleted,
 	}, nil
 }

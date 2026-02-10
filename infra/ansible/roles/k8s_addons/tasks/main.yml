@@ -255,6 +255,55 @@
     'has been upgraded' in grafana_helm.stdout or
     'has been installed' in grafana_helm.stdout
 
+- name: Create database credentials secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic db-credentials \
+      --from-literal=url={{ db_credentials_url | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: db_credentials_url | default('') | length > 0
+
+- name: Stage Firebase service account JSON on controller host
+  copy:
+    dest: /tmp/firebase-service-account.json
+    content: "{{ firebase_service_account_json | default('') }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: firebase_service_account_json | default('') | length > 0
+
+- name: Create API server config secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret generic api-server-config \
+      --from-literal=auth-jwt-secret={{ auth_jwt_secret | quote }} \
+      --from-literal=auth-apikey-encryption-key={{ auth_apikey_encryption_key | quote }} \
+      --from-literal=auth-frontend-url={{ auth_frontend_url | quote }} \
+      --from-literal=github-client-id={{ github_oauth_client_id | quote }} \
+      --from-literal=github-client-secret={{ github_oauth_client_secret | quote }} \
+      --from-literal=githubapp-client-id={{ github_app_client_id | quote }} \
+      --from-literal=githubapp-client-secret={{ github_app_client_secret | quote }} \
+      --from-literal=githubapp-webhook-secret={{ github_app_webhook_secret | quote }} \
+      --from-literal=cloudflare-api-token={{ cloudflare_api_token | quote }} \
+      --from-literal=cloudflare-zone-id={{ cloudflare_zone_id | quote }} \
+      --from-literal=turso-api-key={{ turso_api_key | quote }} \
+      --from-literal=turso-org-slug={{ turso_org_slug | quote }} \
+      --from-file=firebase-service-account-json=/tmp/firebase-service-account.json \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when:
+    - auth_jwt_secret | default('') | length > 0
+    - firebase_service_account_json | default('') | length > 0
+
+- name: Remove staged Firebase service account JSON
+  file:
+    path: /tmp/firebase-service-account.json
+    state: absent
+  when: firebase_service_account_json | default('') | length > 0
+
 - name: Create Loki basic-auth secret when provided
   shell: |
     set -euo pipefail
@@ -272,3 +321,115 @@
     ' created' in apply_manifest_cmd.stdout or
     ' configured' in apply_manifest_cmd.stdout
   loop: "{{ k8s_manifest_apply_order }}"
+
+# --- CI/CD deploy user (GitHub Actions → SSH → kubectl set image) ---
+
+- name: Create deploy user for CI/CD
+  user:
+    name: deploy
+    shell: /bin/bash
+    create_home: true
+    system: false
+
+- name: Create deploy user .ssh directory
+  file:
+    path: /home/deploy/.ssh
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: "0700"
+
+- name: Stage deploy SSH private key
+  copy:
+    dest: /tmp/deploy_ssh_key
+    content: "{{ deploy_ssh_private_key }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: deploy_ssh_private_key | default('') | length > 0
+  no_log: true
+
+- name: Derive and install deploy SSH authorized_keys
+  shell: |
+    set -euo pipefail
+    ssh-keygen -y -f /tmp/deploy_ssh_key > /home/deploy/.ssh/authorized_keys
+    chown deploy:deploy /home/deploy/.ssh/authorized_keys
+    chmod 600 /home/deploy/.ssh/authorized_keys
+  args:
+    executable: /bin/bash
+  when: deploy_ssh_private_key | default('') | length > 0
+
+- name: Remove staged deploy SSH key
+  file:
+    path: /tmp/deploy_ssh_key
+    state: absent
+
+- name: Ensure kubectl symlink exists for deploy user
+  file:
+    src: /usr/local/bin/kubectl
+    dest: /usr/bin/kubectl
+    state: link
+    force: true
+  failed_when: false
+
+- name: Create deploy user .kube directory
+  file:
+    path: /home/deploy/.kube
+    state: directory
+    owner: deploy
+    group: deploy
+    mode: "0700"
+
+- name: Wait for ci-deployer service account token
+  shell: |
+    set -euo pipefail
+    k3s kubectl get secret ci-deployer-token -n dp-system -o jsonpath='{.data.token}'
+  args:
+    executable: /bin/bash
+  register: ci_deployer_token_check
+  until: ci_deployer_token_check.rc == 0 and ci_deployer_token_check.stdout | length > 0
+  retries: 12
+  delay: 5
+  changed_when: false
+
+- name: Generate restricted kubeconfig for deploy user
+  shell: |
+    set -euo pipefail
+    TOKEN=$(k3s kubectl get secret ci-deployer-token -n dp-system -o jsonpath='{.data.token}' | base64 -d)
+    CA=$(k3s kubectl get secret ci-deployer-token -n dp-system -o jsonpath='{.data.ca\.crt}')
+    cat > /home/deploy/.kube/config <<EOF
+    apiVersion: v1
+    kind: Config
+    clusters:
+      - cluster:
+          certificate-authority-data: $CA
+          server: https://127.0.0.1:6443
+        name: k3s
+    contexts:
+      - context:
+          cluster: k3s
+          namespace: dp-system
+          user: ci-deployer
+        name: ci-deployer
+    current-context: ci-deployer
+    users:
+      - name: ci-deployer
+        user:
+          token: $TOKEN
+    EOF
+    chown deploy:deploy /home/deploy/.kube/config
+    chmod 600 /home/deploy/.kube/config
+  args:
+    executable: /bin/bash
+
+- name: Create ghcr.io pull secret when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n dp-system create secret docker-registry ghcr-pull-secret \
+      --docker-server=ghcr.io \
+      --docker-username=augustdev \
+      --docker-password={{ ghcr_pull_token | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: ghcr_pull_token | default('') | length > 0

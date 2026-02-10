@@ -15,89 +15,58 @@ func (a *Activities) Deploy(ctx context.Context, input DeployInput) (*DeployResu
 		"imageRef", input.ImageRef,
 		"commitSHA", input.CommitSHA)
 
-	app, err := a.appsQ.GetAppByID(ctx, input.ServiceID)
+	id, err := a.resolveServiceIdentity(ctx, input.ServiceID)
 	if err != nil {
-		return nil, fmt.Errorf("get app: %w", err)
+		return nil, err
 	}
 
-	project, err := a.projectsQ.GetProjectByID(ctx, app.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("get project: %w", err)
-	}
-
-	user, err := a.usersQ.GetUserByID(ctx, app.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
-	}
-
-	username := ResolveUsername(user)
-	if username == "" {
-		return nil, fmt.Errorf("user %s has no gitea or github username", app.UserID)
-	}
-
-	namespace := NamespaceName(username, project.Ref)
-	name := ServiceName(*app.Name)
-	port := app.Port
+	port := id.App.Port
 	if port == "" {
 		port = "3000"
 	}
-	if app.BuildPack == "static" {
+	if id.App.BuildPack == "static" {
 		port = "8080"
 	}
 
-	// Parse env vars
-	envVars := make(map[string]string)
-	if len(app.EnvVars) > 0 {
-		if err := json.Unmarshal(app.EnvVars, &envVars); err != nil {
-			var envArr []struct {
-				Key   string `json:"key"`
-				Value string `json:"value"`
-			}
-			if err := json.Unmarshal(app.EnvVars, &envArr); err == nil {
-				for _, e := range envArr {
-					envVars[e.Key] = e.Value
-				}
-			}
-		}
-	}
+	envVars := parseEnvVars(id.App.EnvVars)
 	envVars["PORT"] = port
 
 	// Ensure namespace
-	if err := a.ensureNamespace(ctx, namespace, username, project.Ref); err != nil {
+	if err := a.ensureNamespace(ctx, id.Namespace, id.Tenant, id.ProjectRef); err != nil {
 		return nil, fmt.Errorf("ensure namespace: %w", err)
 	}
 
 	// Apply Secret
-	if err := a.applySecret(ctx, namespace, name, envVars); err != nil {
+	if err := a.applySecret(ctx, id.Namespace, id.Name, envVars); err != nil {
 		return nil, fmt.Errorf("apply secret: %w", err)
 	}
 
 	// Apply Deployment
-	if err := a.applyDeployment(ctx, namespace, name, input.ImageRef, port); err != nil {
+	if err := a.applyDeployment(ctx, id.Namespace, id.Name, input.ImageRef, port); err != nil {
 		return nil, fmt.Errorf("apply deployment: %w", err)
 	}
 
 	// Apply Service
-	if err := a.applyService(ctx, namespace, name, port); err != nil {
+	if err := a.applyService(ctx, id.Namespace, id.Name, port); err != nil {
 		return nil, fmt.Errorf("apply service: %w", err)
 	}
 
 	// Apply Ingress
-	host := fmt.Sprintf("%s.%s", name, input.AppsDomain)
-	if err := a.applyIngress(ctx, namespace, name, host, port); err != nil {
+	host := fmt.Sprintf("%s.%s", id.Name, input.AppsDomain)
+	if err := a.applyIngress(ctx, id.Namespace, id.Name, host, port); err != nil {
 		return nil, fmt.Errorf("apply ingress: %w", err)
 	}
 
 	url := fmt.Sprintf("https://%s", host)
 	a.logger.Info("Deploy completed",
 		"serviceID", input.ServiceID,
-		"namespace", namespace,
-		"name", name,
+		"namespace", id.Namespace,
+		"name", id.Name,
 		"url", url)
 
 	return &DeployResult{
-		Namespace:      namespace,
-		DeploymentName: name,
+		Namespace:      id.Namespace,
+		DeploymentName: id.Name,
 		URL:            url,
 	}, nil
 }

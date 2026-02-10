@@ -164,7 +164,7 @@ func buildDeployment(namespace, name, imageRef, port string) *appsv1.Deployment 
 					SecurityContext: &corev1.PodSecurityContext{},
 					Containers: []corev1.Container{
 						{
-							Name:  "app",
+							Name:  name,
 							Image: imageRef,
 							Ports: []corev1.ContainerPort{
 								{ContainerPort: int32(portInt)},

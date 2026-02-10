@@ -116,11 +116,10 @@ func QueryLoki(ctx context.Context, queryURL, username, password, logQL string, 
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	q.Set("direction", "forward")
+	q.Set("direction", "backward")
 	req.URL.RawQuery = q.Encode()
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("loki query: %w", err)
 	}
@@ -137,9 +136,7 @@ func QueryLoki(ctx context.Context, queryURL, username, password, logQL string, 
 	return &result, nil
 }
 
-// QueryBuildLogs retrieves build logs for a specific service from Loki.
-func QueryBuildLogs(ctx context.Context, lokiQueryURL, username, password, namespace, service string, since time.Duration, limit int) ([]string, error) {
-	logQL := fmt.Sprintf(`{job="build", namespace=%q, service=%q}`, namespace, service)
+func queryLogs(ctx context.Context, lokiQueryURL, username, password, logQL string, since time.Duration, limit int) ([]string, error) {
 	end := time.Now()
 	start := end.Add(-since)
 
@@ -155,28 +152,18 @@ func QueryBuildLogs(ctx context.Context, lokiQueryURL, username, password, names
 				lines = append(lines, entry[1])
 			}
 		}
+	}
+	// Reverse for chronological order (query uses backward direction)
+	for i, j := 0, len(lines)-1; i < j; i, j = i+1, j-1 {
+		lines[i], lines[j] = lines[j], lines[i]
 	}
 	return lines, nil
 }
 
-// QueryRunLogs retrieves runtime logs for a specific service from Loki.
+func QueryBuildLogs(ctx context.Context, lokiQueryURL, username, password, namespace, service string, since time.Duration, limit int) ([]string, error) {
+	return queryLogs(ctx, lokiQueryURL, username, password, fmt.Sprintf(`{job="build", namespace=%q, service=%q}`, namespace, service), since, limit)
+}
+
 func QueryRunLogs(ctx context.Context, lokiQueryURL, username, password, namespace, service string, since time.Duration, limit int) ([]string, error) {
-	logQL := fmt.Sprintf(`{namespace=%q, container=%q}`, namespace, service)
-	end := time.Now()
-	start := end.Add(-since)
-
-	result, err := QueryLoki(ctx, lokiQueryURL, username, password, logQL, start, end, limit)
-	if err != nil {
-		return nil, err
-	}
-
-	var lines []string
-	for _, stream := range result.Data.Result {
-		for _, entry := range stream.Values {
-			if len(entry) >= 2 {
-				lines = append(lines, entry[1])
-			}
-		}
-	}
-	return lines, nil
+	return queryLogs(ctx, lokiQueryURL, username, password, fmt.Sprintf(`{namespace=%q, container=%q}`, namespace, service), since, limit)
 }

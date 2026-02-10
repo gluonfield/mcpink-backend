@@ -5,11 +5,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/augustdev/autoclip/internal/helpers"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 )
 
 type GitHubPushPayload struct {
@@ -118,10 +121,21 @@ func (h *Handlers) handleInstallationWebhook(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	if _, err := h.authService.SyncGitHubAppInstallation(r.Context(), creds.UserID, installationID, payload.Sender.Login); err != nil {
-		h.logger.Error("failed to sync installation", "error", err, "user_id", creds.UserID)
-		http.Error(w, "failed to sync", http.StatusInternalServerError)
-		return
+	if installationID == 0 {
+		if _, err := h.githubCredsQ.ClearGitHubAppInstallation(r.Context(), creds.UserID); err != nil {
+			h.logger.Error("failed to clear installation", "error", err, "user_id", creds.UserID)
+			http.Error(w, fmt.Sprintf("failed to clear installation: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		if _, err := h.githubCredsQ.SetGitHubAppInstallation(r.Context(), githubcreds.SetGitHubAppInstallationParams{
+			UserID:                  creds.UserID,
+			GithubAppInstallationID: helpers.Ptr(installationID),
+		}); err != nil {
+			h.logger.Error("failed to set installation", "error", err, "user_id", creds.UserID)
+			http.Error(w, fmt.Sprintf("failed to set installation: %v", err), http.StatusInternalServerError)
+			return
+		}
 	}
 
 	h.logger.Info("installation synced", "user_id", creds.UserID, "installation_id", installationID)

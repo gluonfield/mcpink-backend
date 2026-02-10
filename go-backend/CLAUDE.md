@@ -243,52 +243,86 @@ Example: Adding an `orders` domain
 ## Make Commands
 
 ```bash
-make run-server    # Run the server
-make run-worker    # Run the Temporal worker
-make sqlc          # Generate sqlc code
-make gqlgen        # Generate GraphQL code
+make run-server           # Run the product server (GraphQL, MCP, OAuth)
+make run-worker           # Run the product Temporal worker
+make run-deployer-server  # Run the deployer server (webhooks only)
+make run-deployer-worker  # Run the deployer Temporal worker
+make sqlc                 # Generate sqlc code
+make gqlgen               # Generate GraphQL code
 ```
 
-## Worker Binaries
+## Application Binaries
 
-There are multiple worker binaries — **do not confuse them**:
+There are 4 separate binaries — **do not confuse them**:
 
-| Binary | Path | Task Queue | Purpose |
-|--------|------|------------|---------|
-| `k8s-worker` | `cmd/k8s-worker/main.go` | `k8s-native` | K8s deployments (build, deploy, delete) |
-| `worker` | `cmd/worker/main.go` | `default` | Account workflows |
+| Binary | Path | Purpose | K8s Manifest |
+|--------|------|---------|-------------|
+| `server` | `cmd/server/main.go` | Product API (GraphQL, MCP server, OAuth, Firebase) | N/A (not yet deployed to k8s) |
+| `worker` | `cmd/worker/main.go` | Product Temporal worker (task queue: `default`) | N/A |
+| `deployer-server` | `cmd/deployer-server/main.go` | Webhook receiver (GitHub + Gitea), kicks off Temporal workflows | `infra/k8s/deployer-server.yml` |
+| `deployer-worker` | `cmd/deployer-worker/main.go` | K8s deployment worker (build, deploy, delete) (task queue: `k8s-native`) | `infra/k8s/deployer-worker.yml` |
 
-**The k8s deployment in `infra/k8s/temporal-worker.yml` runs `cmd/k8s-worker`, NOT `cmd/worker`.**
+**The deployer-server is NOT the product server.** It only handles webhooks and /healthz — no GraphQL, no MCP, no OAuth flows.
 
-### Deploying the k8s-worker to the cluster
+### Deploying the deployer-worker to the cluster
 
 ```bash
 # 1. Build the correct binary
 cd go-backend
-GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/k8s-worker ./cmd/k8s-worker
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/deployer-worker ./cmd/deployer-worker
 
 # 2. Copy into build context
-cp /tmp/k8s-worker .tmp-k8s-worker-image/k8s-worker
-cp application.yaml .tmp-k8s-worker-image/application.yaml
+cp /tmp/deployer-worker .tmp-deployer-worker-image/deployer-worker
+cp application.yaml .tmp-deployer-worker-image/application.yaml
 
 # 3. Build Docker image (no provenance to avoid ctr import issues)
 docker build --platform linux/amd64 --provenance=false --sbom=false \
-  -t registry.internal:5000/dp-system/temporal-worker:latest .tmp-k8s-worker-image/
+  -t registry.internal:5000/dp-system/deployer-worker:latest .tmp-deployer-worker-image/
 
 # 4. Save, SCP, import, push to internal registry
-docker save registry.internal:5000/dp-system/temporal-worker:latest -o /tmp/worker-image.tar
-scp /tmp/worker-image.tar root@46.225.100.234:/tmp/worker-image.tar
-ssh root@46.225.100.234 "k3s ctr images import /tmp/worker-image.tar && \
-  k3s ctr images push --plain-http registry.internal:5000/dp-system/temporal-worker:latest && \
-  rm /tmp/worker-image.tar"
+docker save registry.internal:5000/dp-system/deployer-worker:latest -o /tmp/deployer-worker-image.tar
+scp /tmp/deployer-worker-image.tar root@46.225.100.234:/tmp/deployer-worker-image.tar
+ssh root@46.225.100.234 "k3s ctr images import /tmp/deployer-worker-image.tar && \
+  k3s ctr images push --plain-http registry.internal:5000/dp-system/deployer-worker:latest && \
+  rm /tmp/deployer-worker-image.tar"
 
 # 5. Restart deployment
-kubectl rollout restart deployment/temporal-worker -n dp-system
-kubectl rollout status deployment/temporal-worker -n dp-system --timeout=120s
+kubectl rollout restart deployment/deployer-worker -n dp-system
+kubectl rollout status deployment/deployer-worker -n dp-system --timeout=120s
 
 # 6. Verify correct task queue in logs
-kubectl logs deployment/temporal-worker -n dp-system --tail=5
+kubectl logs deployment/deployer-worker -n dp-system --tail=5
 # Should show: TaskQueue k8s-native (NOT "default")
+```
+
+### Deploying the deployer-server to the cluster
+
+```bash
+# 1. Build the server binary
+cd go-backend
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o /tmp/deployer-server ./cmd/deployer-server
+
+# 2. Copy into build context
+cp /tmp/deployer-server .tmp-deployer-server-image/deployer-server
+cp application.yaml .tmp-deployer-server-image/application.yaml
+
+# 3. Build Docker image (no provenance to avoid ctr import issues)
+docker build --platform linux/amd64 --provenance=false --sbom=false \
+  -t registry.internal:5000/dp-system/deployer-server:latest .tmp-deployer-server-image/
+
+# 4. Save, SCP, import, push to internal registry
+docker save registry.internal:5000/dp-system/deployer-server:latest -o /tmp/deployer-server-image.tar
+scp /tmp/deployer-server-image.tar root@46.225.100.234:/tmp/deployer-server-image.tar
+ssh root@46.225.100.234 "k3s ctr images import /tmp/deployer-server-image.tar && \
+  k3s ctr images push --plain-http registry.internal:5000/dp-system/deployer-server:latest && \
+  rm /tmp/deployer-server-image.tar"
+
+# 5. Restart deployment
+kubectl rollout restart deployment/deployer-server -n dp-system
+kubectl rollout status deployment/deployer-server -n dp-system --timeout=120s
+
+# 6. Verify
+curl https://api.ml.ink/healthz  # Should return "ok"
 ```
 
 ## Invisible Processes

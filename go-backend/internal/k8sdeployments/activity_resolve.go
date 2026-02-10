@@ -19,12 +19,12 @@ func (a *Activities) ResolveImageRef(ctx context.Context, input ResolveImageRefI
 		return nil, fmt.Errorf("commit sha is required")
 	}
 
-	namespace, name, _, err := a.resolveServiceIdentity(ctx, input.ServiceID)
+	id, err := a.resolveServiceIdentity(ctx, input.ServiceID)
 	if err != nil {
 		return nil, err
 	}
 
-	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, namespace, name, input.CommitSHA)
+	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, input.CommitSHA)
 	return &ResolveImageRefResult{ImageRef: imageRef}, nil
 }
 
@@ -42,36 +42,20 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		return nil, fmt.Errorf("stat source path: %w", err)
 	}
 
-	namespace, name, app, err := a.resolveServiceIdentity(ctx, input.ServiceID)
+	id, err := a.resolveServiceIdentity(ctx, input.ServiceID)
 	if err != nil {
 		return nil, err
 	}
 
-	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, namespace, name, input.CommitSHA)
+	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, input.CommitSHA)
 
-	// Parse env vars from app
-	envVars := make(map[string]string)
-	if len(app.EnvVars) > 0 {
-		if err := json.Unmarshal(app.EnvVars, &envVars); err != nil {
-			a.logger.Warn("failed to parse env vars as map, trying array format", "error", err)
-			// Try array of {key, value} format
-			var envArr []struct {
-				Key   string `json:"key"`
-				Value string `json:"value"`
-			}
-			if err := json.Unmarshal(app.EnvVars, &envArr); err == nil {
-				for _, e := range envArr {
-					envVars[e.Key] = e.Value
-				}
-			}
-		}
-	}
-	envVars["PORT"] = app.Port
+	envVars := parseEnvVars(id.App.EnvVars)
+	envVars["PORT"] = id.App.Port
 
 	// Determine build pack
-	buildPack := app.BuildPack
+	buildPack := id.App.BuildPack
 	switch buildPack {
-	case "nixpacks":
+	case "railpack", "nixpacks":
 		buildPack = "railpack"
 	case "dockerfile":
 		// Check that Dockerfile exists
@@ -79,7 +63,7 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 			return nil, fmt.Errorf("build pack is 'dockerfile' but no Dockerfile found in repo")
 		}
 	case "static":
-		app.Port = "8080"
+		id.App.Port = "8080"
 	case "dockercompose":
 		return nil, fmt.Errorf("dockercompose build pack is not supported on k8s")
 	default:
@@ -93,46 +77,77 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 
 	a.logger.Info("ResolveBuildContext completed",
 		"serviceID", input.ServiceID,
-		"namespace", namespace,
-		"name", name,
+		"namespace", id.Namespace,
+		"name", id.Name,
 		"buildPack", buildPack,
 		"imageRef", imageRef)
 
 	return &ResolveBuildContextResult{
 		BuildPack: buildPack,
 		ImageRef:  imageRef,
-		Namespace: namespace,
-		Name:      name,
-		Port:      app.Port,
+		Namespace: id.Namespace,
+		Name:      id.Name,
+		Port:      id.App.Port,
 		EnvVars:   envVars,
 	}, nil
 }
 
-func (a *Activities) resolveServiceIdentity(ctx context.Context, serviceID string) (namespace, name string, app apps.App, _ error) {
+func parseEnvVars(raw json.RawMessage) map[string]string {
+	envVars := make(map[string]string)
+	if len(raw) == 0 {
+		return envVars
+	}
+	if err := json.Unmarshal(raw, &envVars); err != nil {
+		var envArr []struct {
+			Key   string `json:"key"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(raw, &envArr); err == nil {
+			for _, e := range envArr {
+				envVars[e.Key] = e.Value
+			}
+		}
+	}
+	return envVars
+}
+
+type serviceIdentity struct {
+	Namespace  string
+	Name       string
+	Tenant     string
+	ProjectRef string
+	App        apps.App
+}
+
+func (a *Activities) resolveServiceIdentity(ctx context.Context, serviceID string) (*serviceIdentity, error) {
 	app, err := a.appsQ.GetAppByID(ctx, serviceID)
 	if err != nil {
-		return "", "", apps.App{}, fmt.Errorf("get app: %w", err)
+		return nil, fmt.Errorf("get app: %w", err)
 	}
 
 	project, err := a.projectsQ.GetProjectByID(ctx, app.ProjectID)
 	if err != nil {
-		return "", "", apps.App{}, fmt.Errorf("get project: %w", err)
+		return nil, fmt.Errorf("get project: %w", err)
 	}
 
 	user, err := a.usersQ.GetUserByID(ctx, app.UserID)
 	if err != nil {
-		return "", "", apps.App{}, fmt.Errorf("get user: %w", err)
+		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	username := ResolveUsername(user)
-	if username == "" {
-		return "", "", apps.App{}, fmt.Errorf("user %s has no gitea or github username", app.UserID)
+	tenant := ResolveUsername(user)
+	if tenant == "" {
+		return nil, fmt.Errorf("user %s has no gitea or github username", app.UserID)
 	}
 	if app.Name == nil || *app.Name == "" {
-		return "", "", apps.App{}, fmt.Errorf("app %s has empty service name", app.ID)
+		return nil, fmt.Errorf("app %s has empty service name", app.ID)
 	}
 
-	namespace = NamespaceName(username, project.Ref)
-	name = ServiceName(*app.Name)
-	return namespace, name, app, nil
+	return &serviceIdentity{
+		Namespace:  NamespaceName(tenant, project.Ref),
+		Name:       ServiceName(*app.Name),
+		Tenant:     tenant,
+		ProjectRef: project.Ref,
+		App:        app,
+	}, nil
 }

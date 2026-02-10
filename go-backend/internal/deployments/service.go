@@ -102,6 +102,17 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 		projectID = project.ID
 	}
 
+	// Check for duplicate name in the same project
+	if input.Name != "" {
+		_, err := s.appsQ.GetAppByNameAndProject(ctx, apps.GetAppByNameAndProjectParams{
+			Name:      &input.Name,
+			ProjectID: projectID,
+		})
+		if err == nil {
+			return nil, fmt.Errorf("service %q already exists in this project", input.Name)
+		}
+	}
+
 	appID := shortuuid.New()
 	workflowID := fmt.Sprintf("deploy-%s-%s-%s", input.UserID, input.Repo, input.Branch)
 

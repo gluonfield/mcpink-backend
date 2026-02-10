@@ -1,4 +1,9 @@
 ---
+- name: Disable UFW if active (we manage iptables directly)
+  community.general.ufw:
+    state: disabled
+  ignore_errors: true
+
 - name: Ensure firewall persistence directory exists
   file:
     path: /etc/iptables
@@ -77,6 +82,17 @@
     jump: ACCEPT
     comment: allow ssh inbound
     state: present
+  notify: Persist iptables rules
+
+- name: Allow all traffic from private network (k3s inter-node VXLAN, kubelet, API)
+  ansible.builtin.iptables:
+    chain: INPUT
+    source: "{{ vswitch_network_cidr }}"
+    jump: ACCEPT
+    comment: allow k3s private network
+    state: present
+    action: insert
+    rule_num: 1
   notify: Persist iptables rules
 
 - name: Allow public Traefik ingress ports on run nodes
