@@ -93,8 +93,9 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		if _, err := os.Stat(dockerfileFull); os.IsNotExist(err) {
 			return nil, fmt.Errorf("build pack is 'dockerfile' but %q not found in repo", dockerfileName)
 		}
-		// Auto-detect port from EXPOSE if user didn't provide one
-		if id.App.Port == "" {
+		// Auto-detect port from EXPOSE if user didn't explicitly provide one.
+		// Check for "" (new product server) or "3000" (old product server default).
+		if id.App.Port == "" || id.App.Port == "3000" {
 			if detected := extractPortFromDockerfile(dockerfileFull); detected != "" {
 				id.App.Port = detected
 			}
@@ -112,7 +113,7 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		dockerfileFull := filepath.Join(effectiveSourcePath, dockerfileName)
 		if _, err := os.Stat(dockerfileFull); err == nil {
 			buildPack = "dockerfile"
-			if id.App.Port == "" {
+			if id.App.Port == "" || id.App.Port == "3000" {
 				if detected := extractPortFromDockerfile(dockerfileFull); detected != "" {
 					id.App.Port = detected
 				}
