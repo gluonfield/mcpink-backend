@@ -150,13 +150,11 @@ func buildSecret(namespace, name string, envVars map[string]string) *corev1.Secr
 
 // containerSecurityContext returns the appropriate SecurityContext based on build pack.
 //
-// Two profiles, both running inside gVisor (the real security boundary):
-//   - restricted (railpack, static): we control the images, so enforce non-root + drop all caps.
-//   - compat (dockerfile, dockercompose): user brings images that may need root/SETUID/SETGID
-//     (e.g. nginx, postgres, redis), so don't drop capabilities.
-//
-// allowPrivilegeEscalation=false is safe for both — it sets no_new_privs which doesn't
-// break images that start as root, only prevents gaining *additional* privileges via setuid binaries.
+// All containers run inside gVisor (the real security boundary).
+// RunAsNonRoot is NOT enforced because railpack's base image
+// (railpack-runtime) runs as root and doesn't set a USER directive.
+// allowPrivilegeEscalation=false is safe for all — it sets no_new_privs
+// which doesn't break images that start as root.
 func containerSecurityContext(buildPack string) *corev1.SecurityContext {
 	switch buildPack {
 	case "dockerfile", "dockercompose":
@@ -166,7 +164,6 @@ func containerSecurityContext(buildPack string) *corev1.SecurityContext {
 		}
 	default: // railpack, static
 		return &corev1.SecurityContext{
-			RunAsNonRoot:             ptr.To(true),
 			AllowPrivilegeEscalation: ptr.To(false),
 			ReadOnlyRootFilesystem:   ptr.To(false),
 			Capabilities: &corev1.Capabilities{
