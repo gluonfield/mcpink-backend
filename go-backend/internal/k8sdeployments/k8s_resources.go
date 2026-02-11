@@ -148,32 +148,7 @@ func buildSecret(namespace, name string, envVars map[string]string) *corev1.Secr
 	}
 }
 
-// containerSecurityContext returns the appropriate SecurityContext based on build pack.
-//
-// All containers run inside gVisor (the real security boundary).
-// RunAsNonRoot is NOT enforced because railpack's base image
-// (railpack-runtime) runs as root and doesn't set a USER directive.
-// allowPrivilegeEscalation=false is safe for all — it sets no_new_privs
-// which doesn't break images that start as root.
-func containerSecurityContext(buildPack string) *corev1.SecurityContext {
-	switch buildPack {
-	case "dockerfile", "dockercompose":
-		return &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-		}
-	default: // railpack, static
-		return &corev1.SecurityContext{
-			AllowPrivilegeEscalation: ptr.To(false),
-			ReadOnlyRootFilesystem:   ptr.To(false),
-			Capabilities: &corev1.Capabilities{
-				Drop: []corev1.Capability{"ALL"},
-			},
-		}
-	}
-}
-
-func buildDeployment(namespace, name, imageRef string, port int32, memory, cpu, buildPack string) *appsv1.Deployment {
+func buildDeployment(namespace, name, imageRef string, port int32, memory, cpu string) *appsv1.Deployment {
 	memLimit := resource.MustParse(memory)
 	cpuLimit := resource.MustParse(cpu)
 
@@ -219,7 +194,13 @@ func buildDeployment(namespace, name, imageRef string, port int32, memory, cpu, 
 									corev1.ResourceMemory: memLimit,
 								},
 							},
-							SecurityContext: containerSecurityContext(buildPack),
+							// gVisor is the security boundary — caps only affect
+							// the emulated kernel. allowPrivilegeEscalation=false
+							// sets no_new_privs (free, doesn't break root images).
+							SecurityContext: &corev1.SecurityContext{
+								AllowPrivilegeEscalation: ptr.To(false),
+								ReadOnlyRootFilesystem:   ptr.To(false),
+							},
 							ReadinessProbe: &corev1.Probe{
 								ProbeHandler: corev1.ProbeHandler{
 									TCPSocket: &corev1.TCPSocketAction{

@@ -13,28 +13,33 @@ These manifests are the declarative base for the Deploy MCP k3s cluster.
 Secrets are provisioned by Ansible (`infra/ansible/roles/k8s_addons`) from inventory/vault vars.
 Cloudflare LB is the source of truth for public ingress host/origin routing.
 
-## Security Decisions
+## Namespace Model
 
-### Two security profiles: restricted vs compat
+Each project gets its own namespace: `dp-{tenant}-{project}`. All services within a project share the namespace, which means they can reach each other via K8s DNS (e.g. `http://my-backend:3000` from a frontend pod). Cross-namespace traffic is blocked by network policy.
 
-Customer pods run inside gVisor (`runtimeClassName: gvisor`), which is the real isolation boundary — it intercepts all syscalls in a userspace kernel. Capabilities and `allowPrivilegeEscalation` only affect gVisor's emulated kernel, not the host.
+## Security Architecture
 
-However, we still apply least-privilege **where we control the images** (defense in depth):
+### gVisor: the primary isolation boundary
 
-| Build pack | Profile | SecurityContext |
+All customer pods run under gVisor (`runtimeClassName: gvisor`). gVisor interprets every syscall in a userspace kernel — processes inside the sandbox never touch the host kernel directly. This is the same model as GKE Sandbox. Root inside gVisor is a fundamentally different threat than root inside runc.
+
+### What applies to ALL customer pods
+
+| Control | How | Why |
 |---|---|---|
-| `railpack`, `static` | **restricted** | `runAsNonRoot: true`, `drop: ALL` caps, `allowPrivilegeEscalation: false` |
-| `dockerfile`, `dockercompose` | **compat** | `allowPrivilegeEscalation: false` only |
+| gVisor sandbox | `runtimeClassName: gvisor` | Syscall interception — the real isolation boundary |
+| No K8s API access | `automountServiceAccountToken: false` | Pods can't talk to the K8s API |
+| No privilege escalation | `allowPrivilegeEscalation: false` | Sets `no_new_privs` — safe for all images including root-based ones |
+| Writable root FS | `readOnlyRootFilesystem: false` | Many images write to /tmp, /var, etc. |
+| Network isolation | NetworkPolicy (ingress + egress) | Block RFC1918, metadata API; allow only Traefik ingress + DNS |
+| PSS baseline | Namespace labels | K8s rejects privileged pods, hostNetwork, hostPID, hostPath, etc. |
 
-**Why two profiles:**
-- `railpack`/`static` images are built by the platform — we can enforce non-root and dropped caps for free.
-- `dockerfile` images are user-supplied. Dropping `ALL` capabilities removes `CAP_SETUID`/`CAP_SETGID`, which breaks standard images (nginx, postgres, redis) that start as root then drop privileges.
-- `allowPrivilegeEscalation: false` (sets `no_new_privs`) is safe for both — it doesn't break images that start as root, only prevents gaining *additional* privileges via setuid binaries.
+One SecurityContext for all build packs — no per-profile split. Capabilities are not dropped because that breaks root-based images (nginx, postgres, redis) that need `CAP_SETUID`/`CAP_SETGID`. Inside gVisor, caps only affect the emulated kernel anyway.
 
-### Pod Security Standards: Baseline enforcement on customer namespaces
+### Pod Security Standards: Baseline enforcement
 
 Customer namespaces carry `pod-security.kubernetes.io/enforce: baseline` labels. This is a K8s-native admission controller that acts as a safety net independent of the Go code in `k8sdeployments/`:
 - **Allows**: root, Docker default capabilities, privilege escalation — needed for compatibility.
 - **Blocks**: `privileged: true`, hostNetwork, hostPID, hostIPC, hostPath volumes, dangerous sysctls — things that would bypass gVisor or expose the host.
 
-This ensures that even if the Go code has a bug, K8s itself will reject dangerous pod specs before they reach the kubelet.
+This ensures that even if the Go code has a bug, K8s itself rejects dangerous pod specs before they reach the kubelet.
