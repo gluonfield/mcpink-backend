@@ -14,11 +14,12 @@ import (
 const railpackFrontendImage = "ghcr.io/railwayapp/railpack-frontend:v0.17.1"
 
 type buildkitSolveOpts struct {
-	BuildkitHost string
-	SourcePath   string
-	ImageRef     string
-	CacheRef     string
-	LokiLogger   *LokiLogger
+	BuildkitHost   string
+	SourcePath     string
+	ImageRef       string
+	CacheRef       string
+	LokiLogger     *LokiLogger
+	DockerfilePath string
 }
 
 type railpackFrontendOpts struct {
@@ -39,9 +40,14 @@ func buildWithDockerfile(ctx context.Context, opts buildkitSolveOpts) error {
 		return fmt.Errorf("create fs for source: %w", err)
 	}
 
+	frontendAttrs := map[string]string{}
+	if opts.DockerfilePath != "" {
+		frontendAttrs["filename"] = opts.DockerfilePath
+	}
+
 	solveOpt := client.SolveOpt{
 		Frontend:      "dockerfile.v0",
-		FrontendAttrs: map[string]string{},
+		FrontendAttrs: frontendAttrs,
 		LocalMounts: map[string]fsutil.FS{
 			"context":    srcFS,
 			"dockerfile": srcFS,

@@ -28,11 +28,12 @@ func (a *Activities) DockerfileBuild(ctx context.Context, input BuildImageInput)
 	lokiLogger.Log("Building image from Dockerfile with BuildKit...")
 
 	err := buildWithDockerfile(ctx, buildkitSolveOpts{
-		BuildkitHost: a.config.BuildkitHost,
-		SourcePath:   input.SourcePath,
-		ImageRef:     input.ImageRef,
-		CacheRef:     cacheRef,
-		LokiLogger:   lokiLogger,
+		BuildkitHost:   a.config.BuildkitHost,
+		SourcePath:     input.SourcePath,
+		ImageRef:       input.ImageRef,
+		CacheRef:       cacheRef,
+		LokiLogger:     lokiLogger,
+		DockerfilePath: input.DockerfilePath,
 	})
 	if err != nil {
 		if isPathMissingErr(err) {

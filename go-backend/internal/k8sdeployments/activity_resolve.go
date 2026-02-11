@@ -13,14 +13,11 @@ import (
 )
 
 func buildImageTag(commitSHA string, app apps.App) string {
-	publishDir := ""
-	if app.PublishDirectory != nil {
-		publishDir = *app.PublishDirectory
-	}
-	if app.BuildPack == "railpack" && publishDir == "" {
+	bc := parseBuildConfig(app.BuildConfig)
+	if app.BuildPack == "railpack" && bc.PublishDirectory == "" && bc.RootDirectory == "" {
 		return commitSHA
 	}
-	h := sha256.Sum256([]byte(app.BuildPack + "\x00" + publishDir))
+	h := sha256.Sum256([]byte(app.BuildPack + "\x00" + bc.PublishDirectory + "\x00" + bc.RootDirectory + "\x00" + bc.DockerfilePath))
 	return fmt.Sprintf("%s-%x", commitSHA, h[:4])
 }
 
@@ -61,6 +58,24 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		return nil, err
 	}
 
+	bc := parseBuildConfig(id.App.BuildConfig)
+
+	// Apply root_directory: narrow build context to subdirectory
+	effectiveSourcePath := input.SourcePath
+	if bc.RootDirectory != "" {
+		effectiveSourcePath = filepath.Join(input.SourcePath, bc.RootDirectory)
+		if _, err := os.Stat(effectiveSourcePath); err != nil {
+			if os.IsNotExist(err) {
+				return nil, temporal.NewNonRetryableApplicationError(
+					fmt.Sprintf("root_directory %q not found in repo", bc.RootDirectory),
+					"source_path_missing",
+					err,
+				)
+			}
+			return nil, fmt.Errorf("stat effective source path: %w", err)
+		}
+	}
+
 	tag := buildImageTag(input.CommitSHA, id.App)
 	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, tag)
 
@@ -70,28 +85,32 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 	case "railpack", "nixpacks":
 		buildPack = "railpack"
 	case "dockerfile":
-		// Check that Dockerfile exists
-		if _, err := os.Stat(filepath.Join(input.SourcePath, "Dockerfile")); os.IsNotExist(err) {
-			return nil, fmt.Errorf("build pack is 'dockerfile' but no Dockerfile found in repo")
+		// Check that Dockerfile exists (custom path or default)
+		dockerfileName := "Dockerfile"
+		if bc.DockerfilePath != "" {
+			dockerfileName = bc.DockerfilePath
+		}
+		if _, err := os.Stat(filepath.Join(effectiveSourcePath, dockerfileName)); os.IsNotExist(err) {
+			return nil, fmt.Errorf("build pack is 'dockerfile' but %q not found in repo", dockerfileName)
 		}
 	case "static":
 		id.App.Port = "8080"
 	case "dockercompose":
 		return nil, fmt.Errorf("dockercompose build pack is not supported on k8s")
 	default:
-		// Auto-detect: check for Dockerfile, else railpack
-		if _, err := os.Stat(filepath.Join(input.SourcePath, "Dockerfile")); err == nil {
+		// Auto-detect: check for Dockerfile (custom path or default), else railpack
+		dockerfileName := "Dockerfile"
+		if bc.DockerfilePath != "" {
+			dockerfileName = bc.DockerfilePath
+		}
+		if _, err := os.Stat(filepath.Join(effectiveSourcePath, dockerfileName)); err == nil {
 			buildPack = "dockerfile"
 		} else {
 			buildPack = "railpack"
 		}
 	}
 
-	publishDir := ""
-	if id.App.PublishDirectory != nil {
-		publishDir = *id.App.PublishDirectory
-	}
-	id.App.Port = effectiveAppPort(buildPack, id.App.Port, id.App.PublishDirectory)
+	id.App.Port = effectiveAppPort(buildPack, id.App.Port, bc.PublishDirectory)
 
 	envVars := parseEnvVars(id.App.EnvVars)
 	envVars["PORT"] = id.App.Port
@@ -101,16 +120,19 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		"namespace", id.Namespace,
 		"name", id.Name,
 		"buildPack", buildPack,
-		"imageRef", imageRef)
+		"imageRef", imageRef,
+		"effectiveSourcePath", effectiveSourcePath)
 
 	return &ResolveBuildContextResult{
-		BuildPack:        buildPack,
-		ImageRef:         imageRef,
-		Namespace:        id.Namespace,
-		Name:             id.Name,
-		Port:             id.App.Port,
-		EnvVars:          envVars,
-		PublishDirectory: publishDir,
+		BuildPack:           buildPack,
+		ImageRef:            imageRef,
+		Namespace:           id.Namespace,
+		Name:                id.Name,
+		Port:                id.App.Port,
+		EnvVars:             envVars,
+		PublishDirectory:    bc.PublishDirectory,
+		EffectiveSourcePath: effectiveSourcePath,
+		DockerfilePath:      bc.DockerfilePath,
 	}, nil
 }
 

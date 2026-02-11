@@ -33,6 +33,9 @@ type CreateServiceInput struct {
 	StartCommand   string `json:"start_command,omitempty" jsonschema:"description=Custom start command (overrides auto-detected)"`
 
 	PublishDirectory string `json:"publish_directory,omitempty" jsonschema:"description=Directory containing built static files (e.g. 'dist'). When set with build_pack=railpack the app is built then served as static files via nginx."`
+
+	RootDirectory  string `json:"root_directory,omitempty" jsonschema:"description=Subdirectory within the repo to use as build context (e.g. 'frontend' or 'services/api'). For monorepo deployments."`
+	DockerfilePath string `json:"dockerfile_path,omitempty" jsonschema:"description=Path to Dockerfile relative to root_directory (e.g. 'worker.Dockerfile' or 'build/Dockerfile'). Only used with build_pack=dockerfile."`
 }
 
 type CreateServiceOutput struct {

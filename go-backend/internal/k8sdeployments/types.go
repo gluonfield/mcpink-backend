@@ -85,13 +85,15 @@ type ResolveImageRefResult struct {
 }
 
 type ResolveBuildContextResult struct {
-	BuildPack        string
-	ImageRef         string
-	Namespace        string
-	Name             string
-	Port             string
-	EnvVars          map[string]string
-	PublishDirectory string
+	BuildPack           string
+	ImageRef            string
+	Namespace           string
+	Name                string
+	Port                string
+	EnvVars             map[string]string
+	PublishDirectory    string
+	EffectiveSourcePath string
+	DockerfilePath      string
 }
 
 type BuildImageInput struct {
@@ -102,6 +104,7 @@ type BuildImageInput struct {
 	Namespace        string
 	EnvVars          map[string]string
 	PublishDirectory string
+	DockerfilePath   string
 }
 
 type BuildImageResult struct {

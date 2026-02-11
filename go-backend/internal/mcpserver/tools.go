@@ -99,6 +99,29 @@ func (s *Server) handleCreateService(ctx context.Context, req *mcp.CallToolReque
 		input.PublishDirectory = publishDir
 	}
 
+	// Validate and sanitize root_directory
+	rootDir := strings.TrimSpace(input.RootDirectory)
+	if rootDir != "" {
+		rootDir = strings.Trim(rootDir, "/")
+		if rootDir == "" || strings.Contains(rootDir, "..") || filepath.IsAbs(input.RootDirectory) {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "invalid root_directory: must be a relative path without '..'"}}}, CreateServiceOutput{}, nil
+		}
+		input.RootDirectory = rootDir
+	}
+
+	// Validate and sanitize dockerfile_path
+	dockerfilePath := strings.TrimSpace(input.DockerfilePath)
+	if dockerfilePath != "" {
+		if buildPack != "dockerfile" {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "dockerfile_path is only supported with build_pack=dockerfile"}}}, CreateServiceOutput{}, nil
+		}
+		dockerfilePath = strings.Trim(dockerfilePath, "/")
+		if dockerfilePath == "" || strings.Contains(dockerfilePath, "..") || filepath.IsAbs(input.DockerfilePath) {
+			return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "invalid dockerfile_path: must be a relative path without '..'"}}}, CreateServiceOutput{}, nil
+		}
+		input.DockerfilePath = dockerfilePath
+	}
+
 	port := resolveServicePort(buildPack, publishDir, input.Port)
 
 	envVars := make([]deployments.EnvVar, len(input.EnvVars))
@@ -218,6 +241,8 @@ func (s *Server) createServiceFromGitHub(ctx context.Context, user *users.User, 
 		StartCommand:     input.StartCommand,
 		InstallationID:   *creds.GithubAppInstallationID,
 		PublishDirectory: input.PublishDirectory,
+		RootDirectory:    input.RootDirectory,
+		DockerfilePath:   input.DockerfilePath,
 	})
 }
 
@@ -253,6 +278,8 @@ func (s *Server) createServiceFromInternalGit(ctx context.Context, userID string
 		BuildCommand:     input.BuildCommand,
 		StartCommand:     input.StartCommand,
 		PublishDirectory: input.PublishDirectory,
+		RootDirectory:    input.RootDirectory,
+		DockerfilePath:   input.DockerfilePath,
 	})
 }
 

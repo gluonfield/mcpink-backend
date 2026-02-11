@@ -3,13 +3,11 @@ package k8sdeployments
 import "testing"
 
 func TestEffectiveAppPort(t *testing.T) {
-	dist := "dist"
-
 	tests := []struct {
 		name       string
 		buildPack  string
 		appPort    string
-		publishDir *string
+		publishDir string
 		want       string
 	}{
 		{
@@ -27,7 +25,7 @@ func TestEffectiveAppPort(t *testing.T) {
 			name:       "railpack publish directory forces 8080",
 			buildPack:  "railpack",
 			appPort:    "3000",
-			publishDir: &dist,
+			publishDir: "dist",
 			want:       "8080",
 		},
 		{
@@ -40,7 +38,7 @@ func TestEffectiveAppPort(t *testing.T) {
 			name:       "nixpacks with publish directory forces 8080",
 			buildPack:  "nixpacks",
 			appPort:    "3000",
-			publishDir: &dist,
+			publishDir: "dist",
 			want:       "8080",
 		},
 	}
@@ -49,7 +47,7 @@ func TestEffectiveAppPort(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := effectiveAppPort(tt.buildPack, tt.appPort, tt.publishDir)
 			if got != tt.want {
-				t.Fatalf("effectiveAppPort(%q, %q) = %q, want %q", tt.buildPack, tt.appPort, got, tt.want)
+				t.Fatalf("effectiveAppPort(%q, %q, %q) = %q, want %q", tt.buildPack, tt.appPort, tt.publishDir, got, tt.want)
 			}
 		})
 	}

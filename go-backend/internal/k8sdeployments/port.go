@@ -2,7 +2,7 @@ package k8sdeployments
 
 import "strings"
 
-func effectiveAppPort(buildPack, appPort string, publishDir *string) string {
+func effectiveAppPort(buildPack, appPort, publishDir string) string {
 	port := strings.TrimSpace(appPort)
 	if port == "" {
 		port = "3000"
@@ -12,7 +12,7 @@ func effectiveAppPort(buildPack, appPort string, publishDir *string) string {
 	case "static":
 		port = "8080"
 	case "railpack", "nixpacks":
-		if publishDir != nil && strings.TrimSpace(*publishDir) != "" {
+		if strings.TrimSpace(publishDir) != "" {
 			port = "8080"
 		}
 	}

@@ -20,7 +20,8 @@ func (a *Activities) Deploy(ctx context.Context, input DeployInput) (*DeployResu
 		return nil, err
 	}
 
-	port := effectiveAppPort(id.App.BuildPack, id.App.Port, id.App.PublishDirectory)
+	bc := parseBuildConfig(id.App.BuildConfig)
+	port := effectiveAppPort(id.App.BuildPack, id.App.Port, bc.PublishDirectory)
 	portInt := parsePort(port)
 
 	envVars := parseEnvVars(id.App.EnvVars)

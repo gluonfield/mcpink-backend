@@ -1,15 +1,20 @@
 package k8sdeployments
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 )
 
+func mustMarshalBuildConfig(bc BuildConfig) []byte {
+	b, _ := json.Marshal(bc)
+	return b
+}
+
 func TestBuildImageTag(t *testing.T) {
 	commit := "0123456789abcdef"
-	dist := "dist"
 
 	tests := []struct {
 		name string
@@ -26,8 +31,8 @@ func TestBuildImageTag(t *testing.T) {
 		{
 			name: "railpack with publish directory includes config hash",
 			app: apps.App{
-				BuildPack:        "railpack",
-				PublishDirectory: &dist,
+				BuildPack:   "railpack",
+				BuildConfig: mustMarshalBuildConfig(BuildConfig{PublishDirectory: "dist"}),
 			},
 			want: commit + "-",
 		},
@@ -35,6 +40,22 @@ func TestBuildImageTag(t *testing.T) {
 			name: "dockerfile includes config hash",
 			app: apps.App{
 				BuildPack: "dockerfile",
+			},
+			want: commit + "-",
+		},
+		{
+			name: "railpack with root_directory includes config hash",
+			app: apps.App{
+				BuildPack:   "railpack",
+				BuildConfig: mustMarshalBuildConfig(BuildConfig{RootDirectory: "frontend"}),
+			},
+			want: commit + "-",
+		},
+		{
+			name: "dockerfile with dockerfile_path includes config hash",
+			app: apps.App{
+				BuildPack:   "dockerfile",
+				BuildConfig: mustMarshalBuildConfig(BuildConfig{DockerfilePath: "worker.Dockerfile"}),
 			},
 			want: commit + "-",
 		},
@@ -64,11 +85,15 @@ func TestBuildImageTag(t *testing.T) {
 
 func TestBuildImageTag_ConfigDrivesTag(t *testing.T) {
 	commit := "0123456789abcdef"
-	dist := "dist"
-	public := "public"
 
-	railpackDist := apps.App{BuildPack: "railpack", PublishDirectory: &dist}
-	railpackPublic := apps.App{BuildPack: "railpack", PublishDirectory: &public}
+	railpackDist := apps.App{
+		BuildPack:   "railpack",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{PublishDirectory: "dist"}),
+	}
+	railpackPublic := apps.App{
+		BuildPack:   "railpack",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{PublishDirectory: "public"}),
+	}
 	dockerfile := apps.App{BuildPack: "dockerfile"}
 
 	distTag := buildImageTag(commit, railpackDist)
@@ -82,5 +107,51 @@ func TestBuildImageTag_ConfigDrivesTag(t *testing.T) {
 
 	if distTag == buildImageTag(commit, dockerfile) {
 		t.Fatalf("buildImageTag() should differ when build_pack changes")
+	}
+}
+
+func TestBuildImageTag_RootDirectoryDrivesTag(t *testing.T) {
+	commit := "0123456789abcdef"
+
+	frontend := apps.App{
+		BuildPack:   "railpack",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{RootDirectory: "frontend"}),
+	}
+	backend := apps.App{
+		BuildPack:   "railpack",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{RootDirectory: "backend"}),
+	}
+	plain := apps.App{BuildPack: "railpack"}
+
+	frontendTag := buildImageTag(commit, frontend)
+	backendTag := buildImageTag(commit, backend)
+	plainTag := buildImageTag(commit, plain)
+
+	if frontendTag == backendTag {
+		t.Fatalf("different root_directory should produce different tags")
+	}
+	if frontendTag == plainTag {
+		t.Fatalf("root_directory vs no root_directory should produce different tags")
+	}
+}
+
+func TestBuildImageTag_DockerfilePathDrivesTag(t *testing.T) {
+	commit := "0123456789abcdef"
+
+	server := apps.App{
+		BuildPack:   "dockerfile",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{DockerfilePath: "server.Dockerfile"}),
+	}
+	worker := apps.App{
+		BuildPack:   "dockerfile",
+		BuildConfig: mustMarshalBuildConfig(BuildConfig{DockerfilePath: "worker.Dockerfile"}),
+	}
+	defaultDF := apps.App{BuildPack: "dockerfile"}
+
+	if buildImageTag(commit, server) == buildImageTag(commit, worker) {
+		t.Fatalf("different dockerfile_path should produce different tags")
+	}
+	if buildImageTag(commit, server) == buildImageTag(commit, defaultDF) {
+		t.Fatalf("dockerfile_path vs default should produce different tags")
 	}
 }

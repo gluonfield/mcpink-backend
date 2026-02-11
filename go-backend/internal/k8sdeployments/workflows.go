@@ -233,13 +233,14 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		}
 
 		buildInput := BuildImageInput{
-			SourcePath:       cloneResult.SourcePath,
+			SourcePath:       resolveResult.EffectiveSourcePath,
 			ImageRef:         resolveResult.ImageRef,
 			BuildPack:        resolveResult.BuildPack,
 			Name:             resolveResult.Name,
 			Namespace:        resolveResult.Namespace,
 			EnvVars:          resolveResult.EnvVars,
 			PublishDirectory: resolveResult.PublishDirectory,
+			DockerfilePath:   resolveResult.DockerfilePath,
 		}
 		var buildResult BuildImageResult
 		switch resolveResult.BuildPack {
