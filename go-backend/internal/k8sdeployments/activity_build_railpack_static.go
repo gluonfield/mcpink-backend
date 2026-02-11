@@ -25,12 +25,14 @@ func (a *Activities) RailpackStaticBuild(ctx context.Context, input BuildImageIn
 	// Phase 1: Build with railpack into a temporary "-build" image
 	buildImageRef := input.ImageRef + "-build"
 	buildInput := BuildImageInput{
-		SourcePath: input.SourcePath,
-		ImageRef:   buildImageRef,
-		BuildPack:  "railpack",
-		Name:       input.Name,
-		Namespace:  input.Namespace,
-		EnvVars:    input.EnvVars,
+		SourcePath:   input.SourcePath,
+		ImageRef:     buildImageRef,
+		BuildPack:    "railpack",
+		Name:         input.Name,
+		Namespace:    input.Namespace,
+		EnvVars:      input.EnvVars,
+		BuildCommand: input.BuildCommand,
+		StartCommand: input.StartCommand,
 	}
 
 	lokiLogger.Log("Phase 1: Building application with Railpack...")

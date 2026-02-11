@@ -14,10 +14,10 @@ import (
 
 func buildImageTag(commitSHA string, app apps.App) string {
 	bc := parseBuildConfig(app.BuildConfig)
-	if app.BuildPack == "railpack" && bc.PublishDirectory == "" && bc.RootDirectory == "" {
+	if app.BuildPack == "railpack" && bc.PublishDirectory == "" && bc.RootDirectory == "" && bc.BuildCommand == "" && bc.StartCommand == "" {
 		return commitSHA
 	}
-	h := sha256.Sum256([]byte(app.BuildPack + "\x00" + bc.PublishDirectory + "\x00" + bc.RootDirectory + "\x00" + bc.DockerfilePath))
+	h := sha256.Sum256([]byte(app.BuildPack + "\x00" + bc.PublishDirectory + "\x00" + bc.RootDirectory + "\x00" + bc.DockerfilePath + "\x00" + bc.BuildCommand + "\x00" + bc.StartCommand))
 	return fmt.Sprintf("%s-%x", commitSHA, h[:4])
 }
 
@@ -133,6 +133,8 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		PublishDirectory:    bc.PublishDirectory,
 		EffectiveSourcePath: effectiveSourcePath,
 		DockerfilePath:      bc.DockerfilePath,
+		BuildCommand:        bc.BuildCommand,
+		StartCommand:        bc.StartCommand,
 	}, nil
 }
 

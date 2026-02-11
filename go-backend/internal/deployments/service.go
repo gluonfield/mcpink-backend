@@ -70,7 +70,6 @@ type CreateAppInput struct {
 	GitProvider      string // "github" or "gitea"
 	Memory           string
 	CPU              string
-	InstallCommand   string
 	BuildCommand     string
 	StartCommand     string
 	InstallationID   int64
@@ -128,6 +127,8 @@ func (s *Service) CreateApp(ctx context.Context, input CreateAppInput) (*CreateA
 		RootDirectory:    input.RootDirectory,
 		DockerfilePath:   input.DockerfilePath,
 		PublishDirectory: input.PublishDirectory,
+		BuildCommand:     input.BuildCommand,
+		StartCommand:     input.StartCommand,
 	})
 
 	memory := input.Memory

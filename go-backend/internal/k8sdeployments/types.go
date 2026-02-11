@@ -94,6 +94,8 @@ type ResolveBuildContextResult struct {
 	PublishDirectory    string
 	EffectiveSourcePath string
 	DockerfilePath      string
+	BuildCommand        string
+	StartCommand        string
 }
 
 type BuildImageInput struct {
@@ -105,6 +107,8 @@ type BuildImageInput struct {
 	EnvVars          map[string]string
 	PublishDirectory string
 	DockerfilePath   string
+	BuildCommand     string
+	StartCommand     string
 }
 
 type BuildImageResult struct {

@@ -43,7 +43,10 @@ func (a *Activities) RailpackBuild(ctx context.Context, input BuildImageInput) (
 	}
 
 	env := app.NewEnvironment(&input.EnvVars)
-	result := core.GenerateBuildPlan(userApp, env, &core.GenerateBuildPlanOptions{})
+	result := core.GenerateBuildPlan(userApp, env, &core.GenerateBuildPlanOptions{
+		BuildCommand: input.BuildCommand,
+		StartCommand: input.StartCommand,
+	})
 
 	if !result.Success {
 		var errorLines []string

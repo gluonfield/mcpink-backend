@@ -241,6 +241,8 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 			EnvVars:          resolveResult.EnvVars,
 			PublishDirectory: resolveResult.PublishDirectory,
 			DockerfilePath:   resolveResult.DockerfilePath,
+			BuildCommand:     resolveResult.BuildCommand,
+			StartCommand:     resolveResult.StartCommand,
 		}
 		var buildResult BuildImageResult
 		switch resolveResult.BuildPack {
