@@ -17,6 +17,7 @@ var waitForRolloutPollInterval = 2 * time.Second
 
 func (a *Activities) WaitForRollout(ctx context.Context, input WaitForRolloutInput) (*WaitForRolloutResult, error) {
 	for {
+		recordHeartbeat(ctx)
 		dep, err := a.k8s.AppsV1().Deployments(input.Namespace).Get(ctx, input.DeploymentName, metav1.GetOptions{})
 		if err != nil {
 			if apierrors.IsNotFound(err) {

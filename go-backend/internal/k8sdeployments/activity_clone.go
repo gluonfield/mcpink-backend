@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
 )
 
 func (a *Activities) CloneRepo(ctx context.Context, input CloneRepoInput) (*CloneRepoResult, error) {
@@ -33,6 +34,7 @@ func (a *Activities) CloneRepo(ctx context.Context, input CloneRepoInput) (*Clon
 	}
 	args = append(args, cloneURL, dir)
 
+	recordHeartbeat(ctx, "cloning")
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	output, err := cmd.CombinedOutput()

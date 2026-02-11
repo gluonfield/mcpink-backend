@@ -82,6 +82,7 @@ func buildWithDockerfile(ctx context.Context, opts buildkitSolveOpts) error {
 
 	eg.Go(func() error {
 		for status := range ch {
+			recordHeartbeat(ctx)
 			if opts.LokiLogger != nil {
 				for _, v := range status.Vertexes {
 					if v.Name != "" {
@@ -179,6 +180,7 @@ func buildWithRailpackFrontend(ctx context.Context, planDir string, rpOpts railp
 
 	eg.Go(func() error {
 		for status := range ch {
+			recordHeartbeat(ctx)
 			if opts.LokiLogger != nil {
 				for _, v := range status.Vertexes {
 					if v.Name != "" {
