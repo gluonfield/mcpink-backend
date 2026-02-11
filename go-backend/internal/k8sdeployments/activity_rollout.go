@@ -13,7 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-var waitForRolloutPollInterval = 5 * time.Second
+var waitForRolloutPollInterval = 2 * time.Second
 
 func (a *Activities) WaitForRollout(ctx context.Context, input WaitForRolloutInput) (*WaitForRolloutResult, error) {
 	for {
