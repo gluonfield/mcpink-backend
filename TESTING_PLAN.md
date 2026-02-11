@@ -6,21 +6,24 @@
 
 **9 PASS** | **15 FAIL** | **4 PARTIAL** | **0 still building**
 
-| Category | PASS | FAIL | Notes |
-|----------|------|------|-------|
-| Static (1-4) | 0/4 | 0 | **PARTIAL**: All 4 deploy + serve nginx, but `build_pack="static"` does NOT run build commands — serves raw source files, not compiled output. See Static Build Pack finding. |
-| SSR (5-9) | 3/5 | 2 | SvelteKit (ESM issue), Nuxt (lockfile) — both scaffold bugs |
-| API (10-20) | 6/11 | 5 | Express/Fastify/FastAPI/Flask/Django/Go all PASS. Gin/Bun/Rails/Spring/Axum FAIL — 4 are rollout timeouts, 1 missing lockfile |
-| Monorepo (21-24) | 0/4 | 4 | All BUILD SUCCESS → rollout timeout |
-| Specialty (25-28) | 0/4 | 4 | All BUILD SUCCESS → rollout timeout (except T3 which is scaffold bug) |
+### Fault Classification (after code inspection)
 
-**Key finding #1:** `build_pack="static"` copies raw files into nginx with no build step. JS frameworks (React, Vue, Astro, Docusaurus) need `railpack` to actually compile. The `build_command` parameter is ignored by the static pack.
+| Fault | Count | Tests |
+|-------|-------|-------|
+| **User code** (scaffold bugs) | 4 | #6, #8, #18, #28 — missing ESM config, bad lockfiles, version conflicts |
+| **User code** (wrong `build_pack` param) | 4 | #1, #2, #3, #4 — code is correct, but agents chose `static` instead of `railpack` |
+| **Deployment system** (resource exhaustion) | 9 | #16, #17, #20, #21, #22, #24, #25, #26, #27 — code verified correct, cluster ran out of capacity |
+| **Both** (user code + system) | 2 | #19 (Spring Boot hardcodes port 8080), #23 (FastAPI Dockerfile hardcodes port 8000) — port mismatch AND resource exhaustion |
 
-**Key finding #2:** All builds after the first ~15 hit `deployment rollout timed out after 2m0s`. The k8s run pool is saturated — not enough resources to schedule new pods while 13 services are already running.
+### Key Findings
 
-**Scaffold failures (agent error, not platform):** #6, #8, #18, #28 — bad package configs, missing lockfiles, version conflicts.
+1. **`build_pack="static"` skips build step.** Copies raw files to nginx. JS frameworks need `railpack`. The `build_command` parameter is ignored.
 
-**Platform failures (real bugs):** #16, #17, #19, #20, #21, #22, #23, #24, #25, #26, #27 — all BUILD SUCCESS but rollout timeout due to resource exhaustion.
+2. **k8s run pool saturates after ~13 services.** All later builds succeed but rollout times out at exactly 2m. Evidence: Go net/http (#15) PASS early, Go Gin (#16) FAIL later — identical stack.
+
+3. **No readiness/liveness probes on deployed pods.** The platform deploys containers without k8s health probes. The rollout timeout is the ONLY failure signal. Can't distinguish "pod Pending (no resources)" from "pod crashing (wrong config)" from "port mismatch (app listening on wrong port)".
+
+4. **PORT env var is always injected.** Platform sets `PORT=<configured-port>` in every container. Apps that read PORT (Streamlit, Gradio, Go, Node) work correctly. Apps that ignore PORT (Spring Boot hardcoded to 8080) fail silently — the k8s Service routes to port 3000 but the app isn't there.
 
 ---
 
@@ -275,81 +278,99 @@ Document every test that does not pass on the first try. One section per failure
 
 ---
 
-### Test #22 — Monorepo React + Express (API service)
+### Test #22 — Monorepo React + Express (API + Web)
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (deployment system — resource exhaustion)
 
-**Symptom:** `BUILD SUCCESS` (image built and pushed) but `deployment rollout timed out after 2m0s`.
+**Symptom:** `BUILD SUCCESS` → `deployment rollout timed out after 2m0s` for both API and Web services.
 
-**Root Cause:** The Docker image built successfully. The container starts but fails the k8s health check within the 2-minute rollout window. Likely cause: port mismatch between what was specified in `create_service` and what the container actually listens on, OR the container's CMD is incorrect (wrong working directory for `node backend/index.js`).
+**Code inspection:** Express backend is correct — reads `PORT` env var, binds `0.0.0.0`, defaults to 3000, has `/` and `/health` routes. Dockerfile CMD `node backend/index.js` is correct.
 
-**Fix:** TBD — needs runtime log investigation.
-
-**Lesson:** Build success ≠ deploy success. The 2m rollout timeout is the only signal. Need better error messages when rollout fails — currently just "deployment rollout timed out" with no container crash logs.
+**Root Cause:** Resource exhaustion. Code would work on a healthy cluster.
 
 ---
 
-### Test #23 — Monorepo React + FastAPI (API service)
+### Test #23 — Monorepo React + FastAPI (API + Web)
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (BOTH user code + deployment system)
 
-**Symptom:** Same as #22: `BUILD SUCCESS` → `deployment rollout timed out after 2m0s`.
+**Symptom:** `BUILD SUCCESS` → `deployment rollout timed out after 2m0s`.
 
-**Root Cause:** Same pattern. FastAPI Dockerfile built fine but container fails health check. Likely port mismatch (Dockerfile uses 8000, service may expect 3000) or startup crash.
+**Code inspection:** Dockerfile hardcodes `CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]` and `EXPOSE 8000`. The `create_service` call used default port 3000. k8s Service/Ingress routes to port 3000, but uvicorn listens on 8000 → port mismatch.
 
-**Fix:** TBD — same investigation as #22.
+**Root Cause:** Two issues: (1) Port mismatch — would return 503 even on healthy cluster unless `port: 8000` specified in `create_service`. (2) Resource exhaustion caused the immediate rollout timeout.
 
-**Lesson:** Same as #22.
+**Fix:** Either change Dockerfile to read `PORT` env var (`--port ${PORT:-8000}`) or specify `port: 8000` in the `create_service` call.
 
 ---
 
-### Test #24 — Monorepo React + Go API (API service)
+### Test #24 — Monorepo React + Go API (API + Web)
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (deployment system — resource exhaustion)
 
-**Symptom:** Same as #22/#23: `BUILD SUCCESS` → `deployment rollout timed out after 2m0s`.
+**Symptom:** `BUILD SUCCESS` → `deployment rollout timed out after 2m0s` for both services.
 
-**Root Cause:** Go binary built via multi-stage Dockerfile. Container deploys but fails health check. Go binary at `/server`, should start instantly — likely PORT env var not reaching the container or port mismatch.
+**Code inspection:** Go backend is correct — reads `PORT` env var with `os.Getenv("PORT")`, defaults to 3000, binds `0.0.0.0`. Dockerfile `CMD ["/server"]` is correct.
 
-**Fix:** TBD — same investigation as #22.
-
-**Lesson:** All 3 monorepo Dockerfile builds show the same rollout timeout pattern. This is a **platform-level issue** with Dockerfile-based deployments or health check configuration. Needs priority investigation.
+**Root Cause:** Resource exhaustion. Code would work on a healthy cluster.
 
 ---
 
 ### Test #16 — Go (Gin)
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (deployment system — resource exhaustion)
 
 **Symptom:** `BUILD SUCCESS` → `deployment rollout timed out after 2m0s`. Railpack correctly detected Go, compiled with `go build -ldflags=-w -s -o out`.
 
-**Root Cause:** Same rollout timeout pattern as #22-24. Build works perfectly. Pod fails to become healthy within 2m. Likely the same systemic issue — see **Rollout Timeout Analysis** below.
+**Code inspection:** Correct — reads `PORT` env var, defaults to 3000, `r.Run(":" + port)` binds `0.0.0.0`, has `/` and `/health` routes. Identical pattern to test #15 (Go net/http) which PASSED.
+
+**Root Cause:** Resource exhaustion. Same Go stack as #15 which deployed early and passed.
 
 ---
 
 ### Test #17 — Bun + Hono
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (deployment system — resource exhaustion)
 
 **Symptom:** `BUILD SUCCESS` → `deployment rollout timed out after 2m0s`. Railpack detected both Bun 1.3.9 and Node 22.22.0, installed both via mise.
 
-**Root Cause:** Same rollout timeout pattern. Interesting: railpack installed both Bun and Node runtimes. The start command detection may be wrong — Hono with `export default { port, fetch }` syntax requires Bun's native server, but railpack might try `npm start` instead.
+**Code inspection:** Correct — reads `PORT` env var via `process.env.PORT || '3000'`, uses Bun-native `export default { port, fetch }` syntax, has `/` and `/health` routes. Start script is `bun run index.ts`.
+
+**Root Cause:** Resource exhaustion. Note: railpack installing both Bun and Node is wasteful but doesn't cause failure. Start script `bun run index.ts` from package.json is correct.
+
+---
+
+### Test #19 — Spring Boot (Java)
+
+**Status:** FAIL (BOTH user code + deployment system)
+
+**Symptom:** `BUILD SUCCESS` (Maven 2.4s) → `deployment rollout timed out after 2m0s`.
+
+**Code inspection:** App hardcodes port 8080 (Spring Boot default). No `application.properties` to override. Does NOT read `PORT` env var. Dockerfile `EXPOSE 8080` + `CMD ["java", "-jar", "app.jar"]`. The `create_service` call used default port 3000 → k8s routes to 3000 but app listens on 8080.
+
+**Root Cause:** Two issues: (1) Port mismatch — would return 503 even on healthy cluster. (2) Resource exhaustion caused the immediate rollout timeout.
+
+**Fix:** Either add `server.port=${PORT:8080}` to `application.properties` or specify `port: 8080` in the `create_service` call.
 
 ---
 
 ### Test #20 — Rust + Axum
 
-**Status:** FAIL (platform issue — rollout timeout)
+**Status:** FAIL (deployment system — resource exhaustion)
 
 **Symptom:** `BUILD SUCCESS` (Rust compiled in 14.65s via multi-stage Dockerfile) → `deployment rollout timed out after 2m0s`.
 
-**Root Cause:** Same rollout timeout pattern. The Dockerfile multi-stage build worked correctly. Final image uses `CMD ["app"]`. Pod fails health check.
+**Code inspection:** Correct — reads `PORT` env var, defaults to 3000, binds `0.0.0.0:{port}` with `TcpListener::bind`. Has `/` and `/health` routes. Multi-stage Dockerfile correct.
+
+**Root Cause:** Resource exhaustion. Code would work on a healthy cluster.
 
 ---
 
 ## Rollout Timeout Analysis (Systemic Issue)
 
-**Affected tests:** #16, #17, #19, #20, #21, #22 (both), #23 (both), #24 (both), #25, #26, #27 — **11 stacks, 14 services total**
+**Affected tests:** #16, #17, #20, #21, #22 (both), #24 (both), #25, #26, #27 — **9 stacks with correct code, 12 services**
+
+**Also affected but with user code issues:** #19 (port 8080), #23 (port 8000) — port mismatch would cause 503 even on healthy cluster.
 
 **Pattern:** Every single build succeeds. Every single rollout times out at exactly 2 minutes. This started after ~13 services were already running on the cluster.
 
@@ -358,19 +379,24 @@ Document every test that does not pass on the first try. One section per failure
 - Next.js (#5) deployed EARLY → PASS. Next.js fullstack (#21) deployed LATER → FAIL. Same framework.
 - Express (#10) deployed EARLY → PASS. WebSocket/Express (#27) deployed LATER → FAIL. Same runtime.
 
-**Root cause:** The `run` node pool has insufficient resources to run >13 services simultaneously. New pods either stay `Pending` (no schedulable node) or get evicted, and the 2m rollout window expires.
+**Root cause:** The `run` node pool has insufficient resources to run >13 services simultaneously. New pods stay `Pending` (no schedulable node) and the 2m rollout window expires.
+
+**Critical platform finding: No readiness/liveness probes.**
+Code inspection of `internal/k8sdeployments/k8s_resources.go` confirms: deployed pods have NO readiness, liveness, or startup probes. The rollout timeout is the ONLY failure signal. This means:
+- Can't distinguish "pod Pending (no resources)" from "pod crashing (bad code)" from "port mismatch (app on wrong port)"
+- Apps with port mismatches (#19, #23) would deploy "successfully" but return 503 — no health check catches it
+- The `get_service` response only shows "deployment rollout timed out" with no pod-level diagnostics
 
 **Investigation needed:**
 1. `kubectl get pods -A | grep test-` — are pods Pending or CrashLoopBackOff?
 2. `kubectl top nodes` — is the run pool CPU/memory exhausted?
 3. `kubectl describe node <run-node>` — check allocatable vs allocated resources
-4. Consider: increase run pool size, or add resource limits to test services
 
 **Platform improvements needed:**
-1. Better error messages: distinguish "pod pending (no resources)" from "pod crashing (wrong config)"
-2. Consider auto-scaling the run pool when pods can't be scheduled
-3. Surface pod events in `get_service` response (not just "rollout timed out")
-4. Consider longer rollout timeout for heavy stacks (Java/Rust/ML)
+1. **Add readiness probes** — HTTP GET on the configured port. Catches port mismatches, crashes, and gives meaningful pod events.
+2. **Better error messages** — surface pod events (Pending/CrashLoopBackOff/OOMKilled) in `get_service` response.
+3. **Auto-scaling** — detect when pods can't be scheduled and scale the run pool.
+4. **Port validation** — for Dockerfile build_pack, warn if `EXPOSE` port doesn't match configured port.
 
 ---
 
