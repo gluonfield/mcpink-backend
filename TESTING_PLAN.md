@@ -4,17 +4,19 @@
 
 ## Results Summary (2026-02-10)
 
-**13 PASS** | **15 FAIL** | **0 still building**
+**9 PASS** | **15 FAIL** | **4 PARTIAL** | **0 still building**
 
 | Category | PASS | FAIL | Notes |
 |----------|------|------|-------|
-| Static (1-4) | 4/4 | 0 | All first-try |
+| Static (1-4) | 0/4 | 0 | **PARTIAL**: All 4 deploy + serve nginx, but `build_pack="static"` does NOT run build commands — serves raw source files, not compiled output. See Static Build Pack finding. |
 | SSR (5-9) | 3/5 | 2 | SvelteKit (ESM issue), Nuxt (lockfile) — both scaffold bugs |
 | API (10-20) | 6/11 | 5 | Express/Fastify/FastAPI/Flask/Django/Go all PASS. Gin/Bun/Rails/Spring/Axum FAIL — 4 are rollout timeouts, 1 missing lockfile |
 | Monorepo (21-24) | 0/4 | 4 | All BUILD SUCCESS → rollout timeout |
 | Specialty (25-28) | 0/4 | 4 | All BUILD SUCCESS → rollout timeout (except T3 which is scaffold bug) |
 
-**Key finding:** All builds after the first ~15 hit `deployment rollout timed out after 2m0s`. The k8s run pool is saturated — not enough resources to schedule new pods while 13 services are already running.
+**Key finding #1:** `build_pack="static"` copies raw files into nginx with no build step. JS frameworks (React, Vue, Astro, Docusaurus) need `railpack` to actually compile. The `build_command` parameter is ignored by the static pack.
+
+**Key finding #2:** All builds after the first ~15 hit `deployment rollout timed out after 2m0s`. The k8s run pool is saturated — not enough resources to schedule new pods while 13 services are already running.
 
 **Scaffold failures (agent error, not platform):** #6, #8, #18, #28 — bad package configs, missing lockfiles, version conflicts.
 
@@ -56,10 +58,10 @@ Status: `—` not run, `PASS` first try, `FAIL` see Failures section, `FIXED` fa
 
 | # | Stack | Category | Build Pack | DB | Dir | Services | Status | URL | What Happened |
 |---|-------|----------|-----------|-----|-----|----------|--------|-----|---------------|
-| 1 | React + Vite | static | `static` | — | `temp/1/` | 1 | PASS | https://test-react-vite.ml.ink | First try, serves HTML |
-| 2 | Vue + Vite | static | `static` | — | `temp/2/` | 1 | PASS | https://test-vue-vite.ml.ink | First try, serves HTML |
-| 3 | Astro (static) | static | `static` | — | `temp/3/` | 1 | PASS | https://test-astro-static.ml.ink | First try, serves HTML |
-| 4 | Docusaurus | static | `static` | — | `temp/4/` | 1 | PASS | https://test-docusaurus.ml.ink | First try, `build/` dir detected OK |
+| 1 | React + Vite | static | `static` | — | `temp/1/` | 1 | PARTIAL | https://test-react-vite.ml.ink | Deploys OK but serves raw index.html with uncompiled JSX imports. Static pack skips build. |
+| 2 | Vue + Vite | static | `static` | — | `temp/2/` | 1 | PARTIAL | https://test-vue-vite.ml.ink | Deploys OK but serves raw index.html with uncompiled Vue imports. Static pack skips build. |
+| 3 | Astro (static) | static | `static` | — | `temp/3/` | 1 | PARTIAL | https://test-astro-static.ml.ink | Deploys OK but shows nginx welcome page — no index.html at root (needs `dist/` from build). |
+| 4 | Docusaurus | static | `static` | — | `temp/4/` | 1 | PARTIAL | https://test-docusaurus.ml.ink | Deploys OK but shows nginx welcome page — no index.html at root (needs `build/` from build). |
 | 5 | Next.js | SSR | `railpack` | — | `temp/5/` | 1 | PASS | https://test-nextjs.ml.ink | First try, full SSR HTML |
 | 6 | SvelteKit | SSR | `railpack` | — | `temp/6/` | 1 | FAIL | — | ESM resolution error: `@sveltejs/kit/vite` is ESM-only, `vite.config.js` needs `"type":"module"` in package.json. See Failures. |
 | 7 | Remix | SSR | `railpack` | — | `temp/7/` | 1 | PASS | https://test-remix.ml.ink | First try, full React Router SSR |
@@ -211,6 +213,19 @@ Run sequentially. Stop and fix when something breaks — that's the point.
 6. Run tests 25-28 (specialty)
 7. Run edge cases E1-E15
 ```
+
+---
+
+## Static Build Pack Finding (Tests 1-4)
+
+**`build_pack="static"` does NOT run any build step.** It copies raw repo files directly into nginx and serves them. This means:
+
+- **React/Vue (tests 1-2):** Serve raw `index.html` with uncompiled JSX/Vue imports — browser can't execute them
+- **Astro/Docusaurus (tests 3-4):** Show default nginx welcome page because the build output directories (`dist/`, `build/`) don't exist
+
+The `build_command` parameter is **ignored** by the static build pack.
+
+**Recommendation:** JS frameworks that need a build step should use `build_pack="railpack"` instead. The `static` pack should only be used for pre-built HTML/CSS/JS files. Alternatively, the static pack should support running `build_command` before copying to nginx.
 
 ---
 
