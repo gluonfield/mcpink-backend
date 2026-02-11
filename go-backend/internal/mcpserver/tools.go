@@ -18,18 +18,21 @@ import (
 )
 
 func resolveServicePort(buildPack, publishDir string, requestedPort int) string {
-	port := strconv.Itoa(DefaultPort)
-	if buildPack == "static" {
-		port = "80"
+	// Railpack static serving always binds nginx on 8080.
+	if buildPack == "railpack" && publishDir != "" {
+		return "8080"
 	}
 	if requestedPort > 0 {
-		port = strconv.Itoa(requestedPort)
+		return strconv.Itoa(requestedPort)
 	}
-	if buildPack == "railpack" && publishDir != "" {
-		// Railpack static serving always binds nginx on 8080.
-		port = "8080"
+	switch buildPack {
+	case "static":
+		return "80"
+	case "dockerfile":
+		return "" // defer to EXPOSE detection in ResolveBuildContext
+	default:
+		return strconv.Itoa(DefaultPort)
 	}
-	return port
 }
 
 func (s *Server) handleWhoami(ctx context.Context, req *mcp.CallToolRequest, input WhoamiInput) (*mcp.CallToolResult, WhoamiOutput, error) {

@@ -45,6 +45,17 @@ func TestResolveServicePort(t *testing.T) {
 			requestedPort: 9000,
 			want:          "9000",
 		},
+		{
+			name:      "dockerfile no port defers to EXPOSE detection",
+			buildPack: "dockerfile",
+			want:      "",
+		},
+		{
+			name:          "dockerfile explicit port kept",
+			buildPack:     "dockerfile",
+			requestedPort: 5000,
+			want:          "5000",
+		},
 	}
 
 	for _, tt := range tests {

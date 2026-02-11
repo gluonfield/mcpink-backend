@@ -85,13 +85,19 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 	case "railpack", "nixpacks":
 		buildPack = "railpack"
 	case "dockerfile":
-		// Check that Dockerfile exists (custom path or default)
 		dockerfileName := "Dockerfile"
 		if bc.DockerfilePath != "" {
 			dockerfileName = bc.DockerfilePath
 		}
-		if _, err := os.Stat(filepath.Join(effectiveSourcePath, dockerfileName)); os.IsNotExist(err) {
+		dockerfileFull := filepath.Join(effectiveSourcePath, dockerfileName)
+		if _, err := os.Stat(dockerfileFull); os.IsNotExist(err) {
 			return nil, fmt.Errorf("build pack is 'dockerfile' but %q not found in repo", dockerfileName)
+		}
+		// Auto-detect port from EXPOSE if user didn't provide one
+		if id.App.Port == "" {
+			if detected := extractPortFromDockerfile(dockerfileFull); detected != "" {
+				id.App.Port = detected
+			}
 		}
 	case "static":
 		id.App.Port = "8080"
