@@ -46,7 +46,7 @@ _Last updated: 2026-02-07_
 - **BuildKit** as the build engine
 - **Registry** (durable) for artifacts
 
-### Plane C — Muscle (run plane)
+### Plane C — Run (run plane)
 
 - **k3s cluster** with dedicated run nodes
 - **Ingress** at stable edge

@@ -1,12 +1,12 @@
 # Machines
 
-| Name                 | IPv4            | Private IP (vSwitch) | SSH Command                |
-| -------------------- | --------------- | -------------------- | -------------------------- |
-| hetzner-factory      | 46.225.65.56    | 10.0.1.2             | `ssh root@46.225.65.56`    |
-| hetzner-muscle-1     | 157.90.130.187  | 10.0.1.3             | `ssh root@157.90.130.187`  |
-| hetzner-muscle-ops-1 | 116.202.163.209 | 10.0.1.4             | `ssh root@116.202.163.209` |
-| hetzner-builder-1    | 46.225.92.127   | 10.0.0.3             | `ssh root@46.225.92.127`   |
-| k3s-1                | 46.225.100.234  | 10.0.0.4             | `ssh root@46.225.100.234`  |
+| Name            | IPv4            | Private IP (vSwitch) | SSH Command                |
+| --------------- | --------------- | -------------------- | -------------------------- |
+| hetzner-factory | 46.225.65.56    | 10.0.1.2             | `ssh root@46.225.65.56`    |
+| run-1           | 157.90.130.187  | 10.0.1.3             | `ssh root@157.90.130.187`  |
+| ops-1           | 116.202.163.209 | 10.0.1.4             | `ssh root@116.202.163.209` |
+| build-1         | 46.225.92.127   | 10.0.0.3             | `ssh root@46.225.92.127`   |
+| k3s-1           | 46.225.100.234  | 10.0.0.4             | `ssh root@46.225.100.234`  |
 
 ## vSwitch Private Network
 
@@ -21,7 +21,7 @@ All servers communicate over a private vSwitch network for internal traffic (reg
 
 ### Netplan Configuration (Dedicated Servers)
 
-For dedicated servers (Muscle-1, Muscle-Ops-1, Builder-1), configure vSwitch via netplan:
+For dedicated servers (run-1, ops-1, builder-1), configure vSwitch via netplan:
 
 ```yaml
 # /etc/netplan/50-vswitch.yaml
@@ -42,7 +42,7 @@ Factory (Cloud VPS) is attached to Cloud Network #11898981 via Hetzner Cloud Con
 
 ## Hardware Specifications
 
-### hetzner-muscle-1
+### run-1
 
 **Dedicated Server (Server Auction)**
 
@@ -65,7 +65,7 @@ Factory (Cloud VPS) is attached to Cloud Network #11898981 via Hetzner Cloud Con
 - **Location:** Germany, Nuremberg
 - **Role:** Coolify master
 
-### hetzner-builder-1
+### build-1
 
 **Hetzner Cloud VPS**
 
@@ -76,7 +76,7 @@ Factory (Cloud VPS) is attached to Cloud Network #11898981 via Hetzner Cloud Con
 - **Location:** Germany, Nuremberg
 - **Role:** Build server for Coolify
 
-### hetzner-muscle-ops-1
+### ops-1
 
 **Dedicated Server (Server Auction #2893003)**
 

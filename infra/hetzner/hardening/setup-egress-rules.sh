@@ -1,5 +1,5 @@
 #!/bin/bash
-# Egress firewall rules for Muscle servers
+# Egress firewall rules for run nodes
 # Blocks known malicious/abusive traffic patterns
 set -e
 

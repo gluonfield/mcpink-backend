@@ -1,12 +1,12 @@
-# Muscle Server Security: Practical Hardening for Launch
+# Run Node Security: Practical Hardening for Launch
 
-Secure the run servers (Muscle) for executing untrusted user code. Focus: ship a secure product, not theoretical perfection.
+Secure the run nodes for executing untrusted user code. Focus: ship a secure product, not theoretical perfection.
 
 ---
 
-## Adding a New Muscle Server
+## Adding a New Run Node
 
-When provisioning a new Muscle server, complete this checklist:
+When provisioning a new run node, complete this checklist:
 
 ### Prerequisites
 
@@ -19,7 +19,7 @@ When provisioning a new Muscle server, complete this checklist:
 
 ```bash
 # From the infra/hetzner/hardening directory:
-./setup-muscle.sh <server-ip>
+./setup-run-node.sh <server-ip>
 ```
 
 This applies baseline security (egress rules, gVisor available, miner detection) without making gVisor the default runtime.
@@ -29,21 +29,21 @@ This applies baseline security (egress rules, gVisor available, miner detection)
 For complete hardening with gVisor as default and SSH hardening:
 
 ```bash
-export MUSCLE_IP="<server-ip>"
+export RUN_NODE_IP="<server-ip>"
 
 # Step 1: Run baseline setup
-./setup-muscle.sh ${MUSCLE_IP}
+./setup-run-node.sh ${RUN_NODE_IP}
 
 # Step 2: Apply SSH hardening
-scp harden-ssh.sh root@${MUSCLE_IP}:/root/
-ssh root@${MUSCLE_IP} "bash /root/harden-ssh.sh"
+scp harden-ssh.sh root@${RUN_NODE_IP}:/root/
+ssh root@${RUN_NODE_IP} "bash /root/harden-ssh.sh"
 
 # Step 3: Make gVisor the default runtime
-scp daemon.json root@${MUSCLE_IP}:/etc/docker/daemon.json
-ssh root@${MUSCLE_IP} "systemctl restart docker"
+scp daemon.json root@${RUN_NODE_IP}:/etc/docker/daemon.json
+ssh root@${RUN_NODE_IP} "systemctl restart docker"
 
 # Step 4: Verify everything
-ssh root@${MUSCLE_IP} "bash /root/verify-hardening.sh"
+ssh root@${RUN_NODE_IP} "bash /root/verify-hardening.sh"
 ```
 
 ### Manual Hardening Steps
@@ -51,31 +51,31 @@ ssh root@${MUSCLE_IP} "bash /root/verify-hardening.sh"
 If you prefer step-by-step control:
 
 ```bash
-export MUSCLE_IP="<new-server-ip>"
+export RUN_NODE_IP="<new-server-ip>"
 
 # 1. Copy all hardening scripts
 scp setup-egress-rules.sh install-gvisor.sh detect-miners.sh \
-    verify-hardening.sh harden-ssh.sh root@${MUSCLE_IP}:/root/
-ssh root@${MUSCLE_IP} "chmod +x /root/*.sh"
+    verify-hardening.sh harden-ssh.sh root@${RUN_NODE_IP}:/root/
+ssh root@${RUN_NODE_IP} "chmod +x /root/*.sh"
 
 # 2. Apply egress firewall rules (immediate, no restart needed)
-ssh root@${MUSCLE_IP} "bash /root/setup-egress-rules.sh"
+ssh root@${RUN_NODE_IP} "bash /root/setup-egress-rules.sh"
 
 # 3. Install gVisor binaries
-ssh root@${MUSCLE_IP} "bash /root/install-gvisor.sh"
+ssh root@${RUN_NODE_IP} "bash /root/install-gvisor.sh"
 
 # 4. Configure Docker daemon (gVisor as default)
-scp daemon.json root@${MUSCLE_IP}:/etc/docker/daemon.json
-ssh root@${MUSCLE_IP} "systemctl restart docker"
+scp daemon.json root@${RUN_NODE_IP}:/etc/docker/daemon.json
+ssh root@${RUN_NODE_IP} "systemctl restart docker"
 
 # 5. Set up miner detection cron (runs every 5 min)
-ssh root@${MUSCLE_IP} 'crontab -l 2>/dev/null | grep -v "detect-miners" | { cat; echo "*/5 * * * * /root/detect-miners.sh"; } | crontab -'
+ssh root@${RUN_NODE_IP} 'crontab -l 2>/dev/null | grep -v "detect-miners" | { cat; echo "*/5 * * * * /root/detect-miners.sh"; } | crontab -'
 
 # 6. Apply SSH hardening (AFTER verifying key auth works)
-ssh root@${MUSCLE_IP} "bash /root/harden-ssh.sh"
+ssh root@${RUN_NODE_IP} "bash /root/harden-ssh.sh"
 
 # 7. Verify setup
-ssh root@${MUSCLE_IP} "bash /root/verify-hardening.sh"
+ssh root@${RUN_NODE_IP} "bash /root/verify-hardening.sh"
 ```
 
 ---
@@ -86,17 +86,17 @@ After setup, verify gVisor works:
 
 ```bash
 # Basic test - should show gVisor's emulated kernel (4.4.0)
-ssh root@${MUSCLE_IP} "docker run --rm alpine cat /proc/version"
+ssh root@${RUN_NODE_IP} "docker run --rm alpine cat /proc/version"
 # Expected: Linux version 4.4.0 ...
 
 # Verify new containers use runsc
-ssh root@${MUSCLE_IP} "docker run -d --name test-gvisor alpine sleep 60 && \
+ssh root@${RUN_NODE_IP} "docker run -d --name test-gvisor alpine sleep 60 && \
     docker inspect --format '{{.HostConfig.Runtime}}' test-gvisor && \
     docker rm -f test-gvisor"
 # Expected: runsc
 
 # Node.js test
-ssh root@${MUSCLE_IP} "docker run --rm node:20-alpine node -e 'console.log(process.version)'"
+ssh root@${RUN_NODE_IP} "docker run --rm node:20-alpine node -e 'console.log(process.version)'"
 ```
 
 ---
@@ -106,7 +106,7 @@ ssh root@${MUSCLE_IP} "docker run --rm node:20-alpine node -e 'console.log(proce
 Run the automated verification:
 
 ```bash
-ssh root@${MUSCLE_IP} "bash /root/verify-hardening.sh"
+ssh root@${RUN_NODE_IP} "bash /root/verify-hardening.sh"
 ```
 
 Expected output (all green):
@@ -170,7 +170,7 @@ If Docker fails to restart repeatedly, systemd may rate-limit it:
 
 ```bash
 # Reset the failed state first
-ssh root@${MUSCLE_IP} "systemctl reset-failed docker.service && systemctl start docker.service"
+ssh root@${RUN_NODE_IP} "systemctl reset-failed docker.service && systemctl start docker.service"
 ```
 
 ### SSH Connection Drops
@@ -206,20 +206,20 @@ Coolify names its Traefik container `coolify-proxy`, not `traefik`. Both are the
 ### Revert gVisor to Non-Default
 
 ```bash
-scp daemon-baseline.json root@${MUSCLE_IP}:/etc/docker/daemon.json
-ssh root@${MUSCLE_IP} "systemctl restart docker"
+scp daemon-baseline.json root@${RUN_NODE_IP}:/etc/docker/daemon.json
+ssh root@${RUN_NODE_IP} "systemctl restart docker"
 ```
 
 ### Remove Egress Rules
 
 ```bash
-ssh root@${MUSCLE_IP} "iptables -F DOCKER-USER && iptables -A DOCKER-USER -j RETURN && netfilter-persistent save"
+ssh root@${RUN_NODE_IP} "iptables -F DOCKER-USER && iptables -A DOCKER-USER -j RETURN && netfilter-persistent save"
 ```
 
 ### Revert SSH Hardening
 
 ```bash
-ssh root@${MUSCLE_IP} "cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd"
+ssh root@${RUN_NODE_IP} "cp /etc/ssh/sshd_config.bak /etc/ssh/sshd_config && systemctl restart sshd"
 ```
 
 ---
@@ -393,7 +393,7 @@ Since existing containers keep their runtime after changing the default, these s
 | File                     | Purpose                                                  |
 | ------------------------ | -------------------------------------------------------- |
 | `README.md`              | This documentation                                       |
-| `setup-muscle.sh`        | **One-command setup** for new Muscle servers (baseline)  |
+| `setup-run-node.sh`      | **One-command setup** for new run nodes (baseline)       |
 | `setup-egress-rules.sh`  | Egress firewall rules (metadata, SMTP, mining, IRC, Tor) |
 | `install-gvisor.sh`      | gVisor installation                                      |
 | `detect-miners.sh`       | Runtime abuse detection (cron)                           |
@@ -410,7 +410,7 @@ Since existing containers keep their runtime after changing the default, these s
 Check miner detection logs:
 
 ```bash
-ssh root@${MUSCLE_IP} "cat /var/log/miner-detection.log"
+ssh root@${RUN_NODE_IP} "cat /var/log/miner-detection.log"
 ```
 
 Add to Grafana Cloud alerts:

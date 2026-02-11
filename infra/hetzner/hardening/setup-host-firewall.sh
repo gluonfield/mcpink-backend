@@ -1,5 +1,5 @@
 #!/bin/bash
-# Host firewall setup using UFW for Muscle servers
+# Host firewall setup using UFW for run nodes
 # Allows only SSH, HTTP, and HTTPS traffic
 set -e
 

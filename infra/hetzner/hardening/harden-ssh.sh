@@ -1,5 +1,5 @@
 #!/bin/bash
-# SSH hardening script for Muscle servers
+# SSH hardening script for run nodes
 # Disables password authentication, requires key-based auth only
 set -e
 

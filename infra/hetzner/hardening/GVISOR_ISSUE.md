@@ -1,4 +1,4 @@
-# gVisor on Muscle Servers - RESOLVED
+# gVisor on run nodes - RESOLVED
 
 ## Status: ✅ WORKING
 
@@ -19,7 +19,7 @@ gVisor is now protecting user containers with kernel-level isolation.
 
 ### Configuration
 
-**1. Docker daemon.json on Muscle** (`/etc/docker/daemon.json`):
+**1. Docker daemon.json on run node** (`/etc/docker/daemon.json`):
 ```json
 {
   "metrics-addr": "127.0.0.1:9323",
@@ -172,7 +172,7 @@ docker exec <container> hostname -i
 
 ## Deployment Checklist
 
-For new Muscle servers:
+For new run nodes:
 
 - [ ] Install gVisor: https://gvisor.dev/docs/user_guide/install/
 - [ ] Configure `/etc/docker/daemon.json` with hostinet mode

@@ -1,5 +1,5 @@
 #!/bin/bash
-# gVisor installation script for Muscle servers
+# gVisor installation script for run nodes
 set -e
 
 echo "Installing gVisor..."

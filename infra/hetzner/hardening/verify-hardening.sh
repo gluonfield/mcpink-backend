@@ -1,5 +1,5 @@
 #!/bin/bash
-# Security verification script for Muscle servers
+# Security verification script for run nodes
 # Checks all hardening measures are in place
 
 echo "=== Security Verification ==="
