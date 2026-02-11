@@ -2,6 +2,7 @@ package k8sdeployments
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -10,6 +11,18 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apps"
 	"go.temporal.io/sdk/temporal"
 )
+
+func buildImageTag(commitSHA string, app apps.App) string {
+	publishDir := ""
+	if app.PublishDirectory != nil {
+		publishDir = *app.PublishDirectory
+	}
+	if app.BuildPack == "railpack" && publishDir == "" {
+		return commitSHA
+	}
+	h := sha256.Sum256([]byte(app.BuildPack + "\x00" + publishDir))
+	return fmt.Sprintf("%s-%x", commitSHA, h[:4])
+}
 
 func (a *Activities) ResolveImageRef(ctx context.Context, input ResolveImageRefInput) (*ResolveImageRefResult, error) {
 	if input.ServiceID == "" {
@@ -24,7 +37,8 @@ func (a *Activities) ResolveImageRef(ctx context.Context, input ResolveImageRefI
 		return nil, err
 	}
 
-	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, input.CommitSHA)
+	tag := buildImageTag(input.CommitSHA, id.App)
+	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, tag)
 	return &ResolveImageRefResult{ImageRef: imageRef}, nil
 }
 
@@ -47,7 +61,8 @@ func (a *Activities) ResolveBuildContext(ctx context.Context, input ResolveBuild
 		return nil, err
 	}
 
-	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, input.CommitSHA)
+	tag := buildImageTag(input.CommitSHA, id.App)
+	imageRef := fmt.Sprintf("%s/%s/%s:%s", a.config.RegistryAddress, id.Namespace, id.Name, tag)
 
 	envVars := parseEnvVars(id.App.EnvVars)
 	envVars["PORT"] = id.App.Port
