@@ -4,14 +4,14 @@
 
 - gVisor and hardening
 - [x] Firewalls
-- Self hosted grafana for logs and metrics
-- Cloudflare DNS
+- [x] Self hosted grafana for logs and metrics
+- [x] Cloudflare DNS
 
 ## Backend
 
 - Provision SQlite
 - Provision Postgres
-- MCP tool resources
+- [x] MCP tool resources
 - [x] Propagate errors to users
 
 ## Product
@@ -23,3 +23,8 @@
 - Onboarding
 - UI for all MCP clients
 - Consider SKILL.md with API
+
+## k3s
+
+- For namespace let's use `userid-projectref`, not `github-projectref`. What users change their github/gitea.
+- Make `userid` shrotuuid

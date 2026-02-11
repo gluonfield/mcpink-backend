@@ -96,8 +96,15 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 		return fail(err)
 	}
 
+	rolloutCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 3 * time.Minute,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts: 3,
+		},
+	})
+
 	var waitResult WaitForRolloutResult
-	if err := workflow.ExecuteActivity(actCtx, activities.WaitForRollout, WaitForRolloutInput{
+	if err := workflow.ExecuteActivity(rolloutCtx, activities.WaitForRollout, WaitForRolloutInput{
 		Namespace:      deployResult.Namespace,
 		DeploymentName: deployResult.DeploymentName,
 	}).Get(ctx, &waitResult); err != nil {
