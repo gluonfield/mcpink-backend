@@ -7,8 +7,8 @@ on:
       - "go-backend/**"
 
 env:
-  WORKER_IMAGE: ghcr.io/augustdev/deployer-worker
-  SERVER_IMAGE: ghcr.io/augustdev/deployer-server
+  WORKER_IMAGE: ghcr.io/gluonfield/deployer-worker
+  SERVER_IMAGE: ghcr.io/gluonfield/deployer-server
 
 jobs:
   deploy:

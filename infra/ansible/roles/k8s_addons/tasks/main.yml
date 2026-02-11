@@ -427,7 +427,7 @@
     set -euo pipefail
     k3s kubectl -n dp-system create secret docker-registry ghcr-pull-secret \
       --docker-server=ghcr.io \
-      --docker-username=augustdev \
+      --docker-username=gluonfield \
       --docker-password={{ ghcr_pull_token | quote }} \
       --dry-run=client -o yaml | k3s kubectl apply -f -
   args:
