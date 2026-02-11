@@ -28,7 +28,7 @@ type railpackFrontendOpts struct {
 	Secrets     map[string]string
 }
 
-func buildWithDockerfile(ctx context.Context, opts buildkitSolveOpts) error {
+func buildWithDockerfile(ctx context.Context, opts buildkitSolveOpts, envVars map[string]string) error {
 	c, err := client.New(ctx, opts.BuildkitHost)
 	if err != nil {
 		return fmt.Errorf("connect to buildkit: %w", err)
@@ -43,6 +43,9 @@ func buildWithDockerfile(ctx context.Context, opts buildkitSolveOpts) error {
 	frontendAttrs := map[string]string{}
 	if opts.DockerfilePath != "" {
 		frontendAttrs["filename"] = opts.DockerfilePath
+	}
+	for k, v := range envVars {
+		frontendAttrs["build-arg:"+k] = v
 	}
 
 	solveOpt := client.SolveOpt{

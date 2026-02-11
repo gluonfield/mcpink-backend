@@ -67,7 +67,7 @@ COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
 		ImageRef:     input.ImageRef,
 		CacheRef:     cacheRef,
 		LokiLogger:   lokiLogger,
-	})
+	}, nil)
 	if err != nil {
 		if isPathMissingErr(err) {
 			return nil, sourcePathMissingError(input.SourcePath, err)

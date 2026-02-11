@@ -36,8 +36,8 @@ Projects live in `/Users/wins/Projects/personal/mcpdeploy/temp/automatic/<N>/`
 | 28 | `28/` | T3 Stack | `railpack` | ✅ | ✅ | https://test-t3-stack.ml.ink | |
 | 29 | `29/` | Flask (Dockerfile) | `dockerfile` | ✅ | ✅ | https://test-flask-dock.ml.ink | Port auto-detected from EXPOSE 5000 |
 | 30 | `30/` | Plain HTML + assets | `static` | ✅ | ✅ | https://test-plain-html.ml.ink | |
-| 31 | `31/` | 1 repo → 2 services (React + Express) | `dockerfile` | ✅ | ✅ | be: https://test-mono-31-be.ml.ink / fe: https://test-mono-31-fe.ml.ink | Port auto-detected (be 3000, fe 8080) |
-| 32 | `32/` | 1 repo → 2 services (Vue + FastAPI) | `railpack` | ✅ | ✅ | fe: https://test-mono-32-fe.ml.ink / be: https://test-mono-32-be.ml.ink | |
+| 31 | `31/` | 1 repo → 2 services (React + Express) | `dockerfile` | ⬜ | ⬜ | be: https://test-mono-31-be.ml.ink / fe: https://test-mono-31-fe.ml.ink | **Build-time env vars (dockerfile)**: fe passes `VITE_API_URL` pointing to be URL |
+| 32 | `32/` | 1 repo → 2 services (Vue + FastAPI) | `railpack` | ⬜ | ⬜ | fe: https://test-mono-32-fe.ml.ink / be: https://test-mono-32-be.ml.ink | **Build-time env vars (railpack)**: fe passes `VITE_API_URL` pointing to be URL |
 | 33 | `33/` | 1 repo → 2 services (API + Worker) | `dockerfile` | ✅ | ✅ | api: https://test-mono-33-api.ml.ink / wrk: https://test-mono-33-wrk.ml.ink | Retry: used wrong dockerfile_path on first attempt (`api.Dockerfile` vs `Dockerfile.api`) |
 | 34 | `34/` | 1 repo → 2 services (React + Go) | `dockerfile` | ✅ | ✅ | api: https://test-mono-34-api.ml.ink / web: https://test-mono-34-web.ml.ink | Port auto-detected (api 3000, web 8080) |
 | 35 | `35/` | 1 repo → 1 service (docs subdirectory) | `railpack` | ✅ | ✅ | https://test-mono-35-docs.ml.ink | |
@@ -74,8 +74,17 @@ These test the `root_directory`, `dockerfile_path`, and `publish_directory` fiel
 
 | # | Pattern | `build_config` fields tested |
 |---|---------|------------------------------|
-| 31 | Frontend + Backend, each with own Dockerfile | `root_directory` + `dockerfile` build pack |
-| 32 | Frontend + Backend, no Dockerfiles at all | `root_directory` + `railpack` auto-detection |
+| 31 | Frontend + Backend, each with own Dockerfile | `root_directory` + `dockerfile` build pack + **build-time env vars** (`VITE_API_URL`) |
+| 32 | Frontend + Backend, no Dockerfiles at all | `root_directory` + `railpack` auto-detection + **build-time env vars** (`VITE_API_URL`) |
 | 33 | API + Worker, multiple Dockerfiles at root | `dockerfile_path` (no `root_directory`) |
 | 34 | Deeply nested services (`services/web/`, `services/api/`) | Deep `root_directory` paths |
 | 35 | Docs site in a subdirectory | `root_directory` + `publish_directory` combo |
+
+### Build-time env vars (#31, #32)
+
+Vite/React/Vue bake `VITE_*` env vars into the JS bundle at build time. Tests #31 and #32 verify that env vars passed via `env_vars` in the MCP input reach the build step:
+
+- **#31 (dockerfile)**: `VITE_API_URL=https://test-mono-31-be.ml.ink` passed as BuildKit `build-arg`. The React frontend Dockerfile must declare `ARG VITE_API_URL` and set `ENV VITE_API_URL=$VITE_API_URL` before `npm run build`.
+- **#32 (railpack)**: `VITE_API_URL=https://test-mono-32-be.ml.ink` passed as a BuildKit secret. Railpack injects these automatically during build.
+
+**Verification**: The frontend should display data fetched from the backend URL, confirming the env var was baked into the bundle (not hardcoded).

@@ -82,7 +82,7 @@ COPY --chown=nginx:nginx nginx.conf /etc/nginx/conf.d/default.conf
 		ImageRef:     input.ImageRef,
 		CacheRef:     "",
 		LokiLogger:   lokiLogger,
-	})
+	}, nil)
 	if err != nil {
 		lokiLogger.Log(fmt.Sprintf("BUILD FAILED: %v", err))
 		_ = lokiLogger.Flush(ctx)

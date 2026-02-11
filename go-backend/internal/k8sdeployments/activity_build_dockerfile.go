@@ -34,7 +34,7 @@ func (a *Activities) DockerfileBuild(ctx context.Context, input BuildImageInput)
 		CacheRef:       cacheRef,
 		LokiLogger:     lokiLogger,
 		DockerfilePath: input.DockerfilePath,
-	})
+	}, input.EnvVars)
 	if err != nil {
 		if isPathMissingErr(err) {
 			return nil, sourcePathMissingError(input.SourcePath, err)
