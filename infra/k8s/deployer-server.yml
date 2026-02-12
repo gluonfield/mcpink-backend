@@ -104,6 +104,77 @@ spec:
                   key: cloudflare-zone-id
             - name: CLOUDFLARE_BASEDOMAIN
               value: "ml.ink"
+            # Auth (viper: auth.*)
+            - name: AUTH_JWTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: auth-jwt-secret
+            - name: AUTH_APIKEYENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: auth-apikey-encryption-key
+            - name: AUTH_FRONTENDURL
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: auth-frontend-url
+            # GitHub OAuth (viper: github.*)
+            - name: GITHUB_CLIENTID
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: github-client-id
+            - name: GITHUB_CLIENTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: github-client-secret
+            - name: GITHUB_CALLBACKURL
+              value: "https://api.ml.ink/auth/github/callback"
+            # GitHub App OAuth (viper: githubapp.*)
+            - name: GITHUBAPP_CLIENTID
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: githubapp-client-id
+            - name: GITHUBAPP_CLIENTSECRET
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: githubapp-client-secret
+            # Turso (viper: turso.*)
+            - name: TURSO_APIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: turso-api-key
+            - name: TURSO_ORGSLUG
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: turso-org-slug
+            # Firebase (viper: firebase.*)
+            - name: FIREBASE_SERVICEACCOUNTJSON
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: firebase-service-account-json
+            # MCP OAuth (viper: mcpoauth.*)
+            - name: MCPOAUTH_ISSUER
+              value: "https://api.ml.ink"
+            - name: MCPOAUTH_FRONTENDURL
+              valueFrom:
+                secretKeyRef:
+                  name: api-server-config
+                  key: auth-frontend-url
+            # Prometheus metrics (viper: prometheus.* — cluster-internal, no auth needed)
+            - name: PROMETHEUS_QUERYURL
+              value: "http://prometheus-kube-prometheus-prometheus.dp-system:9090/api/v1/query_range"
+            # Loki logs (viper: loki.* — cluster-internal, no auth needed)
+            - name: LOKI_QUERYURL
+              value: "http://loki.dp-system:3100/loki/api/v1/query_range"
           resources:
             requests:
               cpu: "100m"
