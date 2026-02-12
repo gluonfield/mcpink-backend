@@ -1,6 +1,7 @@
 # Agent-First Deployment MCP: Feature Strategy
 
 > Agents deploy 100x more apps than humans. Design every feature for the agent first, human second.
+> This document was written without knowledge of existing infrastructure.
 
 ---
 
