@@ -44,11 +44,11 @@ func (q *Queries) CountServicesByUserID(ctx context.Context, userID string) (int
 
 const createService = `-- name: CreateService :one
 INSERT INTO services (
-    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status, git_provider, build_config, memory, cpu
+    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status, git_provider, build_config, memory, vcpus
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'queued', $13, $14, $15, $16
 )
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 type CreateServiceParams struct {
@@ -67,7 +67,7 @@ type CreateServiceParams struct {
 	GitProvider   string  `json:"git_provider"`
 	BuildConfig   []byte  `json:"build_config"`
 	Memory        string  `json:"memory"`
-	Cpu           string  `json:"cpu"`
+	Vcpus         string  `json:"vcpus"`
 }
 
 func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (Service, error) {
@@ -87,7 +87,7 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 		arg.GitProvider,
 		arg.BuildConfig,
 		arg.Memory,
-		arg.Cpu,
+		arg.Vcpus,
 	)
 	var i Service
 	err := row.Scan(
@@ -115,7 +115,7 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -131,7 +131,7 @@ func (q *Queries) DeleteService(ctx context.Context, id string) error {
 }
 
 const getServiceByID = `-- name: GetServiceByID :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services WHERE id = $1 AND is_deleted = false
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services WHERE id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error) {
@@ -162,14 +162,14 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
 }
 
 const getServiceByNameAndProject = `-- name: GetServiceByNameAndProject :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
 WHERE name = $1 AND project_id = $2 AND is_deleted = false
 `
 
@@ -206,14 +206,14 @@ func (q *Queries) GetServiceByNameAndProject(ctx context.Context, arg GetService
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
 }
 
 const getServiceByNameAndUserProject = `-- name: GetServiceByNameAndUserProject :one
-SELECT a.id, a.user_id, a.build_status, a.runtime_status, a.error_message, a.repo, a.branch, a.server_uuid, a.name, a.build_pack, a.port, a.env_vars, a.fqdn, a.workflow_id, a.workflow_run_id, a.created_at, a.updated_at, a.project_id, a.commit_hash, a.is_deleted, a.git_provider, a.custom_domain, a.build_progress, a.memory, a.cpu, a.build_config FROM services a
+SELECT a.id, a.user_id, a.build_status, a.runtime_status, a.error_message, a.repo, a.branch, a.server_uuid, a.name, a.build_pack, a.port, a.env_vars, a.fqdn, a.workflow_id, a.workflow_run_id, a.created_at, a.updated_at, a.project_id, a.commit_hash, a.is_deleted, a.git_provider, a.custom_domain, a.build_progress, a.memory, a.vcpus, a.build_config FROM services a
 JOIN projects p ON a.project_id = p.id
 WHERE a.name = $1
   AND p.user_id = $2
@@ -257,14 +257,14 @@ func (q *Queries) GetServiceByNameAndUserProject(ctx context.Context, arg GetSer
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
 }
 
 const getServiceByWorkflowID = `-- name: GetServiceByWorkflowID :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services WHERE workflow_id = $1 AND is_deleted = false
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services WHERE workflow_id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetServiceByWorkflowID(ctx context.Context, workflowID string) (Service, error) {
@@ -295,14 +295,14 @@ func (q *Queries) GetServiceByWorkflowID(ctx context.Context, workflowID string)
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
 }
 
 const getServicesByRepoBranch = `-- name: GetServicesByRepoBranch :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
 WHERE repo = $1 AND branch = $2 AND is_deleted = false
 `
 
@@ -345,7 +345,7 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 			&i.CustomDomain,
 			&i.BuildProgress,
 			&i.Memory,
-			&i.Cpu,
+			&i.Vcpus,
 			&i.BuildConfig,
 		); err != nil {
 			return nil, err
@@ -359,7 +359,7 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 }
 
 const getServicesByRepoBranchProvider = `-- name: GetServicesByRepoBranchProvider :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
 WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND is_deleted = false
 `
 
@@ -403,7 +403,7 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 			&i.CustomDomain,
 			&i.BuildProgress,
 			&i.Memory,
-			&i.Cpu,
+			&i.Vcpus,
 			&i.BuildConfig,
 		); err != nil {
 			return nil, err
@@ -417,7 +417,7 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 }
 
 const listServicesByProjectID = `-- name: ListServicesByProjectID :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
 WHERE project_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -463,7 +463,7 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 			&i.CustomDomain,
 			&i.BuildProgress,
 			&i.Memory,
-			&i.Cpu,
+			&i.Vcpus,
 			&i.BuildConfig,
 		); err != nil {
 			return nil, err
@@ -477,7 +477,7 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 }
 
 const listServicesByUserID = `-- name: ListServicesByUserID :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config FROM services
+SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
 WHERE user_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -523,7 +523,7 @@ func (q *Queries) ListServicesByUserID(ctx context.Context, arg ListServicesByUs
 			&i.CustomDomain,
 			&i.BuildProgress,
 			&i.Memory,
-			&i.Cpu,
+			&i.Vcpus,
 			&i.BuildConfig,
 		); err != nil {
 			return nil, err
@@ -540,7 +540,7 @@ const softDeleteService = `-- name: SoftDeleteService :one
 UPDATE services
 SET is_deleted = true, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, error) {
@@ -571,7 +571,7 @@ func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, er
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -581,7 +581,7 @@ const updateBuildStatus = `-- name: UpdateBuildStatus :one
 UPDATE services
 SET build_status = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 type UpdateBuildStatusParams struct {
@@ -617,7 +617,7 @@ func (q *Queries) UpdateBuildStatus(ctx context.Context, arg UpdateBuildStatusPa
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -627,7 +627,7 @@ const updateRuntimeStatus = `-- name: UpdateRuntimeStatus :one
 UPDATE services
 SET runtime_status = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 type UpdateRuntimeStatusParams struct {
@@ -663,7 +663,7 @@ func (q *Queries) UpdateRuntimeStatus(ctx context.Context, arg UpdateRuntimeStat
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -689,7 +689,7 @@ const updateServiceFailed = `-- name: UpdateServiceFailed :one
 UPDATE services
 SET build_status = 'failed', error_message = $2, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 type UpdateServiceFailedParams struct {
@@ -725,7 +725,7 @@ func (q *Queries) UpdateServiceFailed(ctx context.Context, arg UpdateServiceFail
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -735,7 +735,7 @@ const updateServiceRedeploying = `-- name: UpdateServiceRedeploying :one
 UPDATE services
 SET build_status = 'building', updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 func (q *Queries) UpdateServiceRedeploying(ctx context.Context, id string) (Service, error) {
@@ -766,7 +766,7 @@ func (q *Queries) UpdateServiceRedeploying(ctx context.Context, id string) (Serv
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err
@@ -776,7 +776,7 @@ const updateServiceRunning = `-- name: UpdateServiceRunning :one
 UPDATE services
 SET build_status = 'success', runtime_status = 'running', fqdn = $2, commit_hash = $3, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, cpu, build_config
+RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
 `
 
 type UpdateServiceRunningParams struct {
@@ -813,7 +813,7 @@ func (q *Queries) UpdateServiceRunning(ctx context.Context, arg UpdateServiceRun
 		&i.CustomDomain,
 		&i.BuildProgress,
 		&i.Memory,
-		&i.Cpu,
+		&i.Vcpus,
 		&i.BuildConfig,
 	)
 	return i, err

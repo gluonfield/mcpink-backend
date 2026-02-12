@@ -40,7 +40,7 @@ func dbServiceToModel(dbService *services.Service) *model.Service {
 		EnvVars:       envVars,
 		Fqdn:          dbService.Fqdn,
 		Memory:        dbService.Memory,
-		CPU:           dbService.Cpu,
+		Vcpus:         dbService.Vcpus,
 		CreatedAt:     dbService.CreatedAt.Time,
 		UpdatedAt:     dbService.UpdatedAt.Time,
 	}

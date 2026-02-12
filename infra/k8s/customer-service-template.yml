@@ -37,10 +37,10 @@ spec:
                 name: "{{ service }}-env"
           resources:
             requests:
-              cpu: "{{ cpu }}"
+              cpu: "{{ vcpus }}"
               memory: "{{ memory }}"
             limits:
-              cpu: "{{ cpu }}"
+              cpu: "{{ vcpus }}"
               memory: "{{ memory }}"
           # gVisor (runtimeClassName) is the security boundary — all syscalls are
           # intercepted by a userspace kernel. Capabilities only affect gVisor's

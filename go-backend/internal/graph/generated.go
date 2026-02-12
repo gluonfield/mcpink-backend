@@ -156,7 +156,6 @@ type ComplexityRoot struct {
 	Service struct {
 		Branch        func(childComplexity int) int
 		BuildStatus   func(childComplexity int) int
-		CPU           func(childComplexity int) int
 		CreatedAt     func(childComplexity int) int
 		EnvVars       func(childComplexity int) int
 		ErrorMessage  func(childComplexity int) int
@@ -168,6 +167,7 @@ type ComplexityRoot struct {
 		Repo          func(childComplexity int) int
 		RuntimeStatus func(childComplexity int) int
 		UpdatedAt     func(childComplexity int) int
+		Vcpus         func(childComplexity int) int
 	}
 
 	ServiceConnection struct {
@@ -671,12 +671,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Service.BuildStatus(childComplexity), true
-	case "Service.cpu":
-		if e.complexity.Service.CPU == nil {
-			break
-		}
-
-		return e.complexity.Service.CPU(childComplexity), true
 	case "Service.createdAt":
 		if e.complexity.Service.CreatedAt == nil {
 			break
@@ -743,6 +737,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Service.UpdatedAt(childComplexity), true
+	case "Service.vcpus":
+		if e.complexity.Service.Vcpus == nil {
+			break
+		}
+
+		return e.complexity.Service.Vcpus(childComplexity), true
 
 	case "ServiceConnection.nodes":
 		if e.complexity.ServiceConnection.Nodes == nil {
@@ -2134,8 +2134,8 @@ func (ec *executionContext) fieldContext_Project_services(_ context.Context, fie
 				return ec.fieldContext_Service_fqdn(ctx, field)
 			case "memory":
 				return ec.fieldContext_Service_memory(ctx, field)
-			case "cpu":
-				return ec.fieldContext_Service_cpu(ctx, field)
+			case "vcpus":
+				return ec.fieldContext_Service_vcpus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -2890,8 +2890,8 @@ func (ec *executionContext) fieldContext_Query_serviceDetails(ctx context.Contex
 				return ec.fieldContext_Service_fqdn(ctx, field)
 			case "memory":
 				return ec.fieldContext_Service_memory(ctx, field)
-			case "cpu":
-				return ec.fieldContext_Service_cpu(ctx, field)
+			case "vcpus":
+				return ec.fieldContext_Service_vcpus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -3896,14 +3896,14 @@ func (ec *executionContext) fieldContext_Service_memory(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Service_cpu(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
+func (ec *executionContext) _Service_vcpus(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_Service_cpu,
+		ec.fieldContext_Service_vcpus,
 		func(ctx context.Context) (any, error) {
-			return obj.CPU, nil
+			return obj.Vcpus, nil
 		},
 		nil,
 		ec.marshalNString2string,
@@ -3912,7 +3912,7 @@ func (ec *executionContext) _Service_cpu(ctx context.Context, field graphql.Coll
 	)
 }
 
-func (ec *executionContext) fieldContext_Service_cpu(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Service_vcpus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Service",
 		Field:      field,
@@ -4029,8 +4029,8 @@ func (ec *executionContext) fieldContext_ServiceConnection_nodes(_ context.Conte
 				return ec.fieldContext_Service_fqdn(ctx, field)
 			case "memory":
 				return ec.fieldContext_Service_memory(ctx, field)
-			case "cpu":
-				return ec.fieldContext_Service_cpu(ctx, field)
+			case "vcpus":
+				return ec.fieldContext_Service_vcpus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -6993,8 +6993,8 @@ func (ec *executionContext) _Service(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
-		case "cpu":
-			out.Values[i] = ec._Service_cpu(ctx, field, obj)
+		case "vcpus":
+			out.Values[i] = ec._Service_vcpus(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}

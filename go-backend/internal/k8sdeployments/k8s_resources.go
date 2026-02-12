@@ -26,16 +26,16 @@ var allowedMemory = map[string]bool{
 	"1024Mi": true, "2048Mi": true, "4096Mi": true,
 }
 
-var allowedCPU = map[string]bool{
+var allowedVCPUs = map[string]bool{
 	"0.5": true, "1": true, "2": true, "4": true,
 }
 
-func validateResourceLimits(memory, cpu string) error {
+func validateResourceLimits(memory, vcpus string) error {
 	if !allowedMemory[memory] {
 		return fmt.Errorf("invalid memory limit %q: must be one of 128Mi, 256Mi, 512Mi, 1024Mi, 2048Mi, 4096Mi", memory)
 	}
-	if !allowedCPU[cpu] {
-		return fmt.Errorf("invalid cpu limit %q: must be one of 0.5, 1, 2, 4", cpu)
+	if !allowedVCPUs[vcpus] {
+		return fmt.Errorf("invalid vcpus limit %q: must be one of 0.5, 1, 2, 4", vcpus)
 	}
 	return nil
 }
@@ -148,9 +148,9 @@ func buildSecret(namespace, name string, envVars map[string]string) *corev1.Secr
 	}
 }
 
-func buildDeployment(namespace, name, imageRef string, port int32, memory, cpu string) *appsv1.Deployment {
+func buildDeployment(namespace, name, imageRef string, port int32, memory, vcpus string) *appsv1.Deployment {
 	memLimit := resource.MustParse(memory)
-	cpuLimit := resource.MustParse(cpu)
+	cpuLimit := resource.MustParse(vcpus)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{Kind: "Deployment", APIVersion: "apps/v1"},

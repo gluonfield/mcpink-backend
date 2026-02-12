@@ -102,7 +102,7 @@ type Service struct {
 	CustomDomain  *string            `json:"custom_domain"`
 	BuildProgress []byte             `json:"build_progress"`
 	Memory        string             `json:"memory"`
-	Cpu           string             `json:"cpu"`
+	Vcpus         string             `json:"vcpus"`
 	BuildConfig   []byte             `json:"build_config"`
 }
 

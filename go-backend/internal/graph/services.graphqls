@@ -38,7 +38,7 @@ type Service {
   envVars: [EnvVar!]!
   fqdn: String
   memory: String!
-  cpu: String!
+  vcpus: String!
   createdAt: Time!
   updatedAt: Time!
 }

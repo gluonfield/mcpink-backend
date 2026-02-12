@@ -60,7 +60,7 @@ func (r *queryResolver) ServiceMetrics(ctx context.Context, serviceID string, ti
 	}
 
 	memoryLimitMB := parseMemoryToMB(dbService.Memory)
-	cpuLimitVCPUs := parseCPUToVCPUs(dbService.Cpu)
+	cpuLimitVCPUs := parseCPUToVCPUs(dbService.Vcpus)
 
 	return &model.ServiceMetrics{
 		CPUUsage:                   toModelSeries(metrics.CPUUsage),

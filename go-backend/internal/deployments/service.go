@@ -69,7 +69,7 @@ type CreateServiceInput struct {
 	EnvVars          []EnvVar
 	GitProvider      string // "github" or "gitea"
 	Memory           string
-	CPU              string
+	VCPUs            string
 	BuildCommand     string
 	StartCommand     string
 	InstallationID   int64
@@ -135,9 +135,9 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 	if memory == "" {
 		memory = "256Mi"
 	}
-	cpu := input.CPU
-	if cpu == "" {
-		cpu = "0.5"
+	vcpus := input.VCPUs
+	if vcpus == "" {
+		vcpus = "0.5"
 	}
 
 	_, err := s.servicesQ.CreateService(ctx, services.CreateServiceParams{
@@ -155,7 +155,7 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		GitProvider: gitProvider,
 		BuildConfig: buildConfigJSON,
 		Memory:      memory,
-		Cpu:         cpu,
+		Vcpus:       vcpus,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service record: %w", err)

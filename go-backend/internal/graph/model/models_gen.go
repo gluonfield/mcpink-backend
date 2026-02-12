@@ -110,7 +110,7 @@ type Service struct {
 	EnvVars       []*EnvVar `json:"envVars"`
 	Fqdn          *string   `json:"fqdn,omitempty"`
 	Memory        string    `json:"memory"`
-	CPU           string    `json:"cpu"`
+	Vcpus         string    `json:"vcpus"`
 	CreatedAt     time.Time `json:"createdAt"`
 	UpdatedAt     time.Time `json:"updatedAt"`
 }
