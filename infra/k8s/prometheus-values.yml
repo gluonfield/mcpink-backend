@@ -69,6 +69,20 @@ prometheus:
         effect: NoSchedule
     retention: 30d
 
+# Scrape kubelet /metrics/resource for CRI-based CPU/memory stats.
+# cAdvisor metrics are broken for gVisor pods (runsc doesn't populate
+# host cgroups), but the CRI stats provider works because
+# containerd-shim-runsc-v1 reports stats through the CRI API.
+# PodAndContainerStatsFromCRI is Beta/default-on since k8s 1.28.
+kubelet:
+  serviceMonitor:
+    resource: true
+    resourcePath: /metrics/resource
+    resourceRelabelings:
+      - action: replace
+        targetLabel: job
+        replacement: kubelet-resource
+
 nodeExporter:
   tolerations:
     - key: pool

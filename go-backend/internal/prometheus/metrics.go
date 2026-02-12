@@ -25,11 +25,11 @@ func (c *Client) GetServiceMetrics(ctx context.Context, namespace, serviceName s
 	endStr := fmt.Sprintf("%d", end.Unix())
 
 	cpuQuery := fmt.Sprintf(
-		`sum(rate(container_cpu_usage_seconds_total{namespace="%s", pod=~"%s-.*", container!=""}[5m]))`,
+		`sum(rate(container_cpu_usage_seconds_total{job="kubelet-resource", namespace="%s", pod=~"%s-.*", container!=""}[5m]))`,
 		namespace, serviceName,
 	)
 	memQuery := fmt.Sprintf(
-		`sum(container_memory_working_set_bytes{namespace="%s", pod=~"%s-.*", container!=""})`,
+		`sum(container_memory_working_set_bytes{job="kubelet-resource", namespace="%s", pod=~"%s-.*", container!=""})`,
 		namespace, serviceName,
 	)
 	netRxQuery := fmt.Sprintf(
