@@ -1,4 +1,7 @@
 ---
+# Cluster-specific K8s manifest location (resolved relative to inventory_dir)
+k8s_manifest_src_dir: "{{ inventory_dir }}/../k8s"
+
 # Shared cluster defaults
 k3s_server_url: "https://{{ k3s_server_endpoint_ip }}:6443"
 k3s_flannel_iface_default: enp7s0

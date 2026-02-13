@@ -1,6 +1,6 @@
 # k3s Ansible Automation
 
-This directory implements `infra/k3s/ARCHITECTURE_PLAN.md` as reproducible Ansible.
+This directory implements `infra/eu-west-1/docs/architecture.md` as reproducible Ansible.
 
 It also preserves the original `README.md` platform goals:
 - Stable agent contract (`create/redeploy/get/delete`) while swapping infra internals.
@@ -9,15 +9,14 @@ It also preserves the original `README.md` platform goals:
 
 ## Layout
 
-- `inventory/hosts.yml` - Host inventory and global variables.
-- `inventory/group_vars/` - Pool-specific defaults.
+- `../eu-west-1/inventory/` - Cluster inventory (hosts, group_vars, host_vars).
 - `playbooks/site.yml` - Full cluster bootstrap/reconcile.
 - `playbooks/add-run-node.yml` - Add a new run node.
 - `playbooks/upgrade-k3s.yml` - Upgrade existing cluster nodes.
 - `playbooks/patch-hosts.yml` - Apply OS security updates (apt upgrade + optional reboot).
-- `playbooks/refresh-known-hosts.yml` - Rebuild `inventory/known_hosts` from current inventory host targets.
+- `playbooks/refresh-known-hosts.yml` - Rebuild `known_hosts` from current inventory host targets.
 - `roles/` - Node/bootstrap responsibilities.
-- `inventory/known_hosts` - Repository-managed SSH host keys used for strict host verification.
+- `known_hosts` - Repository-managed SSH host keys used for strict host verification.
 
 ## Prerequisites
 
@@ -31,7 +30,7 @@ It also preserves the original `README.md` platform goals:
 
 ## SSH host key workflow
 
-Host key checking is enforced and SSH only trusts keys in `inventory/known_hosts`.
+Host key checking is enforced and SSH only trusts keys in `known_hosts`.
 
 Refresh host keys whenever you add/reimage hosts or rotate SSH host keys:
 
@@ -78,7 +77,7 @@ ansible-playbook playbooks/patch-hosts.yml -e serial=2
 
 ## Post-bootstrap secrets (Ansible-managed)
 
-`playbooks/site.yml` creates/updates required runtime secrets directly when vars are set. Manual `infra/k8s/*.example.yml` secret applies are no longer used.
+`playbooks/site.yml` creates/updates required runtime secrets directly when vars are set.
 
 Managed by `roles/k8s_addons`:
 

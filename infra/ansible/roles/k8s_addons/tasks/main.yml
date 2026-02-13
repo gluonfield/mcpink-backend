@@ -86,9 +86,21 @@
     KUBECONFIG: "{{ k8s_kubeconfig_path }}"
   changed_when: false
 
+- name: Ensure remote manifest subdirectories exist
+  file:
+    path: "{{ k8s_manifests_remote_dir }}/{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - system
+    - workloads
+    - observability
+
 - name: Copy Helm values files to controller host
   copy:
-    src: "{{ k8s_manifest_src_dir }}/{{ item }}"
+    src: "{{ k8s_manifest_src_dir }}/values/{{ item }}"
     dest: "{{ k8s_values_remote_dir }}/{{ item }}"
     owner: root
     group: root

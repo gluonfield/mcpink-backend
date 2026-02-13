@@ -6,7 +6,7 @@
 
 # Keys/secrets
 keys/
-infra/keys/
+infra/*/keys/
 infra/ansible/.vault_pass
 
 # Product pitches (private)
