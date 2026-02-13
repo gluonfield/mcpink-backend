@@ -216,7 +216,7 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 	return &CreateServiceResult{
 		ServiceID:  svcID,
 		Name:       input.Name,
-		Status:     string(BuildStatusQueued),
+		Status:     "queued",
 		Repo:       input.Repo,
 		WorkflowID: workflowID,
 	}, nil
