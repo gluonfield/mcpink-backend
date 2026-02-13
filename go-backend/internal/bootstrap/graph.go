@@ -134,6 +134,9 @@ func NewGraphQLRouter(
 		resp := next(ctx)
 
 		if resp != nil && resp.Errors != nil && len(resp.Errors) > 0 {
+			if ctx.Err() == context.Canceled {
+				return resp
+			}
 			oc := graphql.GetOperationContext(ctx)
 			logger.Error(
 				"gql error",
