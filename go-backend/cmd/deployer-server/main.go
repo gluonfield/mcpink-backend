@@ -43,6 +43,7 @@ func main() {
 			// Transitive deps for deployments.NewService
 			pg.NewUserQueries,
 			pg.NewProjectQueries,
+			pg.NewCustomDomainQueries,
 		),
 		fx.Invoke(
 			startDeployerServer,
