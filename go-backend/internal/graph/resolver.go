@@ -5,6 +5,7 @@ import (
 
 	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/augustdev/autoclip/internal/auth"
+	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/prometheus"
 	"github.com/augustdev/autoclip/internal/storage/pg"
@@ -15,14 +16,15 @@ import (
 )
 
 type Resolver struct {
-	Db                   *pg.DB
-	Logger               *slog.Logger
-	AuthService          *auth.Service
-	GitHubAppService     *githubapp.Service
-	ServiceQueries       services.Querier
-	ProjectQueries       projects.Querier
-	ResourceQueries      resources.Querier
-	CustomDomainQueries  customdomains.Querier
-	FirebaseAuth         *firebaseauth.Client
-	PrometheusClient     *prometheus.Client
+	Db                  *pg.DB
+	Logger              *slog.Logger
+	AuthService         *auth.Service
+	DeployService       *deployments.Service
+	GitHubAppService    *githubapp.Service
+	ServiceQueries      services.Querier
+	ProjectQueries      projects.Querier
+	ResourceQueries     resources.Querier
+	CustomDomainQueries customdomains.Querier
+	FirebaseAuth        *firebaseauth.Client
+	PrometheusClient    *prometheus.Client
 }

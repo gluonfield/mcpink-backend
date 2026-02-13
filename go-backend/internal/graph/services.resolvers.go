@@ -10,6 +10,7 @@ import (
 	"fmt"
 
 	"github.com/augustdev/autoclip/internal/authz"
+	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/graph/model"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 )
@@ -23,29 +24,19 @@ func (r *mutationResolver) DeleteService(ctx context.Context, name string, proje
 		projectRef = *project
 	}
 
-	svc, err := r.ServiceQueries.GetServiceByNameAndUserProject(ctx, services.GetServiceByNameAndUserProjectParams{
-		Name:   &name,
-		UserID: userID,
-		Ref:    projectRef,
+	result, err := r.DeployService.DeleteService(ctx, deployments.DeleteServiceParams{
+		Name:    name,
+		Project: projectRef,
+		UserID:  userID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("service not found: %s in project %s", name, projectRef)
-	}
-
-	_, err = r.ServiceQueries.SoftDeleteService(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to delete service: %w", err)
-	}
-
-	svcName := ""
-	if svc.Name != nil {
-		svcName = *svc.Name
+		return nil, err
 	}
 
 	return &model.DeleteServiceResult{
-		ServiceID: svc.ID,
-		Name:      svcName,
-		Message:   "Service deleted successfully",
+		ServiceID: result.ServiceID,
+		Name:      result.Name,
+		Message:   "Service deletion initiated",
 	}, nil
 }
 

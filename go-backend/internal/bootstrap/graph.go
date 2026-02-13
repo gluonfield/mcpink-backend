@@ -15,6 +15,7 @@ import (
 	firebaseauth "firebase.google.com/go/v4/auth"
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
+	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
 	"github.com/augustdev/autoclip/internal/prometheus"
@@ -40,6 +41,7 @@ func NewResolver(
 	pgdb *pg.DB,
 	logger *slog.Logger,
 	authService *auth.Service,
+	deployService *deployments.Service,
 	githubAppService *githubapp.Service,
 	serviceQueries services.Querier,
 	projectQueries projects.Querier,
@@ -52,6 +54,7 @@ func NewResolver(
 		Db:                  pgdb,
 		Logger:              logger,
 		AuthService:         authService,
+		DeployService:       deployService,
 		GitHubAppService:    githubAppService,
 		ServiceQueries:      serviceQueries,
 		ProjectQueries:      projectQueries,
