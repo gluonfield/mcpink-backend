@@ -454,3 +454,267 @@ func (s *Service) DeleteService(ctx context.Context, params DeleteServiceParams)
 		WorkflowID: run.GetID(),
 	}, nil
 }
+
+type AddCustomDomainParams struct {
+	Name    string
+	Project string
+	UserID  string
+	Domain  string
+}
+
+type AddCustomDomainResult struct {
+	ServiceID    string
+	Domain       string
+	Status       string
+	Instructions string
+}
+
+func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainParams) (*AddCustomDomainResult, error) {
+	domain := dnsverify.NormalizeDomain(params.Domain)
+
+	if err := dnsverify.ValidateCustomDomain(domain, s.appsDomain); err != nil {
+		return nil, err
+	}
+
+	// Check domain not already taken
+	existing, err := s.customDomainsQ.GetByDomain(ctx, domain)
+	if err == nil {
+		return nil, fmt.Errorf("domain %s is already attached to service %s", existing.Domain, existing.ServiceID)
+	}
+
+	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
+		Name:    params.Name,
+		Project: params.Project,
+		UserID:  params.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Check service doesn't already have a custom domain
+	_, err = s.customDomainsQ.GetByServiceID(ctx, svc.ID)
+	if err == nil {
+		return nil, fmt.Errorf("service %s already has a custom domain; remove it first", params.Name)
+	}
+
+	cd, err := s.customDomainsQ.CreateCustomDomain(ctx, customdomains.CreateCustomDomainParams{
+		ServiceID:            svc.ID,
+		Domain:               domain,
+		ExpectedRecordTarget: s.cnameTarget,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create custom domain record: %w", err)
+	}
+
+	instructions := dnsverify.DNSInstructions(domain, s.cnameTarget)
+
+	s.logger.Info("custom domain added",
+		"service_id", svc.ID,
+		"domain", domain,
+		"custom_domain_id", cd.ID)
+
+	return &AddCustomDomainResult{
+		ServiceID:    svc.ID,
+		Domain:       domain,
+		Status:       cd.Status,
+		Instructions: instructions,
+	}, nil
+}
+
+type VerifyCustomDomainParams struct {
+	Name    string
+	Project string
+	UserID  string
+}
+
+type VerifyCustomDomainResult struct {
+	ServiceID string
+	Domain    string
+	Status    string
+	Message   string
+}
+
+func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDomainParams) (*VerifyCustomDomainResult, error) {
+	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
+		Name:    params.Name,
+		Project: params.Project,
+		UserID:  params.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cd, err := s.customDomainsQ.GetByServiceID(ctx, svc.ID)
+	if err != nil {
+		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
+	}
+
+	if cd.Status == "active" {
+		return &VerifyCustomDomainResult{
+			ServiceID: svc.ID,
+			Domain:    cd.Domain,
+			Status:    "active",
+			Message:   "Custom domain is already active",
+		}, nil
+	}
+
+	if cd.Status == "provisioning" {
+		return &VerifyCustomDomainResult{
+			ServiceID: svc.ID,
+			Domain:    cd.Domain,
+			Status:    "provisioning",
+			Message:   "Custom domain is being provisioned; please wait",
+		}, nil
+	}
+
+	ok, dnsErr := dnsverify.VerifyCNAME(cd.Domain, cd.ExpectedRecordTarget)
+	if dnsErr != nil || !ok {
+		errMsg := "CNAME record not found or does not match"
+		if dnsErr != nil {
+			errMsg = dnsErr.Error()
+		}
+		s.customDomainsQ.UpdateError(ctx, customdomains.UpdateErrorParams{
+			ID:        cd.ID,
+			LastError: &errMsg,
+		})
+		return &VerifyCustomDomainResult{
+			ServiceID: svc.ID,
+			Domain:    cd.Domain,
+			Status:    cd.Status,
+			Message:   fmt.Sprintf("DNS verification failed: %s. Expected CNAME %s -> %s", errMsg, cd.Domain, cd.ExpectedRecordTarget),
+		}, nil
+	}
+
+	// DNS verified — update status and start attach workflow
+	s.customDomainsQ.UpdateStatus(ctx, customdomains.UpdateStatusParams{
+		ID:     cd.ID,
+		Status: "provisioning",
+	})
+
+	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	proj, err := s.projectsQ.GetProjectByID(ctx, svc.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+
+	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
+	serviceName := k8sdeployments.ServiceName(*svc.Name)
+
+	port := parsePort(svc.Port)
+
+	workflowID := fmt.Sprintf("attach-cd-%s", cd.ID)
+
+	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: k8sdeployments.TaskQueue,
+	}, k8sdeployments.AttachCustomDomainWorkflow, k8sdeployments.AttachCustomDomainWorkflowInput{
+		CustomDomainID: cd.ID,
+		ServiceID:      svc.ID,
+		Namespace:      namespace,
+		ServiceName:    serviceName,
+		CustomDomain:   cd.Domain,
+		Port:           port,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start attach workflow: %w", err)
+	}
+
+	return &VerifyCustomDomainResult{
+		ServiceID: svc.ID,
+		Domain:    cd.Domain,
+		Status:    "provisioning",
+		Message:   "DNS verified! Provisioning TLS certificate...",
+	}, nil
+}
+
+type RemoveCustomDomainParams struct {
+	Name    string
+	Project string
+	UserID  string
+}
+
+type RemoveCustomDomainResult struct {
+	ServiceID string
+	Message   string
+}
+
+func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDomainParams) (*RemoveCustomDomainResult, error) {
+	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
+		Name:    params.Name,
+		Project: params.Project,
+		UserID:  params.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	cd, err := s.customDomainsQ.GetByServiceID(ctx, svc.ID)
+	if err != nil {
+		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
+	}
+
+	if err := s.customDomainsQ.Delete(ctx, cd.ID); err != nil {
+		return nil, fmt.Errorf("failed to delete custom domain record: %w", err)
+	}
+
+	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	proj, err := s.projectsQ.GetProjectByID(ctx, svc.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+
+	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
+	serviceName := k8sdeployments.ServiceName(*svc.Name)
+
+	workflowID := fmt.Sprintf("detach-cd-%s", cd.ID)
+
+	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: k8sdeployments.TaskQueue,
+	}, k8sdeployments.DetachCustomDomainWorkflow, k8sdeployments.DetachCustomDomainWorkflowInput{
+		CustomDomainID: cd.ID,
+		ServiceID:      svc.ID,
+		Namespace:      namespace,
+		ServiceName:    serviceName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start detach workflow: %w", err)
+	}
+
+	return &RemoveCustomDomainResult{
+		ServiceID: svc.ID,
+		Message:   fmt.Sprintf("Custom domain %s removed", cd.Domain),
+	}, nil
+}
+
+func (s *Service) GetCustomDomainByServiceID(ctx context.Context, serviceID string) (*customdomains.CustomDomain, error) {
+	cd, err := s.customDomainsQ.GetByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	return &cd, nil
+}
+
+func parsePort(port string) int32 {
+	if port == "" {
+		return 3000
+	}
+	var p int64
+	for _, c := range port {
+		if c >= '0' && c <= '9' {
+			p = p*10 + int64(c-'0')
+		}
+	}
+	if p == 0 {
+		return 3000
+	}
+	return int32(p)
+}

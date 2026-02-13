@@ -164,3 +164,46 @@ type MarkServiceFailedInput struct {
 	ServiceID    string
 	ErrorMessage string
 }
+
+type AttachCustomDomainWorkflowInput struct {
+	CustomDomainID string
+	ServiceID      string
+	Namespace      string
+	ServiceName    string
+	CustomDomain   string
+	Port           int32
+}
+
+type AttachCustomDomainWorkflowResult struct {
+	Status       string
+	ErrorMessage string
+}
+
+type DetachCustomDomainWorkflowInput struct {
+	CustomDomainID string
+	ServiceID      string
+	Namespace      string
+	ServiceName    string
+}
+
+type DetachCustomDomainWorkflowResult struct {
+	Status       string
+	ErrorMessage string
+}
+
+type ApplyCustomDomainIngressInput struct {
+	Namespace   string
+	ServiceName string
+	Domain      string
+	Port        int32
+}
+
+type DeleteCustomDomainIngressInput struct {
+	Namespace   string
+	ServiceName string
+}
+
+type UpdateCustomDomainStatusInput struct {
+	CustomDomainID string
+	Status         string
+}

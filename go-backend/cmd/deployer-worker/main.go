@@ -39,6 +39,7 @@ func main() {
 			pg.NewServiceQueries,
 			pg.NewProjectQueries,
 			pg.NewUserQueries,
+			pg.NewCustomDomainQueries,
 			githubapp.NewService,
 			bootstrap.NewInternalGitService,
 			k8sdeployments.NewActivities,

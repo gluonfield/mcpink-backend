@@ -7,5 +7,7 @@ func RegisterWorkflowsAndActivities(w worker.Worker, activities *Activities) {
 	w.RegisterWorkflow(RedeployServiceWorkflow)
 	w.RegisterWorkflow(DeleteServiceWorkflow)
 	w.RegisterWorkflow(BuildServiceWorkflow)
+	w.RegisterWorkflow(AttachCustomDomainWorkflow)
+	w.RegisterWorkflow(DetachCustomDomainWorkflow)
 	w.RegisterActivity(activities)
 }

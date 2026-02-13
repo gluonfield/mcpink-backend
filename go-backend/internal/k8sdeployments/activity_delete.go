@@ -20,6 +20,14 @@ func (a *Activities) DeleteService(ctx context.Context, input DeleteServiceInput
 		return nil, fmt.Errorf("delete ingress: %w", err)
 	}
 
+	// Custom domain ingress + TLS secret (no-op if none exist)
+	if delErr := a.k8s.NetworkingV1().Ingresses(input.Namespace).Delete(ctx, input.Name+"-cd", metav1.DeleteOptions{}); delErr != nil && !apierrors.IsNotFound(delErr) {
+		a.logger.Warn("Failed to delete custom domain ingress", "name", input.Name+"-cd", "error", delErr)
+	}
+	if delErr := a.k8s.CoreV1().Secrets(input.Namespace).Delete(ctx, input.Name+"-cd-tls", metav1.DeleteOptions{}); delErr != nil && !apierrors.IsNotFound(delErr) {
+		a.logger.Warn("Failed to delete custom domain TLS secret", "name", input.Name+"-cd-tls", "error", delErr)
+	}
+
 	// Delete Service
 	err = a.k8s.CoreV1().Services(input.Namespace).Delete(ctx, input.Name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {

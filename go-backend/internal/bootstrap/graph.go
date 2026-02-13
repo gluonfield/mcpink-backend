@@ -17,10 +17,9 @@ import (
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
-	"github.com/augustdev/autoclip/internal/mcp_oauth"
-	"github.com/augustdev/autoclip/internal/mcpserver"
 	"github.com/augustdev/autoclip/internal/prometheus"
 	"github.com/augustdev/autoclip/internal/storage/pg"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
@@ -34,8 +33,6 @@ import (
 
 type GraphQLAPIConfig struct {
 	Port                string
-	ValidatorType       string
-	JWTJWKSURL          string
 	EnableIntrospection bool
 }
 
@@ -47,30 +44,22 @@ func NewResolver(
 	serviceQueries services.Querier,
 	projectQueries projects.Querier,
 	resourceQueries resources.Querier,
+	customDomainQueries customdomains.Querier,
 	firebaseAuth *firebaseauth.Client,
 	prometheusClient *prometheus.Client,
 ) *graph.Resolver {
 	return &graph.Resolver{
-		Db:               pgdb,
-		Logger:           logger,
-		AuthService:      authService,
-		GitHubAppService: githubAppService,
-		ServiceQueries:   serviceQueries,
-		ProjectQueries:   projectQueries,
-		ResourceQueries:  resourceQueries,
-		FirebaseAuth:     firebaseAuth,
-		PrometheusClient: prometheusClient,
+		Db:                  pgdb,
+		Logger:              logger,
+		AuthService:         authService,
+		GitHubAppService:    githubAppService,
+		ServiceQueries:      serviceQueries,
+		ProjectQueries:      projectQueries,
+		ResourceQueries:     resourceQueries,
+		CustomDomainQueries: customDomainQueries,
+		FirebaseAuth:        firebaseAuth,
+		PrometheusClient:    prometheusClient,
 	}
-}
-
-type GraphQLRouterParams struct {
-	fx.In
-
-	Logger         *slog.Logger
-	Resolver       *graph.Resolver
-	TokenValidator authz.TokenValidator
-	DB             *pg.DB
-	Config         GraphQLAPIConfig
 }
 
 func NewGraphQLRouter(
@@ -82,10 +71,7 @@ func NewGraphQLRouter(
 	authConfig auth.Config,
 	authService *auth.Service,
 	authHandlers *auth.Handlers,
-	mcpServer *mcpserver.Server,
 	webhookHandlers *webhooks.Handlers,
-	mcpOAuthHandlers *mcp_oauth.Handlers,
-	mcpOAuthConfig mcp_oauth.Config,
 ) *chi.Mux {
 	router := chi.NewRouter()
 
@@ -165,11 +151,6 @@ func NewGraphQLRouter(
 	}
 	router.With(authz.NewAuthMiddleware(tokenValidator, logger)).Post("/auth/github/connect", authHandlers.HandleGitHubConnect(getUserID))
 
-	// Mount MCP OAuth routes (must be before /mcp to handle /.well-known)
-	mcpOAuthHandlers.RegisterRoutes(router, authz.NewAuthMiddleware(tokenValidator, logger))
-
-	// Mount MCP server with auth middleware (includes issuer for WWW-Authenticate header)
-	router.Mount("/mcp", mcpserver.AuthMiddleware(authService, logger, mcpOAuthConfig.Issuer, mcpServer.Handler()))
 	webhookHandlers.RegisterRoutes(router)
 
 	return router

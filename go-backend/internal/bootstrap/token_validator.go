@@ -17,7 +17,12 @@ type TokenValidatorResult struct {
 	FirebaseAuth   *firebaseauth.Client `optional:"true"`
 }
 
-func NewTokenValidator(cfg GraphQLAPIConfig, firebaseCfg FirebaseConfig, logger *slog.Logger) (TokenValidatorResult, error) {
+type TokenValidatorConfig struct {
+	ValidatorType string
+	JWTJWKSURL    string
+}
+
+func NewTokenValidator(cfg TokenValidatorConfig, firebaseCfg FirebaseConfig, logger *slog.Logger) (TokenValidatorResult, error) {
 	switch cfg.ValidatorType {
 	case "firebase":
 		if firebaseCfg.ServiceAccountJSON == "" {

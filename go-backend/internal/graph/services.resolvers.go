@@ -74,6 +74,10 @@ func (r *queryResolver) ListServices(ctx context.Context, first *int32, after *s
 	nodes := make([]*model.Service, len(dbServices))
 	for i, dbSvc := range dbServices {
 		nodes[i] = dbServiceToModel(&dbSvc)
+		if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
+			nodes[i].CustomDomain = &cd.Domain
+			nodes[i].CustomDomainStatus = &cd.Status
+		}
 	}
 
 	var startCursor, endCursor *string
@@ -107,5 +111,10 @@ func (r *queryResolver) ServiceDetails(ctx context.Context, id string) (*model.S
 		return nil, fmt.Errorf("service not found")
 	}
 
-	return dbServiceToModel(&dbSvc), nil
+	svcModel := dbServiceToModel(&dbSvc)
+	if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
+		svcModel.CustomDomain = &cd.Domain
+		svcModel.CustomDomainStatus = &cd.Status
+	}
+	return svcModel, nil
 }

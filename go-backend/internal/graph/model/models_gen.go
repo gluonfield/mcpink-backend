@@ -99,20 +99,22 @@ type ResourceMetadata struct {
 }
 
 type Service struct {
-	ID            string    `json:"id"`
-	ProjectID     string    `json:"projectId"`
-	Name          *string   `json:"name,omitempty"`
-	Repo          string    `json:"repo"`
-	Branch        string    `json:"branch"`
-	BuildStatus   string    `json:"buildStatus"`
-	RuntimeStatus *string   `json:"runtimeStatus,omitempty"`
-	ErrorMessage  *string   `json:"errorMessage,omitempty"`
-	EnvVars       []*EnvVar `json:"envVars"`
-	Fqdn          *string   `json:"fqdn,omitempty"`
-	Memory        string    `json:"memory"`
-	Vcpus         string    `json:"vcpus"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID                 string    `json:"id"`
+	ProjectID          string    `json:"projectId"`
+	Name               *string   `json:"name,omitempty"`
+	Repo               string    `json:"repo"`
+	Branch             string    `json:"branch"`
+	BuildStatus        string    `json:"buildStatus"`
+	RuntimeStatus      *string   `json:"runtimeStatus,omitempty"`
+	ErrorMessage       *string   `json:"errorMessage,omitempty"`
+	EnvVars            []*EnvVar `json:"envVars"`
+	Fqdn               *string   `json:"fqdn,omitempty"`
+	Memory             string    `json:"memory"`
+	Vcpus              string    `json:"vcpus"`
+	CustomDomain       *string   `json:"customDomain,omitempty"`
+	CustomDomainStatus *string   `json:"customDomainStatus,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
 }
 
 type ServiceConnection struct {

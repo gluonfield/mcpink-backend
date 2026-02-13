@@ -1,8 +1,13 @@
 graphqlapi:
   port: 8081
+  enableintrospection: true
+
+tokenvalidator:
   validatortype: "firebase"
   jwtjwksurl: ""
-  enableintrospection: true
+
+mcpapi:
+  port: 8082
 
 firebase:
   serviceaccountjson: ""
@@ -54,6 +59,7 @@ cloudflare:
   apitoken: ""
   zoneid: ""
   basedomain: "ml.ink"
+  cnametarget: "cname.ml.ink"
 
 turso:
   apikey: ""

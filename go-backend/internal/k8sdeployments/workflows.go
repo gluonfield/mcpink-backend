@@ -289,6 +289,85 @@ func isSourcePathMissing(err error) bool {
 	return errors.As(err, &appErr) && appErr.Type() == "source_path_missing"
 }
 
+func AttachCustomDomainWorkflow(ctx workflow.Context, input AttachCustomDomainWorkflowInput) (AttachCustomDomainWorkflowResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting attach custom domain",
+		"customDomainID", input.CustomDomainID,
+		"serviceName", input.ServiceName,
+		"domain", input.CustomDomain)
+
+	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 2 * time.Minute,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    30 * time.Second,
+			MaximumAttempts:    3,
+		},
+	})
+
+	var activities *Activities
+
+	if err := workflow.ExecuteActivity(actCtx, activities.ApplyCustomDomainIngress, ApplyCustomDomainIngressInput{
+		Namespace:   input.Namespace,
+		ServiceName: input.ServiceName,
+		Domain:      input.CustomDomain,
+		Port:        input.Port,
+	}).Get(ctx, nil); err != nil {
+		_ = workflow.ExecuteActivity(actCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
+			CustomDomainID: input.CustomDomainID,
+			Status:         "failed",
+		}).Get(ctx, nil)
+		return AttachCustomDomainWorkflowResult{
+			Status:       "failed",
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	if err := workflow.ExecuteActivity(actCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
+		CustomDomainID: input.CustomDomainID,
+		Status:         "active",
+	}).Get(ctx, nil); err != nil {
+		return AttachCustomDomainWorkflowResult{
+			Status:       "failed",
+			ErrorMessage: fmt.Sprintf("ingress applied but failed to update status: %v", err),
+		}, err
+	}
+
+	return AttachCustomDomainWorkflowResult{Status: "active"}, nil
+}
+
+func DetachCustomDomainWorkflow(ctx workflow.Context, input DetachCustomDomainWorkflowInput) (DetachCustomDomainWorkflowResult, error) {
+	logger := workflow.GetLogger(ctx)
+	logger.Info("Starting detach custom domain",
+		"customDomainID", input.CustomDomainID,
+		"serviceName", input.ServiceName)
+
+	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 2 * time.Minute,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    time.Second,
+			BackoffCoefficient: 2.0,
+			MaximumInterval:    30 * time.Second,
+			MaximumAttempts:    3,
+		},
+	})
+
+	var activities *Activities
+
+	if err := workflow.ExecuteActivity(actCtx, activities.DeleteCustomDomainIngress, DeleteCustomDomainIngressInput{
+		Namespace:   input.Namespace,
+		ServiceName: input.ServiceName,
+	}).Get(ctx, nil); err != nil {
+		return DetachCustomDomainWorkflowResult{
+			Status:       "failed",
+			ErrorMessage: err.Error(),
+		}, err
+	}
+
+	return DetachCustomDomainWorkflowResult{Status: "deleted"}, nil
+}
+
 func DeleteServiceWorkflow(ctx workflow.Context, input DeleteServiceWorkflowInput) (DeleteServiceWorkflowResult, error) {
 	logger := workflow.GetLogger(ctx)
 	logger.Info("Starting delete", "serviceID", input.ServiceID, "namespace", input.Namespace, "name", input.Name)

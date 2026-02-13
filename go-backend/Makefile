@@ -1,5 +1,8 @@
-run-server:
-	@go run cmd/server/main.go
+run-graphql:
+	@go run cmd/graphql/main.go
+
+run-mcp:
+	@go run cmd/mcp/main.go
 
 run-worker:
 	@go run cmd/worker/main.go

@@ -143,6 +143,24 @@ func (s *Server) registerTools() {
 		Description: "Get a temporary git token to push code. Example: name='myapp', host='ml.ink' (default) or host='github.com'.",
 		InputSchema: schemaFor[GetGitTokenInput](),
 	}, s.handleGetGitToken)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "add_custom_domain",
+		Description: "Attach a custom domain to a service. Returns DNS records to configure.",
+		InputSchema: schemaFor[AddCustomDomainInput](),
+	}, s.handleAddCustomDomain)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "verify_custom_domain",
+		Description: "Verify DNS and activate custom domain. Call after configuring DNS records.",
+		InputSchema: schemaFor[VerifyCustomDomainInput](),
+	}, s.handleVerifyCustomDomain)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "remove_custom_domain",
+		Description: "Remove a custom domain from a service.",
+		InputSchema: schemaFor[RemoveCustomDomainInput](),
+	}, s.handleRemoveCustomDomain)
 }
 
 func (s *Server) Handler() http.Handler {

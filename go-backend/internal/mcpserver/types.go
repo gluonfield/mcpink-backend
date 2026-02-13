@@ -149,22 +149,24 @@ type GetServiceInput struct {
 }
 
 type GetServiceOutput struct {
-	ServiceID      string         `json:"service_id"`
-	Name           string         `json:"name"`
-	Project        string         `json:"project"`
-	Repo           string         `json:"repo"`
-	Branch         string         `json:"branch"`
-	CommitHash     string         `json:"commit_hash,omitempty"`
-	BuildStatus    string         `json:"build_status"`
-	RuntimeStatus  string         `json:"runtime_status"`
-	URL            *string        `json:"url,omitempty"`
-	CreatedAt      string         `json:"created_at"`
-	UpdatedAt      string         `json:"updated_at"`
-	ErrorMessage   *string        `json:"error_message,omitempty"`
-	EnvVars        []EnvVarInfo   `json:"env_vars,omitempty"`
-	DeploymentLogs string         `json:"deployment_logs,omitempty"`
-	RuntimeLogs    string         `json:"runtime_logs,omitempty"`
-	BuildProgress  *BuildProgress `json:"build_progress,omitempty"`
+	ServiceID          string         `json:"service_id"`
+	Name               string         `json:"name"`
+	Project            string         `json:"project"`
+	Repo               string         `json:"repo"`
+	Branch             string         `json:"branch"`
+	CommitHash         string         `json:"commit_hash,omitempty"`
+	BuildStatus        string         `json:"build_status"`
+	RuntimeStatus      string         `json:"runtime_status"`
+	URL                *string        `json:"url,omitempty"`
+	CreatedAt          string         `json:"created_at"`
+	UpdatedAt          string         `json:"updated_at"`
+	ErrorMessage       *string        `json:"error_message,omitempty"`
+	EnvVars            []EnvVarInfo   `json:"env_vars,omitempty"`
+	DeploymentLogs     string         `json:"deployment_logs,omitempty"`
+	RuntimeLogs        string         `json:"runtime_logs,omitempty"`
+	BuildProgress      *BuildProgress `json:"build_progress,omitempty"`
+	CustomDomain       string         `json:"custom_domain,omitempty"`
+	CustomDomainStatus string         `json:"custom_domain_status,omitempty"`
 }
 
 type EnvVarInfo struct {
@@ -218,4 +220,39 @@ type GetGitTokenInput struct {
 type GetGitTokenOutput struct {
 	GitRemote string `json:"git_remote"`
 	ExpiresAt string `json:"expires_at"`
+}
+
+type AddCustomDomainInput struct {
+	Name    string `json:"name" jsonschema:"description=Name of the service to attach a custom domain to"`
+	Domain  string `json:"domain" jsonschema:"description=Custom domain to attach (e.g. 'app.example.com'). Must be a subdomain with a CNAME record."`
+	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
+}
+
+type AddCustomDomainOutput struct {
+	ServiceID    string `json:"service_id"`
+	Domain       string `json:"domain"`
+	Status       string `json:"status"`
+	Instructions string `json:"instructions"`
+}
+
+type VerifyCustomDomainInput struct {
+	Name    string `json:"name" jsonschema:"description=Name of the service whose custom domain to verify"`
+	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
+}
+
+type VerifyCustomDomainOutput struct {
+	ServiceID string `json:"service_id"`
+	Domain    string `json:"domain"`
+	Status    string `json:"status"`
+	Message   string `json:"message"`
+}
+
+type RemoveCustomDomainInput struct {
+	Name    string `json:"name" jsonschema:"description=Name of the service to remove custom domain from"`
+	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
+}
+
+type RemoveCustomDomainOutput struct {
+	ServiceID string `json:"service_id"`
+	Message   string `json:"message"`
 }

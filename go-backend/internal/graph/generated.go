@@ -154,20 +154,22 @@ type ComplexityRoot struct {
 	}
 
 	Service struct {
-		Branch        func(childComplexity int) int
-		BuildStatus   func(childComplexity int) int
-		CreatedAt     func(childComplexity int) int
-		EnvVars       func(childComplexity int) int
-		ErrorMessage  func(childComplexity int) int
-		Fqdn          func(childComplexity int) int
-		ID            func(childComplexity int) int
-		Memory        func(childComplexity int) int
-		Name          func(childComplexity int) int
-		ProjectID     func(childComplexity int) int
-		Repo          func(childComplexity int) int
-		RuntimeStatus func(childComplexity int) int
-		UpdatedAt     func(childComplexity int) int
-		Vcpus         func(childComplexity int) int
+		Branch             func(childComplexity int) int
+		BuildStatus        func(childComplexity int) int
+		CreatedAt          func(childComplexity int) int
+		CustomDomain       func(childComplexity int) int
+		CustomDomainStatus func(childComplexity int) int
+		EnvVars            func(childComplexity int) int
+		ErrorMessage       func(childComplexity int) int
+		Fqdn               func(childComplexity int) int
+		ID                 func(childComplexity int) int
+		Memory             func(childComplexity int) int
+		Name               func(childComplexity int) int
+		ProjectID          func(childComplexity int) int
+		Repo               func(childComplexity int) int
+		RuntimeStatus      func(childComplexity int) int
+		UpdatedAt          func(childComplexity int) int
+		Vcpus              func(childComplexity int) int
 	}
 
 	ServiceConnection struct {
@@ -677,6 +679,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Service.CreatedAt(childComplexity), true
+	case "Service.customDomain":
+		if e.complexity.Service.CustomDomain == nil {
+			break
+		}
+
+		return e.complexity.Service.CustomDomain(childComplexity), true
+	case "Service.customDomainStatus":
+		if e.complexity.Service.CustomDomainStatus == nil {
+			break
+		}
+
+		return e.complexity.Service.CustomDomainStatus(childComplexity), true
 	case "Service.envVars":
 		if e.complexity.Service.EnvVars == nil {
 			break
@@ -2136,6 +2150,10 @@ func (ec *executionContext) fieldContext_Project_services(_ context.Context, fie
 				return ec.fieldContext_Service_memory(ctx, field)
 			case "vcpus":
 				return ec.fieldContext_Service_vcpus(ctx, field)
+			case "customDomain":
+				return ec.fieldContext_Service_customDomain(ctx, field)
+			case "customDomainStatus":
+				return ec.fieldContext_Service_customDomainStatus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -2892,6 +2910,10 @@ func (ec *executionContext) fieldContext_Query_serviceDetails(ctx context.Contex
 				return ec.fieldContext_Service_memory(ctx, field)
 			case "vcpus":
 				return ec.fieldContext_Service_vcpus(ctx, field)
+			case "customDomain":
+				return ec.fieldContext_Service_customDomain(ctx, field)
+			case "customDomainStatus":
+				return ec.fieldContext_Service_customDomainStatus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -3925,6 +3947,64 @@ func (ec *executionContext) fieldContext_Service_vcpus(_ context.Context, field 
 	return fc, nil
 }
 
+func (ec *executionContext) _Service_customDomain(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Service_customDomain,
+		func(ctx context.Context) (any, error) {
+			return obj.CustomDomain, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Service_customDomain(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Service",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Service_customDomainStatus(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Service_customDomainStatus,
+		func(ctx context.Context) (any, error) {
+			return obj.CustomDomainStatus, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Service_customDomainStatus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Service",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Service_createdAt(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4031,6 +4111,10 @@ func (ec *executionContext) fieldContext_ServiceConnection_nodes(_ context.Conte
 				return ec.fieldContext_Service_memory(ctx, field)
 			case "vcpus":
 				return ec.fieldContext_Service_vcpus(ctx, field)
+			case "customDomain":
+				return ec.fieldContext_Service_customDomain(ctx, field)
+			case "customDomainStatus":
+				return ec.fieldContext_Service_customDomainStatus(ctx, field)
 			case "createdAt":
 				return ec.fieldContext_Service_createdAt(ctx, field)
 			case "updatedAt":
@@ -6998,6 +7082,10 @@ func (ec *executionContext) _Service(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "customDomain":
+			out.Values[i] = ec._Service_customDomain(ctx, field, obj)
+		case "customDomainStatus":
+			out.Values[i] = ec._Service_customDomainStatus(ctx, field, obj)
 		case "createdAt":
 			out.Values[i] = ec._Service_createdAt(ctx, field, obj)
 			if out.Values[i] == graphql.Null {

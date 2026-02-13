@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
@@ -32,15 +33,16 @@ type DbConfig struct {
 
 type DB struct {
 	*pgxpool.Pool
-	logger          *slog.Logger
-	userQueries     users.Querier
-	apiKeyQueries   apikeys.Querier
-	serviceQueries  services.Querier
-	projectQueries  projects.Querier
-	githubCredsQ    githubcreds.Querier
-	resourceQueries resources.Querier
-	internalReposQ  internalrepos.Querier
-	dnsrecordsQ     dnsrecords.Querier
+	logger           *slog.Logger
+	userQueries      users.Querier
+	apiKeyQueries    apikeys.Querier
+	serviceQueries   services.Querier
+	projectQueries   projects.Querier
+	githubCredsQ     githubcreds.Querier
+	resourceQueries  resources.Querier
+	internalReposQ   internalrepos.Querier
+	dnsrecordsQ      dnsrecords.Querier
+	customDomainsQ   customdomains.Querier
 }
 
 func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, error) {
@@ -135,6 +137,7 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		resourceQueries: resources.New(pool),
 		internalReposQ:  internalrepos.New(pool),
 		dnsrecordsQ:     dnsrecords.New(pool),
+		customDomainsQ:  customdomains.New(pool),
 	}, nil
 }
 
@@ -177,4 +180,8 @@ func NewInternalReposQueries(database *DB) internalrepos.Querier {
 
 func NewDNSRecordQueries(database *DB) dnsrecords.Querier {
 	return database.dnsrecordsQ
+}
+
+func NewCustomDomainQueries(database *DB) customdomains.Querier {
+	return database.customDomainsQ
 }

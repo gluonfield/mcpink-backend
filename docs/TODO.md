@@ -20,14 +20,14 @@
 
 ## k3s
 
-- For namespace let's use `userid-projectref`, not `github-projectref`. What if users change their github/gitea.
-- Make `userid` short UUID
+- [x] For namespace let's use `userid-projectref`, not `github-projectref`. What if users change their github/gitea.
+- [x] Make `userid` short UUID
 - Track-only: enforce pod-level `runAsNonRoot` + `allowPrivilegeEscalation=false` for tenant template (`infra/k8s/customer-service-template.yml`) after compatibility validation.
 - If user deletes service while it's being deployed the deployment service will stop and likely will not clean itself
 - make sure all ansible manifests match the infrastructure, nothing should be provisioned manually
-- let's not show graphql errors like `errors="input: me failed to get Firebase user: context canceled\n"` it means user refreshed the page before query loaded.
-- Separate binaries for `mcp` and `graphql` API.
-- Should we have sepparate application.yaml for mcp, deplyer, server/worker?
+- [x] let's not show graphql errors like `errors="input: me failed to get Firebase user: context canceled\n"` it means user refreshed the page before query loaded.
+- [ ] Separate binaries for `mcp` and `graphql` API.
+- [x] Should we have sepparate application.yaml for mcp, deplyer, server/worker?
 - If agent deploys app on wrong port there should be some mechanism for it to report it as error. Currently it does WaitForRollout until it timesout many times which is weird.
 - Prepare terminal for making videos.
 - App store/gallery.

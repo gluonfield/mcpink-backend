@@ -19,6 +19,20 @@ type ApiKey struct {
 	ID         string             `json:"id"`
 }
 
+type CustomDomain struct {
+	ID                   string             `json:"id"`
+	ServiceID            string             `json:"service_id"`
+	Domain               string             `json:"domain"`
+	Status               string             `json:"status"`
+	ExpectedRecordTarget string             `json:"expected_record_target"`
+	ExpiresAt            pgtype.Timestamptz `json:"expires_at"`
+	VerifiedAt           pgtype.Timestamptz `json:"verified_at"`
+	LastCheckedAt        pgtype.Timestamptz `json:"last_checked_at"`
+	LastError            *string            `json:"last_error"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DnsRecord struct {
 	ID                 string             `json:"id"`
 	ServiceID          *string            `json:"service_id"`

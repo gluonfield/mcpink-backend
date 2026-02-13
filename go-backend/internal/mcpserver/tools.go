@@ -546,6 +546,11 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		ErrorMessage:  svc.ErrorMessage,
 	}
 
+	if cd, err := s.deployService.GetCustomDomainByServiceID(ctx, svc.ID); err == nil {
+		output.CustomDomain = cd.Domain
+		output.CustomDomainStatus = cd.Status
+	}
+
 	if len(svc.BuildProgress) > 0 {
 		var progress BuildProgress
 		if err := json.Unmarshal(svc.BuildProgress, &progress); err == nil {
@@ -646,5 +651,103 @@ func (s *Server) handleDeleteService(ctx context.Context, req *mcp.CallToolReque
 		ServiceID: result.ServiceID,
 		Name:      result.Name,
 		Message:   "Service deleted successfully",
+	}, nil
+}
+
+func (s *Server) handleAddCustomDomain(ctx context.Context, req *mcp.CallToolRequest, input AddCustomDomainInput) (*mcp.CallToolResult, AddCustomDomainOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, AddCustomDomainOutput{}, nil
+	}
+
+	if input.Name == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, AddCustomDomainOutput{}, nil
+	}
+	if input.Domain == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "domain is required"}}}, AddCustomDomainOutput{}, nil
+	}
+
+	project := "default"
+	if input.Project != "" {
+		project = input.Project
+	}
+
+	result, err := s.deployService.AddCustomDomain(ctx, deployments.AddCustomDomainParams{
+		Name:    input.Name,
+		Project: project,
+		UserID:  user.ID,
+		Domain:  input.Domain,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, AddCustomDomainOutput{}, nil
+	}
+
+	return nil, AddCustomDomainOutput{
+		ServiceID:    result.ServiceID,
+		Domain:       result.Domain,
+		Status:       result.Status,
+		Instructions: result.Instructions,
+	}, nil
+}
+
+func (s *Server) handleVerifyCustomDomain(ctx context.Context, req *mcp.CallToolRequest, input VerifyCustomDomainInput) (*mcp.CallToolResult, VerifyCustomDomainOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, VerifyCustomDomainOutput{}, nil
+	}
+
+	if input.Name == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, VerifyCustomDomainOutput{}, nil
+	}
+
+	project := "default"
+	if input.Project != "" {
+		project = input.Project
+	}
+
+	result, err := s.deployService.VerifyCustomDomain(ctx, deployments.VerifyCustomDomainParams{
+		Name:    input.Name,
+		Project: project,
+		UserID:  user.ID,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, VerifyCustomDomainOutput{}, nil
+	}
+
+	return nil, VerifyCustomDomainOutput{
+		ServiceID: result.ServiceID,
+		Domain:    result.Domain,
+		Status:    result.Status,
+		Message:   result.Message,
+	}, nil
+}
+
+func (s *Server) handleRemoveCustomDomain(ctx context.Context, req *mcp.CallToolRequest, input RemoveCustomDomainInput) (*mcp.CallToolResult, RemoveCustomDomainOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, RemoveCustomDomainOutput{}, nil
+	}
+
+	if input.Name == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, RemoveCustomDomainOutput{}, nil
+	}
+
+	project := "default"
+	if input.Project != "" {
+		project = input.Project
+	}
+
+	result, err := s.deployService.RemoveCustomDomain(ctx, deployments.RemoveCustomDomainParams{
+		Name:    input.Name,
+		Project: project,
+		UserID:  user.ID,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, RemoveCustomDomainOutput{}, nil
+	}
+
+	return nil, RemoveCustomDomainOutput{
+		ServiceID: result.ServiceID,
+		Message:   result.Message,
 	}, nil
 }

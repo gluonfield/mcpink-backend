@@ -277,3 +277,52 @@ func buildIngress(namespace, name, host string, port int32) *networkingv1.Ingres
 		},
 	}
 }
+
+func buildCustomDomainIngress(namespace, serviceName, customDomain string, port int32) *networkingv1.Ingress {
+	pathType := networkingv1.PathTypePrefix
+	ingressClassName := "traefik"
+	ingressName := serviceName + "-cd"
+
+	return &networkingv1.Ingress{
+		TypeMeta: metav1.TypeMeta{Kind: "Ingress", APIVersion: "networking.k8s.io/v1"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      ingressName,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				"cert-manager.io/cluster-issuer": "letsencrypt-prod",
+			},
+		},
+		Spec: networkingv1.IngressSpec{
+			IngressClassName: &ingressClassName,
+			TLS: []networkingv1.IngressTLS{
+				{
+					Hosts:      []string{customDomain},
+					SecretName: ingressName + "-tls",
+				},
+			},
+			Rules: []networkingv1.IngressRule{
+				{
+					Host: customDomain,
+					IngressRuleValue: networkingv1.IngressRuleValue{
+						HTTP: &networkingv1.HTTPIngressRuleValue{
+							Paths: []networkingv1.HTTPIngressPath{
+								{
+									Path:     "/",
+									PathType: &pathType,
+									Backend: networkingv1.IngressBackend{
+										Service: &networkingv1.IngressServiceBackend{
+											Name: serviceName,
+											Port: networkingv1.ServiceBackendPort{
+												Number: port,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}

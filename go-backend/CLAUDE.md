@@ -11,14 +11,16 @@ This repository serves as a Go project template.
 5. Add migrations in `internal/storage/pg/migrations/`
 6. Add sqlc queries in `internal/storage/pg/queries/<domain>/`
 7. Run `make sqlc && make gqlgen`
-8. Wire new services in `cmd/server/main.go`
+8. Wire new services in `cmd/graphql/main.go` or `cmd/mcp/main.go`
 
 ## Project Structure
 
 ```
 autoclip/
 ├── cmd/                           # Application binaries
-│   └── server/                    # Main server binary
+│   ├── graphql/                   # GraphQL API binary
+│   │   └── main.go
+│   └── mcp/                       # MCP server binary
 │       └── main.go
 ├── internal/                      # Private application code
 │   ├── authz/                     # Authentication/authorization
@@ -245,12 +247,13 @@ Example: Adding an `orders` domain
 6. **GraphQL**: Add types/queries/mutations to `internal/graph/schema.graphqls`
 7. **Generate**: `make gqlgen`
 8. **Resolvers**: Implement in `internal/graph/schema.resolvers.go`
-9. **Wire**: Add providers to `cmd/server/main.go`
+9. **Wire**: Add providers to `cmd/graphql/main.go` or `cmd/mcp/main.go`
 
 ## Make Commands
 
 ```bash
-make run-server           # Run the product server (GraphQL, MCP, OAuth)
+make run-graphql          # Run the GraphQL API server (port 8081)
+make run-mcp              # Run the MCP server (port 8082)
 make run-worker           # Run the product Temporal worker
 make run-deployer-server  # Run the deployer server (webhooks only)
 make run-deployer-worker  # Run the deployer Temporal worker
@@ -262,14 +265,15 @@ make lint                 # Run golangci-lint (requires: go install github.com/g
 
 ## Application Binaries
 
-There are 4 binaries split across two runtimes:
+There are 5 binaries split across two runtimes:
 
-- Railway: `cmd/server` + `cmd/worker`
+- Railway: `cmd/graphql` + `cmd/mcp` + `cmd/worker`
 - k3s cluster: `cmd/deployer-server` + `cmd/deployer-worker`
 
 | Binary | Path | Runtime | Purpose | K8s Manifest |
 |--------|------|---------|---------|-------------|
-| `server` | `cmd/server/main.go` | Railway | Product API (GraphQL, MCP server, OAuth, Firebase) | — |
+| `graphql` | `cmd/graphql/main.go` | Railway | GraphQL API, GitHub OAuth, webhooks, Firebase auth (port 8081) | — |
+| `mcp` | `cmd/mcp/main.go` | Railway | MCP server, MCP OAuth (port 8082) | — |
 | `worker` | `cmd/worker/main.go` | Railway | Product Temporal worker (task queue: `default`) | — |
 | `deployer-server` | `cmd/deployer-server/main.go` | k3s (`dp-system`) | Webhook receiver (GitHub + Gitea), kicks off Temporal workflows | `infra/k8s/deployer-server.yml` |
 | `deployer-worker` | `cmd/deployer-worker/main.go` | k3s (`dp-system`) | K8s deployment worker (build, deploy, delete) (task queue: `k8s-native`) | `infra/k8s/deployer-worker.yml` |
@@ -280,8 +284,8 @@ Mapping note: conceptual `k8s-server` = `deployer-server`; conceptual `k8s-worke
 
 ## Public Ingress Contract
 
-- MCP endpoint: `https://mcp.ml.ink/mcp`
-- Webhook ingress (unchanged): `https://api.ml.ink`
+- `mcp.ml.ink` → mcp binary (port 8082)
+- `api.ml.ink` → graphql binary (port 8081)
 - Cloudflare LB is the source of truth for public ingress host/origin routing.
 
 ### Deploying the deployer-worker to the cluster

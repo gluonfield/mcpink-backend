@@ -39,6 +39,8 @@ type Service {
   fqdn: String
   memory: String!
   vcpus: String!
+  customDomain: String
+  customDomainStatus: String
   createdAt: Time!
   updatedAt: Time!
 }
