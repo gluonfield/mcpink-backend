@@ -194,9 +194,9 @@ func (a *Activities) resolveServiceIdentity(ctx context.Context, serviceID strin
 		return nil, fmt.Errorf("get user: %w", err)
 	}
 
-	tenant := ResolveUsername(user)
+	tenant := user.ID
 	if tenant == "" {
-		return nil, fmt.Errorf("user %s has no gitea or github username", svc.UserID)
+		return nil, fmt.Errorf("user %s has no ID", svc.UserID)
 	}
 	if svc.Name == nil || *svc.Name == "" {
 		return nil, fmt.Errorf("service %s has empty service name", svc.ID)

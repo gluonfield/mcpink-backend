@@ -565,7 +565,7 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 
 	if input.DeployLogLines > 0 {
 		limit := min(input.DeployLogLines, MaxLogLines)
-		ns := k8sdeployments.NamespaceName(k8sdeployments.ResolveUsername(*user), project)
+		ns := k8sdeployments.NamespaceName(user.ID, project)
 		svcName := k8sdeployments.ServiceName(helpers.Deref(svc.Name))
 		lines, err := k8sdeployments.QueryBuildLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svcName, 24*time.Hour, limit)
 		if err == nil && len(lines) > 0 {
@@ -575,7 +575,7 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 
 	if input.RuntimeLogLines > 0 {
 		limit := min(input.RuntimeLogLines, MaxLogLines)
-		ns := k8sdeployments.NamespaceName(k8sdeployments.ResolveUsername(*user), project)
+		ns := k8sdeployments.NamespaceName(user.ID, project)
 		svcName := k8sdeployments.ServiceName(helpers.Deref(svc.Name))
 		lines, err := k8sdeployments.QueryRunLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svcName, 24*time.Hour, limit)
 		if err == nil && len(lines) > 0 {

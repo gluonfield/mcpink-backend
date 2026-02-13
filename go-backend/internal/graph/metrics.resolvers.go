@@ -31,17 +31,12 @@ func (r *queryResolver) ServiceMetrics(ctx context.Context, serviceID string, ti
 		return nil, fmt.Errorf("failed to get user")
 	}
 
-	username := k8sdeployments.ResolveUsername(*user)
-	if username == "" {
-		return nil, fmt.Errorf("user has no username configured")
-	}
-
 	project, err := r.ProjectQueries.GetProjectByID(ctx, dbService.ProjectID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get project")
 	}
 
-	namespace := k8sdeployments.NamespaceName(username, project.Ref)
+	namespace := k8sdeployments.NamespaceName(user.ID, project.Ref)
 
 	svcName := ""
 	if dbService.Name != nil {

@@ -9,7 +9,9 @@ import (
 	"strings"
 
 	"github.com/augustdev/autoclip/internal/cloudflare"
+	"github.com/augustdev/autoclip/internal/dnsverify"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
@@ -28,8 +30,10 @@ type Service struct {
 	usersQ           users.Querier
 	ghCredsQ         githubcreds.Querier
 	dnsQ             dnsrecords.Querier
+	customDomainsQ   customdomains.Querier
 	cloudflareClient *cloudflare.Client
 	appsDomain       string
+	cnameTarget      string
 	logger           *slog.Logger
 }
 
@@ -40,10 +44,15 @@ func NewService(
 	usersQ users.Querier,
 	ghCredsQ githubcreds.Querier,
 	dnsQ dnsrecords.Querier,
+	customDomainsQ customdomains.Querier,
 	cloudflareClient *cloudflare.Client,
 	cfConfig cloudflare.Config,
 	logger *slog.Logger,
 ) *Service {
+	cnameTarget := cfConfig.CNAMETarget
+	if cnameTarget == "" {
+		cnameTarget = "cname." + cfConfig.BaseDomain
+	}
 	return &Service{
 		temporalClient:   temporalClient,
 		servicesQ:        servicesQ,
@@ -51,8 +60,10 @@ func NewService(
 		usersQ:           usersQ,
 		ghCredsQ:         ghCredsQ,
 		dnsQ:             dnsQ,
+		customDomainsQ:   customDomainsQ,
 		cloudflareClient: cloudflareClient,
 		appsDomain:       cfConfig.BaseDomain,
+		cnameTarget:      cnameTarget,
 		logger:           logger,
 	}
 }
@@ -411,14 +422,7 @@ func (s *Service) DeleteService(ctx context.Context, params DeleteServiceParams)
 		return nil, fmt.Errorf("project not found: %w", err)
 	}
 
-	username := ""
-	if user.GiteaUsername != nil && *user.GiteaUsername != "" {
-		username = *user.GiteaUsername
-	} else if user.GithubUsername != nil && *user.GithubUsername != "" {
-		username = *user.GithubUsername
-	}
-
-	namespace := k8sdeployments.NamespaceName(username, proj.Ref)
+	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
 	serviceName := k8sdeployments.ServiceName(name)
 
 	workflowID := fmt.Sprintf("delete-svc-%s", svc.ID)
