@@ -1,6 +1,6 @@
 -- name: CreateInternalRepo :one
-INSERT INTO internal_repos (user_id, provider, repo_id, full_name)
-VALUES ($1, $2, $3, $4)
+INSERT INTO internal_repos (user_id, name, clone_url, provider, repo_id, full_name)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING *;
 
 -- name: GetInternalRepoByID :one

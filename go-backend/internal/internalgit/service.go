@@ -89,6 +89,8 @@ func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description 
 	repoIDStr := fmt.Sprintf("%d", repo.ID)
 	_, err = s.repoQueries.CreateInternalRepo(ctx, internalrepos.CreateInternalRepoParams{
 		UserID:   userID,
+		Name:     repoName,
+		CloneUrl: repo.CloneURL,
 		Provider: "gitea",
 		RepoID:   &repoIDStr,
 		FullName: repo.FullName,

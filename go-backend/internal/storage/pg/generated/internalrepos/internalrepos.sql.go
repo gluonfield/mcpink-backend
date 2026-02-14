@@ -10,13 +10,15 @@ import (
 )
 
 const createInternalRepo = `-- name: CreateInternalRepo :one
-INSERT INTO internal_repos (user_id, provider, repo_id, full_name)
-VALUES ($1, $2, $3, $4)
+INSERT INTO internal_repos (user_id, name, clone_url, provider, repo_id, full_name)
+VALUES ($1, $2, $3, $4, $5, $6)
 RETURNING id, user_id, name, clone_url, provider, repo_id, full_name, created_at, updated_at
 `
 
 type CreateInternalRepoParams struct {
 	UserID   string  `json:"user_id"`
+	Name     string  `json:"name"`
+	CloneUrl string  `json:"clone_url"`
 	Provider string  `json:"provider"`
 	RepoID   *string `json:"repo_id"`
 	FullName string  `json:"full_name"`
@@ -25,6 +27,8 @@ type CreateInternalRepoParams struct {
 func (q *Queries) CreateInternalRepo(ctx context.Context, arg CreateInternalRepoParams) (InternalRepo, error) {
 	row := q.db.QueryRow(ctx, createInternalRepo,
 		arg.UserID,
+		arg.Name,
+		arg.CloneUrl,
 		arg.Provider,
 		arg.RepoID,
 		arg.FullName,
