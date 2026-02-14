@@ -33,11 +33,11 @@ func (q *Queries) CountServicesByUserID(ctx context.Context, userID string) (int
 
 const createService = `-- name: CreateService :one
 INSERT INTO services (
-    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, git_provider, build_config, memory, vcpus, cluster_id
+    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, git_provider, build_config, memory, vcpus
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 )
-RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id
+RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at
 `
 
 type CreateServiceParams struct {
@@ -55,7 +55,6 @@ type CreateServiceParams struct {
 	BuildConfig []byte  `json:"build_config"`
 	Memory      string  `json:"memory"`
 	Vcpus       string  `json:"vcpus"`
-	ClusterID   string  `json:"cluster_id"`
 }
 
 func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (Service, error) {
@@ -74,7 +73,6 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 		arg.BuildConfig,
 		arg.Memory,
 		arg.Vcpus,
-		arg.ClusterID,
 	)
 	var i Service
 	err := row.Scan(
@@ -99,7 +97,6 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClusterID,
 	)
 	return i, err
 }
@@ -114,7 +111,7 @@ func (q *Queries) DeleteService(ctx context.Context, id string) error {
 }
 
 const getServiceByID = `-- name: GetServiceByID :one
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services WHERE id = $1 AND is_deleted = false
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services WHERE id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error) {
@@ -142,13 +139,12 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClusterID,
 	)
 	return i, err
 }
 
 const getServiceByNameAndProject = `-- name: GetServiceByNameAndProject :one
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE name = $1 AND project_id = $2 AND is_deleted = false
 `
 
@@ -182,13 +178,12 @@ func (q *Queries) GetServiceByNameAndProject(ctx context.Context, arg GetService
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClusterID,
 	)
 	return i, err
 }
 
 const getServiceByNameAndUserProject = `-- name: GetServiceByNameAndUserProject :one
-SELECT a.id, a.user_id, a.project_id, a.repo, a.branch, a.git_provider, a.name, a.port, a.build_pack, a.env_vars, a.build_config, a.memory, a.vcpus, a.publish_directory, a.fqdn, a.custom_domain, a.server_uuid, a.current_deployment_id, a.is_deleted, a.created_at, a.updated_at, a.cluster_id FROM services a
+SELECT a.id, a.user_id, a.project_id, a.repo, a.branch, a.git_provider, a.name, a.port, a.build_pack, a.env_vars, a.build_config, a.memory, a.vcpus, a.publish_directory, a.fqdn, a.custom_domain, a.server_uuid, a.current_deployment_id, a.is_deleted, a.created_at, a.updated_at FROM services a
 JOIN projects p ON a.project_id = p.id
 WHERE a.name = $1
   AND p.user_id = $2
@@ -229,13 +224,12 @@ func (q *Queries) GetServiceByNameAndUserProject(ctx context.Context, arg GetSer
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClusterID,
 	)
 	return i, err
 }
 
 const getServicesByRepoBranch = `-- name: GetServicesByRepoBranch :many
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE repo = $1 AND branch = $2 AND is_deleted = false
 `
 
@@ -275,7 +269,6 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClusterID,
 		); err != nil {
 			return nil, err
 		}
@@ -288,7 +281,7 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 }
 
 const getServicesByRepoBranchProvider = `-- name: GetServicesByRepoBranchProvider :many
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND is_deleted = false
 `
 
@@ -329,7 +322,6 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClusterID,
 		); err != nil {
 			return nil, err
 		}
@@ -342,7 +334,7 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 }
 
 const listServicesByProjectID = `-- name: ListServicesByProjectID :many
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE project_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -385,7 +377,6 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClusterID,
 		); err != nil {
 			return nil, err
 		}
@@ -398,7 +389,7 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 }
 
 const listServicesByUserID = `-- name: ListServicesByUserID :many
-SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE user_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -441,7 +432,6 @@ func (q *Queries) ListServicesByUserID(ctx context.Context, arg ListServicesByUs
 			&i.IsDeleted,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.ClusterID,
 		); err != nil {
 			return nil, err
 		}
@@ -489,7 +479,7 @@ const softDeleteService = `-- name: SoftDeleteService :one
 UPDATE services
 SET is_deleted = true, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at, cluster_id
+RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at
 `
 
 func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, error) {
@@ -517,7 +507,6 @@ func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, er
 		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ClusterID,
 	)
 	return i, err
 }

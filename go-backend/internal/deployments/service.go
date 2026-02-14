@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/dnsverify"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/clusters"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
@@ -23,16 +23,16 @@ import (
 )
 
 type Service struct {
-	temporalClient  client.Client
-	servicesQ       services.Querier
-	deploymentsQ    deploymentsdb.Querier
-	projectsQ       projects.Querier
-	usersQ          users.Querier
-	ghCredsQ        githubcreds.Querier
-	customDomainsQ  customdomains.Querier
-	clusterResolver *ClusterResolver
-	clustersQ       clusters.Querier
-	logger          *slog.Logger
+	temporalClient client.Client
+	servicesQ      services.Querier
+	deploymentsQ   deploymentsdb.Querier
+	projectsQ      projects.Querier
+	usersQ         users.Querier
+	ghCredsQ       githubcreds.Querier
+	customDomainsQ customdomains.Querier
+	appsDomain     string
+	cnameTarget    string
+	logger         *slog.Logger
 }
 
 func NewService(
@@ -43,21 +43,24 @@ func NewService(
 	usersQ users.Querier,
 	ghCredsQ githubcreds.Querier,
 	customDomainsQ customdomains.Querier,
-	clusterResolver *ClusterResolver,
-	clustersQ clusters.Querier,
+	cfConfig cloudflare.Config,
 	logger *slog.Logger,
 ) *Service {
+	cnameTarget := cfConfig.CNAMETarget
+	if cnameTarget == "" {
+		cnameTarget = "cname." + cfConfig.BaseDomain
+	}
 	return &Service{
-		temporalClient:  temporalClient,
-		servicesQ:       servicesQ,
-		deploymentsQ:    deploymentsQ,
-		projectsQ:       projectsQ,
-		usersQ:          usersQ,
-		ghCredsQ:        ghCredsQ,
-		customDomainsQ:  customDomainsQ,
-		clusterResolver: clusterResolver,
-		clustersQ:       clustersQ,
-		logger:          logger,
+		temporalClient: temporalClient,
+		servicesQ:      servicesQ,
+		deploymentsQ:   deploymentsQ,
+		projectsQ:      projectsQ,
+		usersQ:         usersQ,
+		ghCredsQ:       ghCredsQ,
+		customDomainsQ: customDomainsQ,
+		appsDomain:     cfConfig.BaseDomain,
+		cnameTarget:    cnameTarget,
+		logger:         logger,
 	}
 }
 
@@ -145,13 +148,8 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		vcpus = "0.5"
 	}
 
-	cluster, err := s.clusterResolver.SelectCluster(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to select cluster: %w", err)
-	}
-
 	// Create service row (no deployment state)
-	_, err = s.servicesQ.CreateService(ctx, services.CreateServiceParams{
+	_, err := s.servicesQ.CreateService(ctx, services.CreateServiceParams{
 		ID:          svcID,
 		UserID:      input.UserID,
 		ProjectID:   projectID,
@@ -166,7 +164,6 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		BuildConfig: buildConfigJSON,
 		Memory:      memory,
 		Vcpus:       vcpus,
-		ClusterID:   cluster.ID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service record: %w", err)
@@ -196,12 +193,12 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		Branch:         input.Branch,
 		GitProvider:    gitProvider,
 		InstallationID: input.InstallationID,
-		AppsDomain:     cluster.AppsDomain,
+		AppsDomain:     s.appsDomain,
 	}
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:                                       workflowID,
-		TaskQueue:                                cluster.TaskQueue,
+		TaskQueue:                                k8sdeployments.TaskQueue,
 		WorkflowIDConflictPolicy:                 enumspb.WORKFLOW_ID_CONFLICT_POLICY_FAIL,
 		WorkflowIDReusePolicy:                    enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
 		WorkflowExecutionErrorWhenAlreadyStarted: true,
@@ -363,11 +360,6 @@ func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, trigg
 		return "", fmt.Errorf("service not found: %w", err)
 	}
 
-	cluster, err := s.clusterResolver.GetClusterForService(ctx, svcID)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve cluster: %w", err)
-	}
-
 	deploymentID := shortuuid.New()
 	workflowID := fmt.Sprintf("deploy-%s", deploymentID)
 
@@ -437,7 +429,7 @@ func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, trigg
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
+		TaskQueue: k8sdeployments.TaskQueue,
 	}
 
 	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, k8sdeployments.RedeployServiceWorkflow, k8sdeployments.RedeployServiceWorkflowInput{
@@ -448,7 +440,7 @@ func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, trigg
 		GitProvider:    svc.GitProvider,
 		InstallationID: installationID,
 		CommitSHA:      commitSHA,
-		AppsDomain:     cluster.AppsDomain,
+		AppsDomain:     s.appsDomain,
 	})
 	if err != nil {
 		s.logger.Error("failed to start redeploy workflow",
@@ -499,11 +491,6 @@ func (s *Service) DeleteService(ctx context.Context, params DeleteServiceParams)
 		return nil, fmt.Errorf("service not found: %s in project %s", params.Name, project)
 	}
 
-	cluster, err := s.clusterResolver.GetClusterForService(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve cluster: %w", err)
-	}
-
 	var name string
 	if svc.Name != nil {
 		name = *svc.Name
@@ -526,7 +513,7 @@ func (s *Service) DeleteService(ctx context.Context, params DeleteServiceParams)
 
 	workflowOptions := client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
+		TaskQueue: k8sdeployments.TaskQueue,
 	}
 
 	input := k8sdeployments.DeleteServiceWorkflowInput{
@@ -569,21 +556,7 @@ type AddCustomDomainResult struct {
 func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainParams) (*AddCustomDomainResult, error) {
 	domain := dnsverify.NormalizeDomain(params.Domain)
 
-	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
-		Name:    params.Name,
-		Project: params.Project,
-		UserID:  params.UserID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	cluster, err := s.clusterResolver.GetClusterForService(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve cluster: %w", err)
-	}
-
-	if err := dnsverify.ValidateCustomDomain(domain, cluster.AppsDomain); err != nil {
+	if err := dnsverify.ValidateCustomDomain(domain, s.appsDomain); err != nil {
 		return nil, err
 	}
 
@@ -599,13 +572,22 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 		}
 	}
 
+	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
+		Name:    params.Name,
+		Project: params.Project,
+		UserID:  params.UserID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
 	_, err = s.customDomainsQ.GetByServiceID(ctx, svc.ID)
 	if err == nil {
 		return nil, fmt.Errorf("service %s already has a custom domain; remove it first", params.Name)
 	}
 
 	verificationToken := dnsverify.GenerateVerificationToken()
-	perServiceTarget := *svc.Name + "." + cluster.CnameTarget
+	perServiceTarget := *svc.Name + "." + s.cnameTarget
 
 	cd, err := s.customDomainsQ.CreateCustomDomain(ctx, customdomains.CreateCustomDomainParams{
 		ServiceID:            svc.ID,
@@ -721,11 +703,6 @@ func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDom
 		Status: "provisioning",
 	})
 
-	cluster, err := s.clusterResolver.GetClusterForService(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve cluster: %w", err)
-	}
-
 	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
@@ -739,17 +716,20 @@ func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDom
 	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
 	serviceName := k8sdeployments.ServiceName(*svc.Name)
 
+	port := parsePort(svc.Port)
+
 	workflowID := fmt.Sprintf("attach-cd-%s", cd.ID)
 
 	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
+		TaskQueue: k8sdeployments.TaskQueue,
 	}, k8sdeployments.AttachCustomDomainWorkflow, k8sdeployments.AttachCustomDomainWorkflowInput{
 		CustomDomainID: cd.ID,
 		ServiceID:      svc.ID,
 		Namespace:      namespace,
 		ServiceName:    serviceName,
 		CustomDomain:   cd.Domain,
+		Port:           port,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start attach workflow: %w", err)
@@ -789,11 +769,6 @@ func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDom
 		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
 	}
 
-	cluster, err := s.clusterResolver.GetClusterForService(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve cluster: %w", err)
-	}
-
 	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
@@ -812,7 +787,7 @@ func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDom
 	// Start cleanup workflow BEFORE deleting DB record to prevent orphaned K8s resources
 	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
+		TaskQueue: k8sdeployments.TaskQueue,
 	}, k8sdeployments.DetachCustomDomainWorkflow, k8sdeployments.DetachCustomDomainWorkflowInput{
 		CustomDomainID: cd.ID,
 		ServiceID:      svc.ID,
@@ -841,3 +816,18 @@ func (s *Service) GetCustomDomainByServiceID(ctx context.Context, serviceID stri
 	return &cd, nil
 }
 
+func parsePort(port string) int32 {
+	if port == "" {
+		return 3000
+	}
+	var p int64
+	for _, c := range port {
+		if c >= '0' && c <= '9' {
+			p = p*10 + int64(c-'0')
+		}
+	}
+	if p == 0 {
+		return 3000
+	}
+	return int32(p)
+}
