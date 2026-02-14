@@ -554,8 +554,11 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 	}
 
 	if cd, err := s.deployService.GetCustomDomainByServiceID(ctx, svc.ID); err == nil {
-		output.CustomDomain = cd.Domain
-		output.CustomDomainStatus = cd.Status
+		output.CustomDomain = &CustomDomainDetails{
+			Domain: cd.Domain,
+			Status: cd.Status,
+			Error:  cd.LastError,
+		}
 	}
 
 	if input.IncludeEnv {

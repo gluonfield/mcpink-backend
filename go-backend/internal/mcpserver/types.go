@@ -151,20 +151,25 @@ type GetServiceInput struct {
 	RuntimeLogLines int    `json:"runtime_log_lines,omitempty" jsonschema:"description=Number of runtime log lines to fetch (max: 500),default=0"`
 }
 
+type CustomDomainDetails struct {
+	Domain string  `json:"domain"`
+	Status string  `json:"status"`
+	Error  *string `json:"error,omitempty"`
+}
+
 type GetServiceOutput struct {
-	ServiceID          string             `json:"service_id"`
-	Name               string             `json:"name"`
-	Project            string             `json:"project"`
-	Repo               string             `json:"repo"`
-	Branch             string             `json:"branch"`
-	URL                *string            `json:"url,omitempty"`
-	CreatedAt          string             `json:"created_at"`
-	UpdatedAt          string             `json:"updated_at"`
-	Deployment         *DeploymentDetails `json:"deployment,omitempty"`
-	Runtime            *RuntimeDetails    `json:"runtime,omitempty"`
-	EnvVars            []EnvVarInfo       `json:"env_vars,omitempty"`
-	CustomDomain       string             `json:"custom_domain,omitempty"`
-	CustomDomainStatus string             `json:"custom_domain_status,omitempty"`
+	ServiceID    string               `json:"service_id"`
+	Name         string               `json:"name"`
+	Project      string               `json:"project"`
+	Repo         string               `json:"repo"`
+	Branch       string               `json:"branch"`
+	URL          *string              `json:"url,omitempty"`
+	CreatedAt    string               `json:"created_at"`
+	UpdatedAt    string               `json:"updated_at"`
+	Deployment   *DeploymentDetails   `json:"deployment,omitempty"`
+	Runtime      *RuntimeDetails      `json:"runtime,omitempty"`
+	EnvVars      []EnvVarInfo         `json:"env_vars,omitempty"`
+	CustomDomain *CustomDomainDetails `json:"custom_domain,omitempty"`
 }
 
 type EnvVarInfo struct {
