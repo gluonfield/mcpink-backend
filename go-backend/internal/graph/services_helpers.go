@@ -3,6 +3,7 @@ package graph
 import (
 	"encoding/json"
 
+	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/graph/model"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 )
@@ -29,22 +30,28 @@ func dbServiceToModel(dbService *services.Service) *model.Service {
 	}
 
 	return &model.Service{
-		ID:            dbService.ID,
-		ProjectID:     dbService.ProjectID,
-		Name:          dbService.Name,
-		Repo:          dbService.Repo,
-		Branch:        dbService.Branch,
-		BuildStatus:   dbService.BuildStatus,
-		RuntimeStatus: dbService.RuntimeStatus,
-		ErrorMessage:  dbService.ErrorMessage,
-		EnvVars:       envVars,
-		Fqdn:          dbService.Fqdn,
-		Port:          dbService.Port,
-		GitProvider:   dbService.GitProvider,
-		CommitHash:    dbService.CommitHash,
-		Memory:        dbService.Memory,
-		Vcpus:         dbService.Vcpus,
-		CreatedAt:     dbService.CreatedAt.Time,
-		UpdatedAt:     dbService.UpdatedAt.Time,
+		ID:          dbService.ID,
+		ProjectID:   dbService.ProjectID,
+		Name:        dbService.Name,
+		Repo:        dbService.Repo,
+		Branch:      dbService.Branch,
+		Status:      "pending",
+		EnvVars:     envVars,
+		Fqdn:        dbService.Fqdn,
+		Port:        dbService.Port,
+		GitProvider: dbService.GitProvider,
+		Memory:      dbService.Memory,
+		Vcpus:       dbService.Vcpus,
+		CreatedAt:   dbService.CreatedAt.Time,
+		UpdatedAt:   dbService.UpdatedAt.Time,
 	}
+}
+
+func enrichServiceWithDeployment(svc *model.Service, dep *deploymentsdb.Deployment) {
+	if dep == nil {
+		return
+	}
+	svc.Status = dep.Status
+	svc.CommitHash = dep.CommitHash
+	svc.ErrorMessage = dep.ErrorMessage
 }

@@ -69,7 +69,10 @@ func (s *Server) createGitHubRepo(ctx context.Context, user *users.User, input C
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "GitHub OAuth `repo` scope is missing. Please re-authenticate at https://ml.ink/settings/access"}}}, CreateRepoOutput{}, nil
 	}
 
-	oauthToken, err := s.authService.DecryptToken(creds.GithubOauthToken)
+	if creds.GithubOauthToken == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "No GitHub OAuth token found. Please authenticate at https://ml.ink/settings/access"}}}, CreateRepoOutput{}, nil
+	}
+	oauthToken, err := s.authService.DecryptToken(*creds.GithubOauthToken)
 	if err != nil {
 		s.logger.Error("failed to decrypt oauth token", "error", err)
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "Failed to decrypt GitHub token. Please re-authenticate"}}}, CreateRepoOutput{}, nil

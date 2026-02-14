@@ -10,6 +10,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
+	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
@@ -43,6 +44,7 @@ type DB struct {
 	internalReposQ   internalrepos.Querier
 	dnsrecordsQ      dnsrecords.Querier
 	customDomainsQ   customdomains.Querier
+	deploymentsQ     deploymentsdb.Querier
 }
 
 func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, error) {
@@ -138,6 +140,7 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		internalReposQ:  internalrepos.New(pool),
 		dnsrecordsQ:     dnsrecords.New(pool),
 		customDomainsQ:  customdomains.New(pool),
+		deploymentsQ:    deploymentsdb.New(pool),
 	}, nil
 }
 
@@ -184,4 +187,8 @@ func NewDNSRecordQueries(database *DB) dnsrecords.Querier {
 
 func NewCustomDomainQueries(database *DB) customdomains.Querier {
 	return database.customDomainsQ
+}
+
+func NewDeploymentQueries(database *DB) deploymentsdb.Querier {
+	return database.deploymentsQ
 }

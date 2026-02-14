@@ -156,7 +156,6 @@ type ComplexityRoot struct {
 
 	Service struct {
 		Branch             func(childComplexity int) int
-		BuildStatus        func(childComplexity int) int
 		CommitHash         func(childComplexity int) int
 		CreatedAt          func(childComplexity int) int
 		CustomDomain       func(childComplexity int) int
@@ -172,7 +171,7 @@ type ComplexityRoot struct {
 		Project            func(childComplexity int) int
 		ProjectID          func(childComplexity int) int
 		Repo               func(childComplexity int) int
-		RuntimeStatus      func(childComplexity int) int
+		Status             func(childComplexity int) int
 		UpdatedAt          func(childComplexity int) int
 		Vcpus              func(childComplexity int) int
 	}
@@ -675,12 +674,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Service.Branch(childComplexity), true
-	case "Service.buildStatus":
-		if e.complexity.Service.BuildStatus == nil {
-			break
-		}
-
-		return e.complexity.Service.BuildStatus(childComplexity), true
 	case "Service.commitHash":
 		if e.complexity.Service.CommitHash == nil {
 			break
@@ -771,12 +764,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Service.Repo(childComplexity), true
-	case "Service.runtimeStatus":
-		if e.complexity.Service.RuntimeStatus == nil {
+	case "Service.status":
+		if e.complexity.Service.Status == nil {
 			break
 		}
 
-		return e.complexity.Service.RuntimeStatus(childComplexity), true
+		return e.complexity.Service.Status(childComplexity), true
 	case "Service.updatedAt":
 		if e.complexity.Service.UpdatedAt == nil {
 			break
@@ -2170,10 +2163,8 @@ func (ec *executionContext) fieldContext_Project_services(_ context.Context, fie
 				return ec.fieldContext_Service_repo(ctx, field)
 			case "branch":
 				return ec.fieldContext_Service_branch(ctx, field)
-			case "buildStatus":
-				return ec.fieldContext_Service_buildStatus(ctx, field)
-			case "runtimeStatus":
-				return ec.fieldContext_Service_runtimeStatus(ctx, field)
+			case "status":
+				return ec.fieldContext_Service_status(ctx, field)
 			case "errorMessage":
 				return ec.fieldContext_Service_errorMessage(ctx, field)
 			case "envVars":
@@ -2938,10 +2929,8 @@ func (ec *executionContext) fieldContext_Query_serviceDetails(ctx context.Contex
 				return ec.fieldContext_Service_repo(ctx, field)
 			case "branch":
 				return ec.fieldContext_Service_branch(ctx, field)
-			case "buildStatus":
-				return ec.fieldContext_Service_buildStatus(ctx, field)
-			case "runtimeStatus":
-				return ec.fieldContext_Service_runtimeStatus(ctx, field)
+			case "status":
+				return ec.fieldContext_Service_status(ctx, field)
 			case "errorMessage":
 				return ec.fieldContext_Service_errorMessage(ctx, field)
 			case "envVars":
@@ -3829,14 +3818,14 @@ func (ec *executionContext) fieldContext_Service_branch(_ context.Context, field
 	return fc, nil
 }
 
-func (ec *executionContext) _Service_buildStatus(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
+func (ec *executionContext) _Service_status(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
 		ec.OperationContext,
 		field,
-		ec.fieldContext_Service_buildStatus,
+		ec.fieldContext_Service_status,
 		func(ctx context.Context) (any, error) {
-			return obj.BuildStatus, nil
+			return obj.Status, nil
 		},
 		nil,
 		ec.marshalNString2string,
@@ -3845,36 +3834,7 @@ func (ec *executionContext) _Service_buildStatus(ctx context.Context, field grap
 	)
 }
 
-func (ec *executionContext) fieldContext_Service_buildStatus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Service",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Service_runtimeStatus(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Service_runtimeStatus,
-		func(ctx context.Context) (any, error) {
-			return obj.RuntimeStatus, nil
-		},
-		nil,
-		ec.marshalOString2ᚖstring,
-		true,
-		false,
-	)
-}
-
-func (ec *executionContext) fieldContext_Service_runtimeStatus(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Service_status(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Service",
 		Field:      field,
@@ -4277,10 +4237,8 @@ func (ec *executionContext) fieldContext_ServiceConnection_nodes(_ context.Conte
 				return ec.fieldContext_Service_repo(ctx, field)
 			case "branch":
 				return ec.fieldContext_Service_branch(ctx, field)
-			case "buildStatus":
-				return ec.fieldContext_Service_buildStatus(ctx, field)
-			case "runtimeStatus":
-				return ec.fieldContext_Service_runtimeStatus(ctx, field)
+			case "status":
+				return ec.fieldContext_Service_status(ctx, field)
 			case "errorMessage":
 				return ec.fieldContext_Service_errorMessage(ctx, field)
 			case "envVars":
@@ -7275,13 +7233,11 @@ func (ec *executionContext) _Service(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
-		case "buildStatus":
-			out.Values[i] = ec._Service_buildStatus(ctx, field, obj)
+		case "status":
+			out.Values[i] = ec._Service_status(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
-		case "runtimeStatus":
-			out.Values[i] = ec._Service_runtimeStatus(ctx, field, obj)
 		case "errorMessage":
 			out.Values[i] = ec._Service_errorMessage(ctx, field, obj)
 		case "envVars":

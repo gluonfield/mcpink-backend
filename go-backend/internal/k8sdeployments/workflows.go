@@ -25,7 +25,7 @@ func RedeployServiceWorkflow(ctx workflow.Context, input RedeployServiceWorkflow
 
 func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServiceResult, error) {
 	logger := workflow.GetLogger(ctx)
-	logger.Info("Starting deploy", "serviceID", input.ServiceID, "repo", input.Repo, "commitSHA", input.CommitSHA)
+	logger.Info("Starting deploy", "serviceID", input.ServiceID, "deploymentID", input.DeploymentID, "repo", input.Repo, "commitSHA", input.CommitSHA)
 
 	var activities *Activities
 
@@ -35,8 +35,8 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 	})
 
 	markFailed := func(errMsg string) {
-		_ = workflow.ExecuteActivity(statusCtx, activities.MarkServiceFailed, MarkServiceFailedInput{
-			ServiceID:    input.ServiceID,
+		_ = workflow.ExecuteActivity(statusCtx, activities.MarkDeploymentFailed, MarkDeploymentFailedInput{
+			DeploymentID: input.DeploymentID,
 			ErrorMessage: errMsg,
 		}).Get(ctx, nil)
 	}
@@ -50,15 +50,15 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 		}, err
 	}
 
-	if err := workflow.ExecuteActivity(statusCtx, activities.UpdateBuildStatus, UpdateBuildStatusInput{
-		ServiceID:   input.ServiceID,
-		BuildStatus: "building",
+	// Mark deployment as building
+	if err := workflow.ExecuteActivity(statusCtx, activities.UpdateDeploymentBuilding, UpdateDeploymentBuildingInput{
+		DeploymentID: input.DeploymentID,
 	}).Get(ctx, nil); err != nil {
 		return DeployServiceResult{
 			ServiceID:    input.ServiceID,
 			Status:       StatusFailed,
-			ErrorMessage: fmt.Sprintf("update build status: %v", err),
-		}, fmt.Errorf("update build status: %w", err)
+			ErrorMessage: fmt.Sprintf("update deployment building: %v", err),
+		}, fmt.Errorf("update deployment building: %w", err)
 	}
 
 	childCtx := workflow.WithChildOptions(ctx, workflow.ChildWorkflowOptions{
@@ -67,6 +67,7 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 	var buildResult BuildServiceWorkflowResult
 	if err := workflow.ExecuteChildWorkflow(childCtx, BuildServiceWorkflow, BuildServiceWorkflowInput{
 		ServiceID:      input.ServiceID,
+		DeploymentID:   input.DeploymentID,
 		Repo:           input.Repo,
 		Branch:         input.Branch,
 		GitProvider:    input.GitProvider,
@@ -98,6 +99,13 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 		return fail(err)
 	}
 
+	// Mark deployment as deploying (waiting for rollout)
+	if err := workflow.ExecuteActivity(statusCtx, activities.UpdateDeploymentDeploying, UpdateDeploymentDeployingInput{
+		DeploymentID: input.DeploymentID,
+	}).Get(ctx, nil); err != nil {
+		logger.Warn("Failed to mark deployment deploying", "error", err)
+	}
+
 	rolloutCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
 		StartToCloseTimeout: 3 * time.Minute,
 		HeartbeatTimeout:    30 * time.Second,
@@ -114,16 +122,19 @@ func deployService(ctx workflow.Context, input DeployServiceInput) (DeployServic
 		return fail(err)
 	}
 
-	if err := workflow.ExecuteActivity(statusCtx, activities.MarkServiceRunning, MarkServiceRunningInput{
-		ServiceID: input.ServiceID,
-		URL:       deployResult.URL,
-		CommitSHA: buildResult.CommitSHA,
+	// Mark deployment as active, supersede old, set pointer
+	if err := workflow.ExecuteActivity(statusCtx, activities.MarkDeploymentActive, MarkDeploymentActiveInput{
+		ServiceID:    input.ServiceID,
+		DeploymentID: input.DeploymentID,
+		URL:          deployResult.URL,
+		CommitSHA:    buildResult.CommitSHA,
+		ImageRef:     buildResult.ImageRef,
 	}).Get(ctx, nil); err != nil {
 		return DeployServiceResult{
 			ServiceID:    input.ServiceID,
 			Status:       StatusFailed,
-			ErrorMessage: fmt.Sprintf("mark service running: %v", err),
-		}, fmt.Errorf("mark service running: %w", err)
+			ErrorMessage: fmt.Sprintf("mark deployment active: %v", err),
+		}, fmt.Errorf("mark deployment active: %w", err)
 	}
 
 	return DeployServiceResult{
@@ -203,7 +214,14 @@ func BuildServiceWorkflow(ctx workflow.Context, input BuildServiceWorkflowInput)
 		}
 
 		var cloneResult CloneRepoResult
-		err := workflow.ExecuteActivity(actCtx, activities.CloneRepo, CloneRepoInput(input)).Get(ctx, &cloneResult)
+		err := workflow.ExecuteActivity(actCtx, activities.CloneRepo, CloneRepoInput{
+			ServiceID:      input.ServiceID,
+			Repo:           input.Repo,
+			Branch:         input.Branch,
+			GitProvider:    input.GitProvider,
+			InstallationID: input.InstallationID,
+			CommitSHA:      input.CommitSHA,
+		}).Get(ctx, &cloneResult)
 		if err != nil {
 			return BuildServiceWorkflowResult{}, fmt.Errorf("clone failed: %w", err)
 		}

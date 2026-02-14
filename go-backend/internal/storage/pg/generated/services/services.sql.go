@@ -9,17 +9,6 @@ import (
 	"context"
 )
 
-const clearServiceBuildProgress = `-- name: ClearServiceBuildProgress :exec
-UPDATE services
-SET build_progress = NULL, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-`
-
-func (q *Queries) ClearServiceBuildProgress(ctx context.Context, id string) error {
-	_, err := q.db.Exec(ctx, clearServiceBuildProgress, id)
-	return err
-}
-
 const countServicesByProjectID = `-- name: CountServicesByProjectID :one
 SELECT COUNT(*) FROM services WHERE project_id = $1 AND is_deleted = false
 `
@@ -44,30 +33,28 @@ func (q *Queries) CountServicesByUserID(ctx context.Context, userID string) (int
 
 const createService = `-- name: CreateService :one
 INSERT INTO services (
-    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, workflow_id, workflow_run_id, build_status, git_provider, build_config, memory, vcpus
+    id, user_id, project_id, repo, branch, server_uuid, name, build_pack, port, env_vars, git_provider, build_config, memory, vcpus
 ) VALUES (
-    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'queued', $13, $14, $15, $16
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14
 )
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
+RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at
 `
 
 type CreateServiceParams struct {
-	ID            string  `json:"id"`
-	UserID        string  `json:"user_id"`
-	ProjectID     string  `json:"project_id"`
-	Repo          string  `json:"repo"`
-	Branch        string  `json:"branch"`
-	ServerUuid    string  `json:"server_uuid"`
-	Name          *string `json:"name"`
-	BuildPack     string  `json:"build_pack"`
-	Port          string  `json:"port"`
-	EnvVars       []byte  `json:"env_vars"`
-	WorkflowID    string  `json:"workflow_id"`
-	WorkflowRunID *string `json:"workflow_run_id"`
-	GitProvider   string  `json:"git_provider"`
-	BuildConfig   []byte  `json:"build_config"`
-	Memory        string  `json:"memory"`
-	Vcpus         string  `json:"vcpus"`
+	ID          string  `json:"id"`
+	UserID      string  `json:"user_id"`
+	ProjectID   string  `json:"project_id"`
+	Repo        string  `json:"repo"`
+	Branch      string  `json:"branch"`
+	ServerUuid  string  `json:"server_uuid"`
+	Name        *string `json:"name"`
+	BuildPack   string  `json:"build_pack"`
+	Port        string  `json:"port"`
+	EnvVars     []byte  `json:"env_vars"`
+	GitProvider string  `json:"git_provider"`
+	BuildConfig []byte  `json:"build_config"`
+	Memory      string  `json:"memory"`
+	Vcpus       string  `json:"vcpus"`
 }
 
 func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (Service, error) {
@@ -82,8 +69,6 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 		arg.BuildPack,
 		arg.Port,
 		arg.EnvVars,
-		arg.WorkflowID,
-		arg.WorkflowRunID,
 		arg.GitProvider,
 		arg.BuildConfig,
 		arg.Memory,
@@ -93,30 +78,25 @@ func (q *Queries) CreateService(ctx context.Context, arg CreateServiceParams) (S
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
+		&i.ProjectID,
 		&i.Repo,
 		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
 		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
+		&i.Name,
+		&i.Port,
+		&i.BuildPack,
+		&i.EnvVars,
+		&i.BuildConfig,
 		&i.Memory,
 		&i.Vcpus,
-		&i.BuildConfig,
+		&i.PublishDirectory,
+		&i.Fqdn,
+		&i.CustomDomain,
+		&i.ServerUuid,
+		&i.CurrentDeploymentID,
+		&i.IsDeleted,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
@@ -131,7 +111,7 @@ func (q *Queries) DeleteService(ctx context.Context, id string) error {
 }
 
 const getServiceByID = `-- name: GetServiceByID :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services WHERE id = $1 AND is_deleted = false
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services WHERE id = $1 AND is_deleted = false
 `
 
 func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error) {
@@ -140,36 +120,31 @@ func (q *Queries) GetServiceByID(ctx context.Context, id string) (Service, error
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
+		&i.ProjectID,
 		&i.Repo,
 		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
 		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
+		&i.Name,
+		&i.Port,
+		&i.BuildPack,
+		&i.EnvVars,
+		&i.BuildConfig,
 		&i.Memory,
 		&i.Vcpus,
-		&i.BuildConfig,
+		&i.PublishDirectory,
+		&i.Fqdn,
+		&i.CustomDomain,
+		&i.ServerUuid,
+		&i.CurrentDeploymentID,
+		&i.IsDeleted,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getServiceByNameAndProject = `-- name: GetServiceByNameAndProject :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE name = $1 AND project_id = $2 AND is_deleted = false
 `
 
@@ -184,36 +159,31 @@ func (q *Queries) GetServiceByNameAndProject(ctx context.Context, arg GetService
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
+		&i.ProjectID,
 		&i.Repo,
 		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
 		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
+		&i.Name,
+		&i.Port,
+		&i.BuildPack,
+		&i.EnvVars,
+		&i.BuildConfig,
 		&i.Memory,
 		&i.Vcpus,
-		&i.BuildConfig,
+		&i.PublishDirectory,
+		&i.Fqdn,
+		&i.CustomDomain,
+		&i.ServerUuid,
+		&i.CurrentDeploymentID,
+		&i.IsDeleted,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getServiceByNameAndUserProject = `-- name: GetServiceByNameAndUserProject :one
-SELECT a.id, a.user_id, a.build_status, a.runtime_status, a.error_message, a.repo, a.branch, a.server_uuid, a.name, a.build_pack, a.port, a.env_vars, a.fqdn, a.workflow_id, a.workflow_run_id, a.created_at, a.updated_at, a.project_id, a.commit_hash, a.is_deleted, a.git_provider, a.custom_domain, a.build_progress, a.memory, a.vcpus, a.build_config FROM services a
+SELECT a.id, a.user_id, a.project_id, a.repo, a.branch, a.git_provider, a.name, a.port, a.build_pack, a.env_vars, a.build_config, a.memory, a.vcpus, a.publish_directory, a.fqdn, a.custom_domain, a.server_uuid, a.current_deployment_id, a.is_deleted, a.created_at, a.updated_at FROM services a
 JOIN projects p ON a.project_id = p.id
 WHERE a.name = $1
   AND p.user_id = $2
@@ -235,74 +205,31 @@ func (q *Queries) GetServiceByNameAndUserProject(ctx context.Context, arg GetSer
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
+		&i.ProjectID,
 		&i.Repo,
 		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
 		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
+		&i.Name,
+		&i.Port,
+		&i.BuildPack,
+		&i.EnvVars,
+		&i.BuildConfig,
 		&i.Memory,
 		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const getServiceByWorkflowID = `-- name: GetServiceByWorkflowID :one
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services WHERE workflow_id = $1 AND is_deleted = false
-`
-
-func (q *Queries) GetServiceByWorkflowID(ctx context.Context, workflowID string) (Service, error) {
-	row := q.db.QueryRow(ctx, getServiceByWorkflowID, workflowID)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
+		&i.PublishDirectory,
 		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
+		&i.CustomDomain,
+		&i.ServerUuid,
+		&i.CurrentDeploymentID,
+		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
 	)
 	return i, err
 }
 
 const getServicesByRepoBranch = `-- name: GetServicesByRepoBranch :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE repo = $1 AND branch = $2 AND is_deleted = false
 `
 
@@ -323,30 +250,25 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.BuildStatus,
-			&i.RuntimeStatus,
-			&i.ErrorMessage,
+			&i.ProjectID,
 			&i.Repo,
 			&i.Branch,
-			&i.ServerUuid,
-			&i.Name,
-			&i.BuildPack,
-			&i.Port,
-			&i.EnvVars,
-			&i.Fqdn,
-			&i.WorkflowID,
-			&i.WorkflowRunID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ProjectID,
-			&i.CommitHash,
-			&i.IsDeleted,
 			&i.GitProvider,
-			&i.CustomDomain,
-			&i.BuildProgress,
+			&i.Name,
+			&i.Port,
+			&i.BuildPack,
+			&i.EnvVars,
+			&i.BuildConfig,
 			&i.Memory,
 			&i.Vcpus,
-			&i.BuildConfig,
+			&i.PublishDirectory,
+			&i.Fqdn,
+			&i.CustomDomain,
+			&i.ServerUuid,
+			&i.CurrentDeploymentID,
+			&i.IsDeleted,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -359,7 +281,7 @@ func (q *Queries) GetServicesByRepoBranch(ctx context.Context, arg GetServicesBy
 }
 
 const getServicesByRepoBranchProvider = `-- name: GetServicesByRepoBranchProvider :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE repo = $1 AND branch = $2 AND git_provider = $3 AND is_deleted = false
 `
 
@@ -381,30 +303,25 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.BuildStatus,
-			&i.RuntimeStatus,
-			&i.ErrorMessage,
+			&i.ProjectID,
 			&i.Repo,
 			&i.Branch,
-			&i.ServerUuid,
-			&i.Name,
-			&i.BuildPack,
-			&i.Port,
-			&i.EnvVars,
-			&i.Fqdn,
-			&i.WorkflowID,
-			&i.WorkflowRunID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ProjectID,
-			&i.CommitHash,
-			&i.IsDeleted,
 			&i.GitProvider,
-			&i.CustomDomain,
-			&i.BuildProgress,
+			&i.Name,
+			&i.Port,
+			&i.BuildPack,
+			&i.EnvVars,
+			&i.BuildConfig,
 			&i.Memory,
 			&i.Vcpus,
-			&i.BuildConfig,
+			&i.PublishDirectory,
+			&i.Fqdn,
+			&i.CustomDomain,
+			&i.ServerUuid,
+			&i.CurrentDeploymentID,
+			&i.IsDeleted,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -417,7 +334,7 @@ func (q *Queries) GetServicesByRepoBranchProvider(ctx context.Context, arg GetSe
 }
 
 const listServicesByProjectID = `-- name: ListServicesByProjectID :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE project_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -441,30 +358,25 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.BuildStatus,
-			&i.RuntimeStatus,
-			&i.ErrorMessage,
+			&i.ProjectID,
 			&i.Repo,
 			&i.Branch,
-			&i.ServerUuid,
-			&i.Name,
-			&i.BuildPack,
-			&i.Port,
-			&i.EnvVars,
-			&i.Fqdn,
-			&i.WorkflowID,
-			&i.WorkflowRunID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ProjectID,
-			&i.CommitHash,
-			&i.IsDeleted,
 			&i.GitProvider,
-			&i.CustomDomain,
-			&i.BuildProgress,
+			&i.Name,
+			&i.Port,
+			&i.BuildPack,
+			&i.EnvVars,
+			&i.BuildConfig,
 			&i.Memory,
 			&i.Vcpus,
-			&i.BuildConfig,
+			&i.PublishDirectory,
+			&i.Fqdn,
+			&i.CustomDomain,
+			&i.ServerUuid,
+			&i.CurrentDeploymentID,
+			&i.IsDeleted,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -477,7 +389,7 @@ func (q *Queries) ListServicesByProjectID(ctx context.Context, arg ListServicesB
 }
 
 const listServicesByUserID = `-- name: ListServicesByUserID :many
-SELECT id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config FROM services
+SELECT id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at FROM services
 WHERE user_id = $1 AND is_deleted = false
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -501,30 +413,25 @@ func (q *Queries) ListServicesByUserID(ctx context.Context, arg ListServicesByUs
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
-			&i.BuildStatus,
-			&i.RuntimeStatus,
-			&i.ErrorMessage,
+			&i.ProjectID,
 			&i.Repo,
 			&i.Branch,
-			&i.ServerUuid,
-			&i.Name,
-			&i.BuildPack,
-			&i.Port,
-			&i.EnvVars,
-			&i.Fqdn,
-			&i.WorkflowID,
-			&i.WorkflowRunID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.ProjectID,
-			&i.CommitHash,
-			&i.IsDeleted,
 			&i.GitProvider,
-			&i.CustomDomain,
-			&i.BuildProgress,
+			&i.Name,
+			&i.Port,
+			&i.BuildPack,
+			&i.EnvVars,
+			&i.BuildConfig,
 			&i.Memory,
 			&i.Vcpus,
-			&i.BuildConfig,
+			&i.PublishDirectory,
+			&i.Fqdn,
+			&i.CustomDomain,
+			&i.ServerUuid,
+			&i.CurrentDeploymentID,
+			&i.IsDeleted,
+			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -536,11 +443,43 @@ func (q *Queries) ListServicesByUserID(ctx context.Context, arg ListServicesByUs
 	return items, nil
 }
 
+const setCurrentDeploymentID = `-- name: SetCurrentDeploymentID :exec
+UPDATE services
+SET current_deployment_id = $2, updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+type SetCurrentDeploymentIDParams struct {
+	ID                  string  `json:"id"`
+	CurrentDeploymentID *string `json:"current_deployment_id"`
+}
+
+func (q *Queries) SetCurrentDeploymentID(ctx context.Context, arg SetCurrentDeploymentIDParams) error {
+	_, err := q.db.Exec(ctx, setCurrentDeploymentID, arg.ID, arg.CurrentDeploymentID)
+	return err
+}
+
+const setServiceFQDN = `-- name: SetServiceFQDN :exec
+UPDATE services
+SET fqdn = $2, updated_at = NOW()
+WHERE id = $1 AND is_deleted = false
+`
+
+type SetServiceFQDNParams struct {
+	ID   string  `json:"id"`
+	Fqdn *string `json:"fqdn"`
+}
+
+func (q *Queries) SetServiceFQDN(ctx context.Context, arg SetServiceFQDNParams) error {
+	_, err := q.db.Exec(ctx, setServiceFQDN, arg.ID, arg.Fqdn)
+	return err
+}
+
 const softDeleteService = `-- name: SoftDeleteService :one
 UPDATE services
 SET is_deleted = true, updated_at = NOW()
 WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
+RETURNING id, user_id, project_id, repo, branch, git_provider, name, port, build_pack, env_vars, build_config, memory, vcpus, publish_directory, fqdn, custom_domain, server_uuid, current_deployment_id, is_deleted, created_at, updated_at
 `
 
 func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, error) {
@@ -549,288 +488,25 @@ func (q *Queries) SoftDeleteService(ctx context.Context, id string) (Service, er
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
+		&i.ProjectID,
 		&i.Repo,
 		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
 		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
+		&i.Name,
+		&i.Port,
+		&i.BuildPack,
+		&i.EnvVars,
+		&i.BuildConfig,
 		&i.Memory,
 		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const updateBuildStatus = `-- name: UpdateBuildStatus :one
-UPDATE services
-SET build_status = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
-`
-
-type UpdateBuildStatusParams struct {
-	ID          string `json:"id"`
-	BuildStatus string `json:"build_status"`
-}
-
-func (q *Queries) UpdateBuildStatus(ctx context.Context, arg UpdateBuildStatusParams) (Service, error) {
-	row := q.db.QueryRow(ctx, updateBuildStatus, arg.ID, arg.BuildStatus)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
+		&i.PublishDirectory,
 		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
+		&i.CustomDomain,
+		&i.ServerUuid,
+		&i.CurrentDeploymentID,
+		&i.IsDeleted,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
 	)
 	return i, err
-}
-
-const updateRuntimeStatus = `-- name: UpdateRuntimeStatus :one
-UPDATE services
-SET runtime_status = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
-`
-
-type UpdateRuntimeStatusParams struct {
-	ID            string  `json:"id"`
-	RuntimeStatus *string `json:"runtime_status"`
-}
-
-func (q *Queries) UpdateRuntimeStatus(ctx context.Context, arg UpdateRuntimeStatusParams) (Service, error) {
-	row := q.db.QueryRow(ctx, updateRuntimeStatus, arg.ID, arg.RuntimeStatus)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const updateServiceBuildProgress = `-- name: UpdateServiceBuildProgress :exec
-UPDATE services
-SET build_progress = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-`
-
-type UpdateServiceBuildProgressParams struct {
-	ID            string `json:"id"`
-	BuildProgress []byte `json:"build_progress"`
-}
-
-func (q *Queries) UpdateServiceBuildProgress(ctx context.Context, arg UpdateServiceBuildProgressParams) error {
-	_, err := q.db.Exec(ctx, updateServiceBuildProgress, arg.ID, arg.BuildProgress)
-	return err
-}
-
-const updateServiceFailed = `-- name: UpdateServiceFailed :one
-UPDATE services
-SET build_status = 'failed', error_message = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
-`
-
-type UpdateServiceFailedParams struct {
-	ID           string  `json:"id"`
-	ErrorMessage *string `json:"error_message"`
-}
-
-func (q *Queries) UpdateServiceFailed(ctx context.Context, arg UpdateServiceFailedParams) (Service, error) {
-	row := q.db.QueryRow(ctx, updateServiceFailed, arg.ID, arg.ErrorMessage)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const updateServiceRedeploying = `-- name: UpdateServiceRedeploying :one
-UPDATE services
-SET build_status = 'building', updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
-`
-
-func (q *Queries) UpdateServiceRedeploying(ctx context.Context, id string) (Service, error) {
-	row := q.db.QueryRow(ctx, updateServiceRedeploying, id)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const updateServiceRunning = `-- name: UpdateServiceRunning :one
-UPDATE services
-SET build_status = 'success', runtime_status = 'running', fqdn = $2, commit_hash = $3, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-RETURNING id, user_id, build_status, runtime_status, error_message, repo, branch, server_uuid, name, build_pack, port, env_vars, fqdn, workflow_id, workflow_run_id, created_at, updated_at, project_id, commit_hash, is_deleted, git_provider, custom_domain, build_progress, memory, vcpus, build_config
-`
-
-type UpdateServiceRunningParams struct {
-	ID         string  `json:"id"`
-	Fqdn       *string `json:"fqdn"`
-	CommitHash *string `json:"commit_hash"`
-}
-
-func (q *Queries) UpdateServiceRunning(ctx context.Context, arg UpdateServiceRunningParams) (Service, error) {
-	row := q.db.QueryRow(ctx, updateServiceRunning, arg.ID, arg.Fqdn, arg.CommitHash)
-	var i Service
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BuildStatus,
-		&i.RuntimeStatus,
-		&i.ErrorMessage,
-		&i.Repo,
-		&i.Branch,
-		&i.ServerUuid,
-		&i.Name,
-		&i.BuildPack,
-		&i.Port,
-		&i.EnvVars,
-		&i.Fqdn,
-		&i.WorkflowID,
-		&i.WorkflowRunID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.ProjectID,
-		&i.CommitHash,
-		&i.IsDeleted,
-		&i.GitProvider,
-		&i.CustomDomain,
-		&i.BuildProgress,
-		&i.Memory,
-		&i.Vcpus,
-		&i.BuildConfig,
-	)
-	return i, err
-}
-
-const updateWorkflowRunID = `-- name: UpdateWorkflowRunID :exec
-UPDATE services
-SET workflow_run_id = $2, updated_at = NOW()
-WHERE id = $1 AND is_deleted = false
-`
-
-type UpdateWorkflowRunIDParams struct {
-	ID            string  `json:"id"`
-	WorkflowRunID *string `json:"workflow_run_id"`
-}
-
-func (q *Queries) UpdateWorkflowRunID(ctx context.Context, arg UpdateWorkflowRunIDParams) error {
-	_, err := q.db.Exec(ctx, updateWorkflowRunID, arg.ID, arg.WorkflowRunID)
-	return err
 }

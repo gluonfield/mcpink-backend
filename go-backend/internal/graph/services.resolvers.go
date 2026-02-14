@@ -65,6 +65,9 @@ func (r *queryResolver) ListServices(ctx context.Context, first *int32, after *s
 	nodes := make([]*model.Service, len(dbServices))
 	for i, dbSvc := range dbServices {
 		nodes[i] = dbServiceToModel(&dbSvc)
+		if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
+			enrichServiceWithDeployment(nodes[i], dep)
+		}
 		if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
 			nodes[i].CustomDomain = &cd.Domain
 			nodes[i].CustomDomainStatus = &cd.Status
@@ -103,6 +106,9 @@ func (r *queryResolver) ServiceDetails(ctx context.Context, id string) (*model.S
 	}
 
 	svcModel := dbServiceToModel(&dbSvc)
+	if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
+		enrichServiceWithDeployment(svcModel, dep)
+	}
 	if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
 		svcModel.CustomDomain = &cd.Domain
 		svcModel.CustomDomainStatus = &cd.Status

@@ -33,8 +33,7 @@ type Service {
   name: String
   repo: String!
   branch: String!
-  buildStatus: String!
-  runtimeStatus: String
+  status: String!
   errorMessage: String
   envVars: [EnvVar!]!
   fqdn: String

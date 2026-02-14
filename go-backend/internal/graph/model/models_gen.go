@@ -105,8 +105,7 @@ type Service struct {
 	Name               *string   `json:"name,omitempty"`
 	Repo               string    `json:"repo"`
 	Branch             string    `json:"branch"`
-	BuildStatus        string    `json:"buildStatus"`
-	RuntimeStatus      *string   `json:"runtimeStatus,omitempty"`
+	Status             string    `json:"status"`
 	ErrorMessage       *string   `json:"errorMessage,omitempty"`
 	EnvVars            []*EnvVar `json:"envVars"`
 	Fqdn               *string   `json:"fqdn,omitempty"`

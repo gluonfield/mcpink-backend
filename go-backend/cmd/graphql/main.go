@@ -45,6 +45,7 @@ func main() {
 			pg.NewUserQueries,
 			pg.NewAPIKeyQueries,
 			pg.NewServiceQueries,
+			pg.NewDeploymentQueries,
 			pg.NewProjectQueries,
 			pg.NewGitHubCredsQueries,
 			pg.NewResourceQueries,

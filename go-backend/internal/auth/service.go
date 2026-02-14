@@ -178,8 +178,8 @@ func (s *Service) LinkGitHub(ctx context.Context, userID, code string) error {
 		// No existing creds — create new
 		_, err = s.githubCredsQ.CreateGitHubCreds(ctx, githubcreds.CreateGitHubCredsParams{
 			UserID:            userID,
-			GithubID:          ghUser.ID,
-			GithubOauthToken:  encryptedToken,
+			GithubID:          &ghUser.ID,
+			GithubOauthToken:  &encryptedToken,
 			GithubOauthScopes: newScopes,
 		})
 		if err != nil {
@@ -191,16 +191,18 @@ func (s *Service) LinkGitHub(ctx context.Context, userID, code string) error {
 		finalScopes := newScopes
 
 		if contains(existingCreds.GithubOauthScopes, "repo") && !contains(newScopes, "repo") {
-			oldTokenPlain, decryptErr := s.DecryptToken(existingCreds.GithubOauthToken)
-			if decryptErr == nil && s.githubOAuth.IsTokenValid(ctx, oldTokenPlain) {
-				finalToken = existingCreds.GithubOauthToken
-				finalScopes = existingCreds.GithubOauthScopes
+			if existingCreds.GithubOauthToken != nil {
+				oldTokenPlain, decryptErr := s.DecryptToken(*existingCreds.GithubOauthToken)
+				if decryptErr == nil && s.githubOAuth.IsTokenValid(ctx, oldTokenPlain) {
+					finalToken = *existingCreds.GithubOauthToken
+					finalScopes = existingCreds.GithubOauthScopes
+				}
 			}
 		}
 
 		_, err = s.githubCredsQ.UpdateGitHubOAuthToken(ctx, githubcreds.UpdateGitHubOAuthTokenParams{
 			UserID:            userID,
-			GithubOauthToken:  finalToken,
+			GithubOauthToken:  &finalToken,
 			GithubOauthScopes: finalScopes,
 		})
 		if err != nil {

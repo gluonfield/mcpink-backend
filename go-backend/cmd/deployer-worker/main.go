@@ -37,6 +37,7 @@ func main() {
 			bootstrap.NewK8sClient,
 			pg.NewDatabase,
 			pg.NewServiceQueries,
+			pg.NewDeploymentQueries,
 			pg.NewProjectQueries,
 			pg.NewUserQueries,
 			pg.NewCustomDomainQueries,

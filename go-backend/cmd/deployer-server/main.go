@@ -36,6 +36,7 @@ func main() {
 			bootstrap.LoadConfig[config],
 			pg.NewDatabase,
 			pg.NewServiceQueries,
+			pg.NewDeploymentQueries,
 			pg.NewGitHubCredsQueries,
 			pg.NewInternalReposQueries,
 			bootstrap.CreateTemporalClient,

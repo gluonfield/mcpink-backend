@@ -4,6 +4,7 @@ const TaskQueue = "k8s-native"
 
 type DeployServiceInput struct {
 	ServiceID      string
+	DeploymentID   string
 	Repo           string
 	Branch         string
 	GitProvider    string
@@ -43,6 +44,7 @@ type DeleteServiceWorkflowResult struct {
 
 type BuildServiceWorkflowInput struct {
 	ServiceID      string
+	DeploymentID   string
 	Repo           string
 	Branch         string
 	GitProvider    string
@@ -149,20 +151,32 @@ type DeleteServiceResult struct {
 	Status string
 }
 
-type UpdateBuildStatusInput struct {
-	ServiceID   string
-	BuildStatus string
+// Deployment-aware status activity inputs
+
+type UpdateDeploymentBuildingInput struct {
+	DeploymentID string
 }
 
-type MarkServiceRunningInput struct {
-	ServiceID string
-	URL       string
-	CommitSHA string
+type UpdateDeploymentDeployingInput struct {
+	DeploymentID string
 }
 
-type MarkServiceFailedInput struct {
+type MarkDeploymentActiveInput struct {
 	ServiceID    string
+	DeploymentID string
+	URL          string
+	CommitSHA    string
+	ImageRef     string
+}
+
+type MarkDeploymentFailedInput struct {
+	DeploymentID string
 	ErrorMessage string
+}
+
+type UpdateDeploymentBuildProgressInput struct {
+	DeploymentID  string
+	BuildProgress []byte
 }
 
 type AttachCustomDomainWorkflowInput struct {

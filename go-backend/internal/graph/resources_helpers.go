@@ -28,7 +28,7 @@ func dbResourceToModel(dbResource *resources.Resource) *model.Resource {
 		Region:    dbResource.Region,
 		Status:    dbResource.Status,
 		Metadata:  metadata,
-		ProjectID: dbResource.ProjectID,
+		ProjectID: &dbResource.ProjectID,
 		CreatedAt: dbResource.CreatedAt.Time,
 		UpdatedAt: dbResource.UpdatedAt.Time,
 	}

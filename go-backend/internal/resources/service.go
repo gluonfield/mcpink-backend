@@ -108,15 +108,19 @@ func (s *Service) ProvisionDatabase(ctx context.Context, input ProvisionDatabase
 		return nil, fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
+	projectID := ""
+	if input.ProjectID != nil {
+		projectID = *input.ProjectID
+	}
 	resource, err := s.resourcesQ.CreateResource(ctx, dbresources.CreateResourceParams{
 		UserID:      input.UserID,
-		ProjectID:   input.ProjectID,
+		ProjectID:   projectID,
 		Name:        input.Name,
 		Type:        TypeSQLite,
 		Provider:    ProviderTurso,
 		Region:      input.Region,
 		ExternalID:  &db.DbID,
-		Credentials: encryptedCreds,
+		Credentials: []byte(encryptedCreds),
 		Metadata:    metadataJSON,
 		Status:      StatusActive,
 	})
@@ -214,7 +218,7 @@ func (s *Service) dbResourceToResource(dbr *dbresources.Resource, decryptCreds b
 	resource := &Resource{
 		ID:         dbr.ID,
 		UserID:     dbr.UserID,
-		ProjectID:  dbr.ProjectID,
+		ProjectID:  &dbr.ProjectID,
 		Name:       dbr.Name,
 		Type:       dbr.Type,
 		Provider:   dbr.Provider,
@@ -232,8 +236,8 @@ func (s *Service) dbResourceToResource(dbr *dbresources.Resource, decryptCreds b
 		}
 	}
 
-	if decryptCreds && dbr.Credentials != "" {
-		creds, err := decryptCredentials(dbr.Credentials, s.authConfig.APIKeyEncryptionKey)
+	if decryptCreds && len(dbr.Credentials) > 0 {
+		creds, err := decryptCredentials(string(dbr.Credentials), s.authConfig.APIKeyEncryptionKey)
 		if err != nil {
 			s.logger.Error("failed to decrypt credentials", "error", err)
 		} else {

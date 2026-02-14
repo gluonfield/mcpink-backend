@@ -10,7 +10,7 @@ import (
 )
 
 const createFirebaseUser = `-- name: CreateFirebaseUser :one
-INSERT INTO users (id, email, display_name, avatar_url) VALUES ($1, $2, $3, $4) RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name
+INSERT INTO users (id, email, display_name, avatar_url) VALUES ($1, $2, $3, $4) RETURNING id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at
 `
 
 type CreateFirebaseUserParams struct {
@@ -29,15 +29,17 @@ func (q *Queries) CreateFirebaseUser(ctx context.Context, arg CreateFirebaseUser
 	)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
@@ -45,7 +47,7 @@ func (q *Queries) CreateFirebaseUser(ctx context.Context, arg CreateFirebaseUser
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, github_id, github_username, avatar_url)
 VALUES ($1, $2, $3, $4)
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name
+RETURNING id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at
 `
 
 type CreateUserParams struct {
@@ -64,15 +66,17 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 	)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
@@ -87,64 +91,70 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getUserByGitHubID = `-- name: GetUserByGitHubID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name FROM users WHERE github_id = $1
+SELECT id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at FROM users WHERE github_id = $1
 `
 
 func (q *Queries) GetUserByGitHubID(ctx context.Context, githubID *int64) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByGitHubID, githubID)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByGiteaUsername = `-- name: GetUserByGiteaUsername :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name FROM users WHERE gitea_username = $1
+SELECT id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at FROM users WHERE gitea_username = $1
 `
 
 func (q *Queries) GetUserByGiteaUsername(ctx context.Context, giteaUsername *string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByGiteaUsername, giteaUsername)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name FROM users WHERE id = $1
+SELECT id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id string) (User, error) {
 	row := q.db.QueryRow(ctx, getUserByID, id)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
@@ -153,7 +163,7 @@ const linkGitHub = `-- name: LinkGitHub :one
 UPDATE users
 SET github_id = $2, github_username = $3, avatar_url = $4, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name
+RETURNING id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at
 `
 
 type LinkGitHubParams struct {
@@ -172,15 +182,17 @@ func (q *Queries) LinkGitHub(ctx context.Context, arg LinkGitHubParams) (User, e
 	)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
@@ -189,7 +201,7 @@ const setGiteaUsername = `-- name: SetGiteaUsername :one
 UPDATE users
 SET gitea_username = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name
+RETURNING id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at
 `
 
 type SetGiteaUsernameParams struct {
@@ -201,15 +213,17 @@ func (q *Queries) SetGiteaUsername(ctx context.Context, arg SetGiteaUsernamePara
 	row := q.db.QueryRow(ctx, setGiteaUsername, arg.ID, arg.GiteaUsername)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }
@@ -218,7 +232,7 @@ const updateUserProfile = `-- name: UpdateUserProfile :one
 UPDATE users
 SET github_username = $2, avatar_url = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING created_at, updated_at, github_id, github_username, avatar_url, id, gitea_username, email, display_name
+RETURNING id, github_id, email, firebase_uid, github_username, gitea_username, avatar_url, display_name, github_scopes, created_at, updated_at
 `
 
 type UpdateUserProfileParams struct {
@@ -231,15 +245,17 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 	row := q.db.QueryRow(ctx, updateUserProfile, arg.ID, arg.GithubUsername, arg.AvatarUrl)
 	var i User
 	err := row.Scan(
+		&i.ID,
+		&i.GithubID,
+		&i.Email,
+		&i.FirebaseUid,
+		&i.GithubUsername,
+		&i.GiteaUsername,
+		&i.AvatarUrl,
+		&i.DisplayName,
+		&i.GithubScopes,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.GithubID,
-		&i.GithubUsername,
-		&i.AvatarUrl,
-		&i.ID,
-		&i.GiteaUsername,
-		&i.Email,
-		&i.DisplayName,
 	)
 	return i, err
 }

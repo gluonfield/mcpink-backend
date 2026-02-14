@@ -14,7 +14,7 @@ import (
 const createAPIKey = `-- name: CreateAPIKey :one
 INSERT INTO api_keys (id, user_id, name, key_hash, key_prefix)
 VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4)
-RETURNING name, key_hash, key_prefix, last_used_at, created_at, revoked_at, user_id, id
+RETURNING id, user_id, name, key_hash, key_prefix, last_used_at, revoked_at, created_at, updated_at
 `
 
 type CreateAPIKeyParams struct {
@@ -33,20 +33,21 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 	)
 	var i ApiKey
 	err := row.Scan(
+		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
-		&i.CreatedAt,
 		&i.RevokedAt,
-		&i.UserID,
-		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getAPIKeyByPrefix = `-- name: GetAPIKeyByPrefix :one
-SELECT name, key_hash, key_prefix, last_used_at, created_at, revoked_at, user_id, id FROM api_keys
+SELECT id, user_id, name, key_hash, key_prefix, last_used_at, revoked_at, created_at, updated_at FROM api_keys
 WHERE key_prefix = $1 AND revoked_at IS NULL
 `
 
@@ -54,21 +55,22 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, keyPrefix string) (ApiK
 	row := q.db.QueryRow(ctx, getAPIKeyByPrefix, keyPrefix)
 	var i ApiKey
 	err := row.Scan(
+		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
-		&i.CreatedAt,
 		&i.RevokedAt,
-		&i.UserID,
-		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
 const getAPIKeyWithUser = `-- name: GetAPIKeyWithUser :one
 SELECT
-    ak.name, ak.key_hash, ak.key_prefix, ak.last_used_at, ak.created_at, ak.revoked_at, ak.user_id, ak.id,
+    ak.id, ak.user_id, ak.name, ak.key_hash, ak.key_prefix, ak.last_used_at, ak.revoked_at, ak.created_at, ak.updated_at,
     u.github_id,
     u.github_username,
     u.avatar_url
@@ -78,14 +80,15 @@ WHERE ak.key_prefix = $1 AND ak.revoked_at IS NULL
 `
 
 type GetAPIKeyWithUserRow struct {
+	ID             string             `json:"id"`
+	UserID         string             `json:"user_id"`
 	Name           string             `json:"name"`
 	KeyHash        string             `json:"key_hash"`
 	KeyPrefix      string             `json:"key_prefix"`
 	LastUsedAt     pgtype.Timestamptz `json:"last_used_at"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	RevokedAt      pgtype.Timestamptz `json:"revoked_at"`
-	UserID         string             `json:"user_id"`
-	ID             string             `json:"id"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
 	GithubID       *int64             `json:"github_id"`
 	GithubUsername *string            `json:"github_username"`
 	AvatarUrl      *string            `json:"avatar_url"`
@@ -95,14 +98,15 @@ func (q *Queries) GetAPIKeyWithUser(ctx context.Context, keyPrefix string) (GetA
 	row := q.db.QueryRow(ctx, getAPIKeyWithUser, keyPrefix)
 	var i GetAPIKeyWithUserRow
 	err := row.Scan(
+		&i.ID,
+		&i.UserID,
 		&i.Name,
 		&i.KeyHash,
 		&i.KeyPrefix,
 		&i.LastUsedAt,
-		&i.CreatedAt,
 		&i.RevokedAt,
-		&i.UserID,
-		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 		&i.GithubID,
 		&i.GithubUsername,
 		&i.AvatarUrl,

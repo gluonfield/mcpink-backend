@@ -4,43 +4,85 @@ import (
 	"context"
 	"fmt"
 
+	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 )
 
-func (a *Activities) UpdateBuildStatus(ctx context.Context, input UpdateBuildStatusInput) error {
-	_, err := a.servicesQ.UpdateBuildStatus(ctx, services.UpdateBuildStatusParams{
-		ID:          input.ServiceID,
-		BuildStatus: input.BuildStatus,
-	})
-	if err != nil {
-		return fmt.Errorf("update build status to %s: %w", input.BuildStatus, err)
+func (a *Activities) UpdateDeploymentBuilding(ctx context.Context, input UpdateDeploymentBuildingInput) error {
+	if err := a.deploymentsQ.UpdateDeploymentBuilding(ctx, input.DeploymentID); err != nil {
+		return fmt.Errorf("update deployment building: %w", err)
 	}
-	a.logger.Info("Updated build status", "serviceID", input.ServiceID, "status", input.BuildStatus)
+	a.logger.Info("Deployment status → building", "deploymentID", input.DeploymentID)
 	return nil
 }
 
-func (a *Activities) MarkServiceRunning(ctx context.Context, input MarkServiceRunningInput) error {
-	_, err := a.servicesQ.UpdateServiceRunning(ctx, services.UpdateServiceRunningParams{
-		ID:         input.ServiceID,
-		Fqdn:       &input.URL,
+func (a *Activities) UpdateDeploymentDeploying(ctx context.Context, input UpdateDeploymentDeployingInput) error {
+	if err := a.deploymentsQ.UpdateDeploymentDeploying(ctx, input.DeploymentID); err != nil {
+		return fmt.Errorf("update deployment deploying: %w", err)
+	}
+	a.logger.Info("Deployment status → deploying", "deploymentID", input.DeploymentID)
+	return nil
+}
+
+func (a *Activities) MarkDeploymentActive(ctx context.Context, input MarkDeploymentActiveInput) error {
+	// Supersede the currently-active deployment (if any)
+	if err := a.deploymentsQ.SupersedeActiveDeployment(ctx, input.ServiceID); err != nil {
+		return fmt.Errorf("supersede active deployment: %w", err)
+	}
+
+	// Mark this deployment as active
+	if err := a.deploymentsQ.MarkDeploymentActive(ctx, deploymentsdb.MarkDeploymentActiveParams{
+		ID:         input.DeploymentID,
 		CommitHash: &input.CommitSHA,
-	})
-	if err != nil {
-		return fmt.Errorf("mark service running: %w", err)
+		ImageRef:   &input.ImageRef,
+	}); err != nil {
+		return fmt.Errorf("mark deployment active: %w", err)
 	}
-	a.logger.Info("Marked service running", "serviceID", input.ServiceID, "url", input.URL)
+
+	// Set the pointer on the service
+	if err := a.servicesQ.SetCurrentDeploymentID(ctx, services.SetCurrentDeploymentIDParams{
+		ID:                  input.ServiceID,
+		CurrentDeploymentID: &input.DeploymentID,
+	}); err != nil {
+		return fmt.Errorf("set current deployment id: %w", err)
+	}
+
+	// Update service FQDN
+	if input.URL != "" {
+		if err := a.servicesQ.SetServiceFQDN(ctx, services.SetServiceFQDNParams{
+			ID:   input.ServiceID,
+			Fqdn: &input.URL,
+		}); err != nil {
+			a.logger.Warn("Failed to set service FQDN", "serviceID", input.ServiceID, "error", err)
+		}
+	}
+
+	a.logger.Info("Deployment status → active",
+		"deploymentID", input.DeploymentID,
+		"serviceID", input.ServiceID)
 	return nil
 }
 
-func (a *Activities) MarkServiceFailed(ctx context.Context, input MarkServiceFailedInput) error {
-	_, err := a.servicesQ.UpdateServiceFailed(ctx, services.UpdateServiceFailedParams{
-		ID:           input.ServiceID,
+func (a *Activities) MarkDeploymentFailed(ctx context.Context, input MarkDeploymentFailedInput) error {
+	if err := a.deploymentsQ.MarkDeploymentFailed(ctx, deploymentsdb.MarkDeploymentFailedParams{
+		ID:           input.DeploymentID,
 		ErrorMessage: &input.ErrorMessage,
-	})
-	if err != nil {
-		return fmt.Errorf("mark service failed: %w", err)
+	}); err != nil {
+		return fmt.Errorf("mark deployment failed: %w", err)
 	}
-	a.logger.Info("Marked service failed", "serviceID", input.ServiceID, "error", input.ErrorMessage)
+	a.logger.Info("Deployment status → failed",
+		"deploymentID", input.DeploymentID,
+		"error", input.ErrorMessage)
+	return nil
+}
+
+func (a *Activities) UpdateDeploymentBuildProgress(ctx context.Context, input UpdateDeploymentBuildProgressInput) error {
+	if err := a.deploymentsQ.UpdateDeploymentBuildProgress(ctx, deploymentsdb.UpdateDeploymentBuildProgressParams{
+		ID:            input.DeploymentID,
+		BuildProgress: input.BuildProgress,
+	}); err != nil {
+		return fmt.Errorf("update deployment build progress: %w", err)
+	}
 	return nil
 }
 

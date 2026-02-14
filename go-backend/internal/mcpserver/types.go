@@ -154,9 +154,8 @@ type GetServiceOutput struct {
 	Project            string         `json:"project"`
 	Repo               string         `json:"repo"`
 	Branch             string         `json:"branch"`
+	Status             string         `json:"status"`
 	CommitHash         string         `json:"commit_hash,omitempty"`
-	BuildStatus        string         `json:"build_status"`
-	RuntimeStatus      string         `json:"runtime_status"`
 	URL                *string        `json:"url,omitempty"`
 	CreatedAt          string         `json:"created_at"`
 	UpdatedAt          string         `json:"updated_at"`

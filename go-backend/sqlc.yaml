@@ -108,3 +108,15 @@ sql:
         emit_interface: true
         emit_empty_slices: true
         emit_pointers_for_null_types: true
+  - engine: "postgresql"
+    queries: "internal/storage/pg/queries/deployments"
+    schema: "internal/storage/pg/migrations"
+    gen:
+      go:
+        package: "deployments"
+        out: "internal/storage/pg/generated/deployments"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_empty_slices: true
+        emit_pointers_for_null_types: true

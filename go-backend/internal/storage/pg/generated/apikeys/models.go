@@ -9,14 +9,15 @@ import (
 )
 
 type ApiKey struct {
+	ID         string             `json:"id"`
+	UserID     string             `json:"user_id"`
 	Name       string             `json:"name"`
 	KeyHash    string             `json:"key_hash"`
 	KeyPrefix  string             `json:"key_prefix"`
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
-	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
-	UserID     string             `json:"user_id"`
-	ID         string             `json:"id"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type CustomDomain struct {
@@ -33,21 +34,50 @@ type CustomDomain struct {
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Deployment struct {
+	ID              string             `json:"id"`
+	ServiceID       string             `json:"service_id"`
+	WorkflowID      string             `json:"workflow_id"`
+	WorkflowRunID   *string            `json:"workflow_run_id"`
+	CommitHash      *string            `json:"commit_hash"`
+	ImageRef        *string            `json:"image_ref"`
+	BuildPack       string             `json:"build_pack"`
+	BuildConfig     []byte             `json:"build_config"`
+	EnvVarsSnapshot []byte             `json:"env_vars_snapshot"`
+	Memory          string             `json:"memory"`
+	Vcpus           string             `json:"vcpus"`
+	Port            string             `json:"port"`
+	Status          string             `json:"status"`
+	ErrorMessage    *string            `json:"error_message"`
+	BuildProgress   []byte             `json:"build_progress"`
+	Trigger         string             `json:"trigger"`
+	TriggerRef      *string            `json:"trigger_ref"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DnsRecord struct {
 	ID                 string             `json:"id"`
-	ServiceID          *string            `json:"service_id"`
-	CloudflareRecordID string             `json:"cloudflare_record_id"`
+	ServiceID          string             `json:"service_id"`
+	CloudflareRecordID *string            `json:"cloudflare_record_id"`
 	Subdomain          string             `json:"subdomain"`
 	FullDomain         string             `json:"full_domain"`
 	TargetIp           string             `json:"target_ip"`
+	Type               string             `json:"type"`
+	Name               string             `json:"name"`
+	Content            string             `json:"content"`
+	Proxied            bool               `json:"proxied"`
 	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type GithubCred struct {
 	ID                      string             `json:"id"`
 	UserID                  string             `json:"user_id"`
-	GithubID                int64              `json:"github_id"`
-	GithubOauthToken        string             `json:"github_oauth_token"`
+	GithubID                *int64             `json:"github_id"`
+	GithubOauthToken        *string            `json:"github_oauth_token"`
 	GithubOauthScopes       []string           `json:"github_oauth_scopes"`
 	GithubOauthUpdatedAt    pgtype.Timestamptz `json:"github_oauth_updated_at"`
 	GithubAppInstallationID *int64             `json:"github_app_installation_id"`
@@ -58,8 +88,10 @@ type GithubCred struct {
 type InternalRepo struct {
 	ID        string             `json:"id"`
 	UserID    string             `json:"user_id"`
+	Name      string             `json:"name"`
+	CloneUrl  string             `json:"clone_url"`
 	Provider  string             `json:"provider"`
-	RepoID    int64              `json:"repo_id"`
+	RepoID    *string            `json:"repo_id"`
 	FullName  string             `json:"full_name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
@@ -69,65 +101,64 @@ type Project struct {
 	ID        string             `json:"id"`
 	UserID    string             `json:"user_id"`
 	Name      string             `json:"name"`
+	Ref       string             `json:"ref"`
+	IsDefault bool               `json:"is_default"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
-	IsDefault bool               `json:"is_default"`
-	Ref       string             `json:"ref"`
 }
 
 type Resource struct {
-	ID          string             `json:"id"`
-	UserID      string             `json:"user_id"`
-	ProjectID   *string            `json:"project_id"`
-	Name        string             `json:"name"`
-	Type        string             `json:"type"`
-	Provider    string             `json:"provider"`
-	Region      string             `json:"region"`
-	ExternalID  *string            `json:"external_id"`
-	Credentials string             `json:"credentials"`
-	Metadata    []byte             `json:"metadata"`
-	Status      string             `json:"status"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ID            string             `json:"id"`
+	UserID        string             `json:"user_id"`
+	ProjectID     string             `json:"project_id"`
+	Name          string             `json:"name"`
+	Type          string             `json:"type"`
+	Provider      string             `json:"provider"`
+	Region        string             `json:"region"`
+	ExternalID    *string            `json:"external_id"`
+	ConnectionUrl *string            `json:"connection_url"`
+	AuthToken     *string            `json:"auth_token"`
+	Credentials   []byte             `json:"credentials"`
+	Metadata      []byte             `json:"metadata"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Service struct {
-	ID            string             `json:"id"`
-	UserID        string             `json:"user_id"`
-	BuildStatus   string             `json:"build_status"`
-	RuntimeStatus *string            `json:"runtime_status"`
-	ErrorMessage  *string            `json:"error_message"`
-	Repo          string             `json:"repo"`
-	Branch        string             `json:"branch"`
-	ServerUuid    string             `json:"server_uuid"`
-	Name          *string            `json:"name"`
-	BuildPack     string             `json:"build_pack"`
-	Port          string             `json:"port"`
-	EnvVars       []byte             `json:"env_vars"`
-	Fqdn          *string            `json:"fqdn"`
-	WorkflowID    string             `json:"workflow_id"`
-	WorkflowRunID *string            `json:"workflow_run_id"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
-	ProjectID     string             `json:"project_id"`
-	CommitHash    *string            `json:"commit_hash"`
-	IsDeleted     bool               `json:"is_deleted"`
-	GitProvider   string             `json:"git_provider"`
-	CustomDomain  *string            `json:"custom_domain"`
-	BuildProgress []byte             `json:"build_progress"`
-	Memory        string             `json:"memory"`
-	Vcpus         string             `json:"vcpus"`
-	BuildConfig   []byte             `json:"build_config"`
+	ID                  string             `json:"id"`
+	UserID              string             `json:"user_id"`
+	ProjectID           string             `json:"project_id"`
+	Repo                string             `json:"repo"`
+	Branch              string             `json:"branch"`
+	GitProvider         string             `json:"git_provider"`
+	Name                *string            `json:"name"`
+	Port                string             `json:"port"`
+	BuildPack           string             `json:"build_pack"`
+	EnvVars             []byte             `json:"env_vars"`
+	BuildConfig         []byte             `json:"build_config"`
+	Memory              string             `json:"memory"`
+	Vcpus               string             `json:"vcpus"`
+	PublishDirectory    *string            `json:"publish_directory"`
+	Fqdn                *string            `json:"fqdn"`
+	CustomDomain        *string            `json:"custom_domain"`
+	ServerUuid          string             `json:"server_uuid"`
+	CurrentDeploymentID *string            `json:"current_deployment_id"`
+	IsDeleted           bool               `json:"is_deleted"`
+	CreatedAt           pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 }
 
 type User struct {
+	ID             string             `json:"id"`
+	GithubID       *int64             `json:"github_id"`
+	Email          *string            `json:"email"`
+	FirebaseUid    *string            `json:"firebase_uid"`
+	GithubUsername *string            `json:"github_username"`
+	GiteaUsername  *string            `json:"gitea_username"`
+	AvatarUrl      *string            `json:"avatar_url"`
+	DisplayName    *string            `json:"display_name"`
+	GithubScopes   []string           `json:"github_scopes"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
-	GithubID       *int64             `json:"github_id"`
-	GithubUsername *string            `json:"github_username"`
-	AvatarUrl      *string            `json:"avatar_url"`
-	ID             string             `json:"id"`
-	GiteaUsername  *string            `json:"gitea_username"`
-	Email          *string            `json:"email"`
-	DisplayName    *string            `json:"display_name"`
 }

@@ -44,8 +44,8 @@ RETURNING id, user_id, github_id, github_oauth_token, github_oauth_scopes, githu
 
 type CreateGitHubCredsParams struct {
 	UserID                  string   `json:"user_id"`
-	GithubID                int64    `json:"github_id"`
-	GithubOauthToken        string   `json:"github_oauth_token"`
+	GithubID                *int64   `json:"github_id"`
+	GithubOauthToken        *string  `json:"github_oauth_token"`
 	GithubOauthScopes       []string `json:"github_oauth_scopes"`
 	GithubAppInstallationID *int64   `json:"github_app_installation_id"`
 }
@@ -77,7 +77,7 @@ const getGitHubCredsByGitHubID = `-- name: GetGitHubCredsByGitHubID :one
 SELECT id, user_id, github_id, github_oauth_token, github_oauth_scopes, github_oauth_updated_at, github_app_installation_id, created_at, updated_at FROM github_creds WHERE github_id = $1
 `
 
-func (q *Queries) GetGitHubCredsByGitHubID(ctx context.Context, githubID int64) (GithubCred, error) {
+func (q *Queries) GetGitHubCredsByGitHubID(ctx context.Context, githubID *int64) (GithubCred, error) {
 	row := q.db.QueryRow(ctx, getGitHubCredsByGitHubID, githubID)
 	var i GithubCred
 	err := row.Scan(
@@ -139,7 +139,7 @@ type GetUserWithGitHubCredsRow struct {
 	AvatarUrl               *string            `json:"avatar_url"`
 	CreatedAt               pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt               pgtype.Timestamptz `json:"updated_at"`
-	GithubOauthToken        string             `json:"github_oauth_token"`
+	GithubOauthToken        *string            `json:"github_oauth_token"`
 	GithubOauthScopes       []string           `json:"github_oauth_scopes"`
 	GithubOauthUpdatedAt    pgtype.Timestamptz `json:"github_oauth_updated_at"`
 	GithubAppInstallationID *int64             `json:"github_app_installation_id"`
@@ -205,7 +205,7 @@ RETURNING id, user_id, github_id, github_oauth_token, github_oauth_scopes, githu
 
 type UpdateGitHubOAuthTokenParams struct {
 	UserID            string   `json:"user_id"`
-	GithubOauthToken  string   `json:"github_oauth_token"`
+	GithubOauthToken  *string  `json:"github_oauth_token"`
 	GithubOauthScopes []string `json:"github_oauth_scopes"`
 }
 

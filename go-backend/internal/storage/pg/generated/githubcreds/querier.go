@@ -11,7 +11,7 @@ import (
 type Querier interface {
 	ClearGitHubAppInstallation(ctx context.Context, userID string) (GithubCred, error)
 	CreateGitHubCreds(ctx context.Context, arg CreateGitHubCredsParams) (GithubCred, error)
-	GetGitHubCredsByGitHubID(ctx context.Context, githubID int64) (GithubCred, error)
+	GetGitHubCredsByGitHubID(ctx context.Context, githubID *int64) (GithubCred, error)
 	GetGitHubCredsByUserID(ctx context.Context, userID string) (GithubCred, error)
 	GetUserWithGitHubCreds(ctx context.Context, id string) (GetUserWithGitHubCredsRow, error)
 	SetGitHubAppInstallation(ctx context.Context, arg SetGitHubAppInstallationParams) (GithubCred, error)

@@ -26,18 +26,18 @@ INSERT INTO resources (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10
 )
-RETURNING id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at
+RETURNING id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at
 `
 
 type CreateResourceParams struct {
 	UserID      string  `json:"user_id"`
-	ProjectID   *string `json:"project_id"`
+	ProjectID   string  `json:"project_id"`
 	Name        string  `json:"name"`
 	Type        string  `json:"type"`
 	Provider    string  `json:"provider"`
 	Region      string  `json:"region"`
 	ExternalID  *string `json:"external_id"`
-	Credentials string  `json:"credentials"`
+	Credentials []byte  `json:"credentials"`
 	Metadata    []byte  `json:"metadata"`
 	Status      string  `json:"status"`
 }
@@ -65,6 +65,8 @@ func (q *Queries) CreateResource(ctx context.Context, arg CreateResourceParams) 
 		&i.Provider,
 		&i.Region,
 		&i.ExternalID,
+		&i.ConnectionUrl,
+		&i.AuthToken,
 		&i.Credentials,
 		&i.Metadata,
 		&i.Status,
@@ -98,7 +100,7 @@ func (q *Queries) DeleteResourceByUserAndID(ctx context.Context, arg DeleteResou
 }
 
 const getResourceByID = `-- name: GetResourceByID :one
-SELECT id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at FROM resources WHERE id = $1
+SELECT id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at FROM resources WHERE id = $1
 `
 
 func (q *Queries) GetResourceByID(ctx context.Context, id string) (Resource, error) {
@@ -113,6 +115,8 @@ func (q *Queries) GetResourceByID(ctx context.Context, id string) (Resource, err
 		&i.Provider,
 		&i.Region,
 		&i.ExternalID,
+		&i.ConnectionUrl,
+		&i.AuthToken,
 		&i.Credentials,
 		&i.Metadata,
 		&i.Status,
@@ -123,7 +127,7 @@ func (q *Queries) GetResourceByID(ctx context.Context, id string) (Resource, err
 }
 
 const getResourceByUserAndName = `-- name: GetResourceByUserAndName :one
-SELECT id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at FROM resources WHERE user_id = $1 AND name = $2
+SELECT id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at FROM resources WHERE user_id = $1 AND name = $2
 `
 
 type GetResourceByUserAndNameParams struct {
@@ -143,6 +147,8 @@ func (q *Queries) GetResourceByUserAndName(ctx context.Context, arg GetResourceB
 		&i.Provider,
 		&i.Region,
 		&i.ExternalID,
+		&i.ConnectionUrl,
+		&i.AuthToken,
 		&i.Credentials,
 		&i.Metadata,
 		&i.Status,
@@ -153,16 +159,16 @@ func (q *Queries) GetResourceByUserAndName(ctx context.Context, arg GetResourceB
 }
 
 const listResourcesByProject = `-- name: ListResourcesByProject :many
-SELECT id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at FROM resources
+SELECT id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at FROM resources
 WHERE project_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListResourcesByProjectParams struct {
-	ProjectID *string `json:"project_id"`
-	Limit     int32   `json:"limit"`
-	Offset    int32   `json:"offset"`
+	ProjectID string `json:"project_id"`
+	Limit     int32  `json:"limit"`
+	Offset    int32  `json:"offset"`
 }
 
 func (q *Queries) ListResourcesByProject(ctx context.Context, arg ListResourcesByProjectParams) ([]Resource, error) {
@@ -183,6 +189,8 @@ func (q *Queries) ListResourcesByProject(ctx context.Context, arg ListResourcesB
 			&i.Provider,
 			&i.Region,
 			&i.ExternalID,
+			&i.ConnectionUrl,
+			&i.AuthToken,
 			&i.Credentials,
 			&i.Metadata,
 			&i.Status,
@@ -200,7 +208,7 @@ func (q *Queries) ListResourcesByProject(ctx context.Context, arg ListResourcesB
 }
 
 const listResourcesByUser = `-- name: ListResourcesByUser :many
-SELECT id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at FROM resources
+SELECT id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at FROM resources
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -230,6 +238,8 @@ func (q *Queries) ListResourcesByUser(ctx context.Context, arg ListResourcesByUs
 			&i.Provider,
 			&i.Region,
 			&i.ExternalID,
+			&i.ConnectionUrl,
+			&i.AuthToken,
 			&i.Credentials,
 			&i.Metadata,
 			&i.Status,
@@ -247,7 +257,7 @@ func (q *Queries) ListResourcesByUser(ctx context.Context, arg ListResourcesByUs
 }
 
 const listResourcesByUserAndType = `-- name: ListResourcesByUserAndType :many
-SELECT id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at FROM resources
+SELECT id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at FROM resources
 WHERE user_id = $1 AND type = $2
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4
@@ -283,6 +293,8 @@ func (q *Queries) ListResourcesByUserAndType(ctx context.Context, arg ListResour
 			&i.Provider,
 			&i.Region,
 			&i.ExternalID,
+			&i.ConnectionUrl,
+			&i.AuthToken,
 			&i.Credentials,
 			&i.Metadata,
 			&i.Status,
@@ -303,13 +315,13 @@ const updateResourceAfterProvisioning = `-- name: UpdateResourceAfterProvisionin
 UPDATE resources
 SET external_id = $2, credentials = $3, metadata = $4, status = 'active', updated_at = NOW()
 WHERE id = $1
-RETURNING id, user_id, project_id, name, type, provider, region, external_id, credentials, metadata, status, created_at, updated_at
+RETURNING id, user_id, project_id, name, type, provider, region, external_id, connection_url, auth_token, credentials, metadata, status, created_at, updated_at
 `
 
 type UpdateResourceAfterProvisioningParams struct {
 	ID          string  `json:"id"`
 	ExternalID  *string `json:"external_id"`
-	Credentials string  `json:"credentials"`
+	Credentials []byte  `json:"credentials"`
 	Metadata    []byte  `json:"metadata"`
 }
 
@@ -330,6 +342,8 @@ func (q *Queries) UpdateResourceAfterProvisioning(ctx context.Context, arg Updat
 		&i.Provider,
 		&i.Region,
 		&i.ExternalID,
+		&i.ConnectionUrl,
+		&i.AuthToken,
 		&i.Credentials,
 		&i.Metadata,
 		&i.Status,
@@ -347,7 +361,7 @@ WHERE id = $1
 
 type UpdateResourceCredentialsParams struct {
 	ID          string  `json:"id"`
-	Credentials string  `json:"credentials"`
+	Credentials []byte  `json:"credentials"`
 	ExternalID  *string `json:"external_id"`
 	Metadata    []byte  `json:"metadata"`
 	Status      string  `json:"status"`

@@ -23,7 +23,7 @@ func (q *Queries) CountProjectsByUserID(ctx context.Context, userID string) (int
 const createDefaultProject = `-- name: CreateDefaultProject :one
 INSERT INTO projects (user_id, name, ref, is_default)
 VALUES ($1, 'default', 'default', TRUE)
-RETURNING id, user_id, name, created_at, updated_at, is_default, ref
+RETURNING id, user_id, name, ref, is_default, created_at, updated_at
 `
 
 func (q *Queries) CreateDefaultProject(ctx context.Context, userID string) (Project, error) {
@@ -33,10 +33,10 @@ func (q *Queries) CreateDefaultProject(ctx context.Context, userID string) (Proj
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }
@@ -44,7 +44,7 @@ func (q *Queries) CreateDefaultProject(ctx context.Context, userID string) (Proj
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (user_id, name, ref)
 VALUES ($1, $2, $3)
-RETURNING id, user_id, name, created_at, updated_at, is_default, ref
+RETURNING id, user_id, name, ref, is_default, created_at, updated_at
 `
 
 type CreateProjectParams struct {
@@ -60,10 +60,10 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }
@@ -78,7 +78,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id string) error {
 }
 
 const getDefaultProject = `-- name: GetDefaultProject :one
-SELECT id, user_id, name, created_at, updated_at, is_default, ref FROM projects WHERE user_id = $1 AND is_default = TRUE
+SELECT id, user_id, name, ref, is_default, created_at, updated_at FROM projects WHERE user_id = $1 AND is_default = TRUE
 `
 
 func (q *Queries) GetDefaultProject(ctx context.Context, userID string) (Project, error) {
@@ -88,16 +88,16 @@ func (q *Queries) GetDefaultProject(ctx context.Context, userID string) (Project
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }
 
 const getProjectByID = `-- name: GetProjectByID :one
-SELECT id, user_id, name, created_at, updated_at, is_default, ref FROM projects WHERE id = $1
+SELECT id, user_id, name, ref, is_default, created_at, updated_at FROM projects WHERE id = $1
 `
 
 func (q *Queries) GetProjectByID(ctx context.Context, id string) (Project, error) {
@@ -107,16 +107,16 @@ func (q *Queries) GetProjectByID(ctx context.Context, id string) (Project, error
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }
 
 const getProjectByRef = `-- name: GetProjectByRef :one
-SELECT id, user_id, name, created_at, updated_at, is_default, ref FROM projects WHERE user_id = $1 AND ref = $2
+SELECT id, user_id, name, ref, is_default, created_at, updated_at FROM projects WHERE user_id = $1 AND ref = $2
 `
 
 type GetProjectByRefParams struct {
@@ -131,16 +131,16 @@ func (q *Queries) GetProjectByRef(ctx context.Context, arg GetProjectByRefParams
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }
 
 const listProjectsByUserID = `-- name: ListProjectsByUserID :many
-SELECT id, user_id, name, created_at, updated_at, is_default, ref FROM projects
+SELECT id, user_id, name, ref, is_default, created_at, updated_at FROM projects
 WHERE user_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -165,10 +165,10 @@ func (q *Queries) ListProjectsByUserID(ctx context.Context, arg ListProjectsByUs
 			&i.ID,
 			&i.UserID,
 			&i.Name,
+			&i.Ref,
+			&i.IsDefault,
 			&i.CreatedAt,
 			&i.UpdatedAt,
-			&i.IsDefault,
-			&i.Ref,
 		); err != nil {
 			return nil, err
 		}
@@ -184,7 +184,7 @@ const updateProjectName = `-- name: UpdateProjectName :one
 UPDATE projects
 SET name = $2, ref = $3, updated_at = NOW()
 WHERE id = $1
-RETURNING id, user_id, name, created_at, updated_at, is_default, ref
+RETURNING id, user_id, name, ref, is_default, created_at, updated_at
 `
 
 type UpdateProjectNameParams struct {
@@ -200,10 +200,10 @@ func (q *Queries) UpdateProjectName(ctx context.Context, arg UpdateProjectNamePa
 		&i.ID,
 		&i.UserID,
 		&i.Name,
+		&i.Ref,
+		&i.IsDefault,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.IsDefault,
-		&i.Ref,
 	)
 	return i, err
 }

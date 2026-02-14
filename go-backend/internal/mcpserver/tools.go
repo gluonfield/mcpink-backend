@@ -302,17 +302,21 @@ func (s *Server) handleListServices(ctx context.Context, req *mcp.CallToolReques
 		if svc.Name != nil {
 			name = *svc.Name
 		}
-		status := svc.BuildStatus
-		if svc.RuntimeStatus != nil && *svc.RuntimeStatus != "" {
-			status = *svc.RuntimeStatus
+
+		status := "pending"
+		var commitHash *string
+		if dep, err := s.deployService.GetLatestDeployment(ctx, svc.ID); err == nil && dep != nil {
+			status = dep.Status
+			commitHash = dep.CommitHash
 		}
+
 		services[i] = ServiceInfo{
 			ServiceID:  svc.ID,
 			Name:       name,
 			Status:     status,
 			Repo:       svc.Repo,
 			URL:        svc.Fqdn,
-			CommitHash: svc.CommitHash,
+			CommitHash: commitHash,
 		}
 	}
 
@@ -361,17 +365,11 @@ func (s *Server) handleRedeployService(ctx context.Context, req *mcp.CallToolReq
 		name = *svc.Name
 	}
 
-	var commitHash string
-	if svc.CommitHash != nil {
-		commitHash = *svc.CommitHash
-	}
-
 	output := RedeployServiceOutput{
-		ServiceID:  svc.ID,
-		Name:       name,
-		Status:     "building",
-		CommitHash: commitHash,
-		Message:    fmt.Sprintf("Redeploy started (workflow_id: %s)", workflowID),
+		ServiceID: svc.ID,
+		Name:      name,
+		Status:    "queued",
+		Message:   fmt.Sprintf("Redeploy started (workflow_id: %s)", workflowID),
 	}
 
 	return nil, output, nil
@@ -526,9 +524,22 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, GetServiceOutput{}, nil
 	}
 
-	runtimeStatus := "pending"
-	if svc.RuntimeStatus != nil {
-		runtimeStatus = *svc.RuntimeStatus
+	status := "pending"
+	var commitHash string
+	var errorMessage *string
+	var buildProgress *BuildProgress
+	if dep, err := s.deployService.GetLatestDeployment(ctx, svc.ID); err == nil && dep != nil {
+		status = dep.Status
+		if dep.CommitHash != nil {
+			commitHash = *dep.CommitHash
+		}
+		errorMessage = dep.ErrorMessage
+		if len(dep.BuildProgress) > 0 {
+			var progress BuildProgress
+			if err := json.Unmarshal(dep.BuildProgress, &progress); err == nil {
+				buildProgress = &progress
+			}
+		}
 	}
 
 	output := GetServiceOutput{
@@ -537,25 +548,18 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		Project:       project,
 		Repo:          svc.Repo,
 		Branch:        svc.Branch,
-		CommitHash:    helpers.Deref(svc.CommitHash),
-		BuildStatus:   svc.BuildStatus,
-		RuntimeStatus: runtimeStatus,
+		Status:        status,
+		CommitHash:    commitHash,
 		URL:           svc.Fqdn,
 		CreatedAt:     svc.CreatedAt.Time.Format(time.RFC3339),
 		UpdatedAt:     svc.UpdatedAt.Time.Format(time.RFC3339),
-		ErrorMessage:  svc.ErrorMessage,
+		ErrorMessage:  errorMessage,
+		BuildProgress: buildProgress,
 	}
 
 	if cd, err := s.deployService.GetCustomDomainByServiceID(ctx, svc.ID); err == nil {
 		output.CustomDomain = cd.Domain
 		output.CustomDomainStatus = cd.Status
-	}
-
-	if len(svc.BuildProgress) > 0 {
-		var progress BuildProgress
-		if err := json.Unmarshal(svc.BuildProgress, &progress); err == nil {
-			output.BuildProgress = &progress
-		}
 	}
 
 	if input.IncludeEnv {

@@ -3,7 +3,6 @@ package deployments
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -12,19 +11,20 @@ import (
 	"github.com/augustdev/autoclip/internal/dnsverify"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
+	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
 	"github.com/lithammer/shortuuid/v4"
 	enumspb "go.temporal.io/api/enums/v1"
-	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 )
 
 type Service struct {
 	temporalClient client.Client
 	servicesQ      services.Querier
+	deploymentsQ   deploymentsdb.Querier
 	projectsQ      projects.Querier
 	usersQ         users.Querier
 	ghCredsQ       githubcreds.Querier
@@ -37,6 +37,7 @@ type Service struct {
 func NewService(
 	temporalClient client.Client,
 	servicesQ services.Querier,
+	deploymentsQ deploymentsdb.Querier,
 	projectsQ projects.Querier,
 	usersQ users.Querier,
 	ghCredsQ githubcreds.Querier,
@@ -51,6 +52,7 @@ func NewService(
 	return &Service{
 		temporalClient: temporalClient,
 		servicesQ:      servicesQ,
+		deploymentsQ:   deploymentsQ,
 		projectsQ:      projectsQ,
 		usersQ:         usersQ,
 		ghCredsQ:       ghCredsQ,
@@ -83,11 +85,12 @@ type CreateServiceInput struct {
 }
 
 type CreateServiceResult struct {
-	ServiceID  string
-	Name       string
-	Status     string
-	Repo       string
-	WorkflowID string
+	ServiceID    string
+	DeploymentID string
+	Name         string
+	Status       string
+	Repo         string
+	WorkflowID   string
 }
 
 func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (*CreateServiceResult, error) {
@@ -106,7 +109,6 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		projectID = project.ID
 	}
 
-	// Check for duplicate name in the same project
 	if input.Name != "" {
 		_, err := s.servicesQ.GetServiceByNameAndProject(ctx, services.GetServiceByNameAndProjectParams{
 			Name:      &input.Name,
@@ -118,7 +120,8 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 	}
 
 	svcID := shortuuid.New()
-	workflowID := fmt.Sprintf("deploy-%s", svcID)
+	deploymentID := shortuuid.New()
+	workflowID := fmt.Sprintf("deploy-%s", deploymentID)
 
 	gitProvider := input.GitProvider
 	if gitProvider == "" {
@@ -144,6 +147,7 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		vcpus = "0.5"
 	}
 
+	// Create service row (no deployment state)
 	_, err := s.servicesQ.CreateService(ctx, services.CreateServiceParams{
 		ID:          svcID,
 		UserID:      input.UserID,
@@ -155,7 +159,6 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		BuildPack:   input.BuildPack,
 		Port:        input.Port,
 		EnvVars:     envVarsJSON,
-		WorkflowID:  workflowID,
 		GitProvider: gitProvider,
 		BuildConfig: buildConfigJSON,
 		Memory:      memory,
@@ -165,8 +168,26 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		return nil, fmt.Errorf("failed to create service record: %w", err)
 	}
 
+	// Create deployment row with config snapshot
+	_, err = s.deploymentsQ.CreateDeployment(ctx, deploymentsdb.CreateDeploymentParams{
+		ID:              deploymentID,
+		ServiceID:       svcID,
+		WorkflowID:      workflowID,
+		BuildPack:       input.BuildPack,
+		BuildConfig:     buildConfigJSON,
+		EnvVarsSnapshot: envVarsJSON,
+		Memory:          memory,
+		Vcpus:           vcpus,
+		Port:            input.Port,
+		Trigger:         "api",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create deployment record: %w", err)
+	}
+
 	workflowInput := k8sdeployments.CreateServiceWorkflowInput{
 		ServiceID:      svcID,
+		DeploymentID:   deploymentID,
 		Repo:           input.Repo,
 		Branch:         input.Branch,
 		GitProvider:    gitProvider,
@@ -191,12 +212,12 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 	}
 
 	runID := run.GetRunID()
-	if err := s.servicesQ.UpdateWorkflowRunID(ctx, services.UpdateWorkflowRunIDParams{
-		ID:            svcID,
+	if err := s.deploymentsQ.UpdateDeploymentWorkflowRunID(ctx, deploymentsdb.UpdateDeploymentWorkflowRunIDParams{
+		ID:            deploymentID,
 		WorkflowRunID: &runID,
 	}); err != nil {
 		s.logger.Warn("failed to persist workflow run id",
-			"serviceID", svcID,
+			"deploymentID", deploymentID,
 			"workflowID", workflowID,
 			"runID", runID,
 			"error", err)
@@ -207,11 +228,12 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		"runID", run.GetRunID())
 
 	return &CreateServiceResult{
-		ServiceID:  svcID,
-		Name:       input.Name,
-		Status:     "queued",
-		Repo:       input.Repo,
-		WorkflowID: workflowID,
+		ServiceID:    svcID,
+		DeploymentID: deploymentID,
+		Name:         input.Name,
+		Status:       "queued",
+		Repo:         input.Repo,
+		WorkflowID:   workflowID,
 	}, nil
 }
 
@@ -286,47 +308,109 @@ func (s *Service) GetServiceByName(ctx context.Context, params GetServiceByNameP
 	return &svc, nil
 }
 
+// GetCurrentDeployment returns the current deployment for a service, or nil if none.
+func (s *Service) GetCurrentDeployment(ctx context.Context, serviceID string) (*deploymentsdb.Deployment, error) {
+	svc, err := s.servicesQ.GetServiceByID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	if svc.CurrentDeploymentID == nil {
+		return nil, nil
+	}
+	dep, err := s.deploymentsQ.GetDeploymentByID(ctx, *svc.CurrentDeploymentID)
+	if err != nil {
+		return nil, err
+	}
+	return &dep, nil
+}
+
+// GetLatestDeployment returns the latest deployment for a service.
+func (s *Service) GetLatestDeployment(ctx context.Context, serviceID string) (*deploymentsdb.Deployment, error) {
+	dep, err := s.deploymentsQ.GetLatestDeploymentByServiceID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	return &dep, nil
+}
+
 func (s *Service) RedeployService(ctx context.Context, svcID string) (string, error) {
-	workflowID := fmt.Sprintf("redeploy-%s-%s", svcID, shortuuid.New())
-	return s.RedeployServiceWithWorkflowID(ctx, svcID, workflowID)
+	return s.redeployWithTrigger(ctx, svcID, "manual", "")
 }
 
-// RedeployFromGitHubPush starts (or reuses) a redeploy workflow triggered by a GitHub push.
-//
-// GitHub delivery is at-least-once, so we treat it as potentially duplicated and use a deterministic workflow ID
-// derived from the commit SHA (preferred) or delivery ID (fallback).
 func (s *Service) RedeployFromGitHubPush(ctx context.Context, svcID, afterSHA, deliveryID string) (string, error) {
-	key := strings.TrimSpace(afterSHA)
-	if key == "" || key == "0000000000000000000000000000000000000000" {
-		key = strings.TrimSpace(deliveryID)
+	triggerRef := strings.TrimSpace(afterSHA)
+	if triggerRef == "" || triggerRef == "0000000000000000000000000000000000000000" {
+		triggerRef = strings.TrimSpace(deliveryID)
 	}
-	if key == "" {
-		key = shortuuid.New()
-	}
-
-	workflowID := fmt.Sprintf("redeploy-%s-%s", svcID, key)
-	return s.RedeployServiceWithWorkflowID(ctx, svcID, workflowID)
+	return s.redeployWithTrigger(ctx, svcID, "git_push", triggerRef)
 }
 
-// RedeployFromInternalGitPush starts (or reuses) a redeploy workflow triggered by an internal git (Gitea) push.
 func (s *Service) RedeployFromInternalGitPush(ctx context.Context, svcID, afterSHA string) (string, error) {
-	key := strings.TrimSpace(afterSHA)
-	if key == "" || key == "0000000000000000000000000000000000000000" {
-		key = shortuuid.New()
+	triggerRef := strings.TrimSpace(afterSHA)
+	if triggerRef == "" || triggerRef == "0000000000000000000000000000000000000000" {
+		triggerRef = ""
 	}
-
-	workflowID := fmt.Sprintf("redeploy-%s-%s", svcID, key)
-	return s.RedeployServiceWithWorkflowID(ctx, svcID, workflowID)
+	return s.redeployWithTrigger(ctx, svcID, "git_push", triggerRef)
 }
 
-func (s *Service) RedeployServiceWithWorkflowID(ctx context.Context, svcID, workflowID string) (string, error) {
-	if workflowID == "" {
-		workflowID = fmt.Sprintf("redeploy-%s-%s", svcID, shortuuid.New())
-	}
-
+func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, triggerRef string) (string, error) {
 	svc, err := s.servicesQ.GetServiceByID(ctx, svcID)
 	if err != nil {
 		return "", fmt.Errorf("service not found: %w", err)
+	}
+
+	deploymentID := shortuuid.New()
+	workflowID := fmt.Sprintf("deploy-%s", deploymentID)
+
+	// Cancel in-flight deployments
+	cancelledWorkflows, err := s.deploymentsQ.CancelInFlightDeployments(ctx, deploymentsdb.CancelInFlightDeploymentsParams{
+		ServiceID: svcID,
+		ID:        deploymentID,
+	})
+	if err != nil {
+		s.logger.Warn("failed to cancel in-flight deployments", "serviceID", svcID, "error", err)
+	}
+	for _, wfID := range cancelledWorkflows {
+		if cancelErr := s.temporalClient.CancelWorkflow(ctx, wfID, ""); cancelErr != nil {
+			s.logger.Warn("failed to cancel Temporal workflow", "workflowID", wfID, "error", cancelErr)
+		}
+	}
+
+	// Snapshot current service config into deployment
+	envVarsSnapshot := svc.EnvVars
+	if len(envVarsSnapshot) == 0 {
+		envVarsSnapshot = []byte("[]")
+	}
+	buildConfig := svc.BuildConfig
+	if len(buildConfig) == 0 {
+		buildConfig = []byte("{}")
+	}
+
+	var triggerRefPtr *string
+	if triggerRef != "" {
+		triggerRefPtr = &triggerRef
+	}
+	var commitHashPtr *string
+	if triggerRef != "" && trigger == "git_push" {
+		commitHashPtr = &triggerRef
+	}
+
+	_, err = s.deploymentsQ.CreateDeployment(ctx, deploymentsdb.CreateDeploymentParams{
+		ID:              deploymentID,
+		ServiceID:       svcID,
+		WorkflowID:      workflowID,
+		BuildPack:       svc.BuildPack,
+		BuildConfig:     buildConfig,
+		EnvVarsSnapshot: envVarsSnapshot,
+		Memory:          svc.Memory,
+		Vcpus:           svc.Vcpus,
+		Port:            svc.Port,
+		Trigger:         trigger,
+		TriggerRef:      triggerRefPtr,
+		CommitHash:      commitHashPtr,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create deployment record: %w", err)
 	}
 
 	var installationID int64
@@ -337,33 +421,39 @@ func (s *Service) RedeployServiceWithWorkflowID(ctx context.Context, svcID, work
 		}
 	}
 
+	commitSHA := ""
+	if triggerRef != "" && trigger == "git_push" {
+		commitSHA = triggerRef
+	}
+
 	workflowOptions := client.StartWorkflowOptions{
-		ID:                    workflowID,
-		TaskQueue:             k8sdeployments.TaskQueue,
-		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+		ID:        workflowID,
+		TaskQueue: k8sdeployments.TaskQueue,
 	}
 
 	we, err := s.temporalClient.ExecuteWorkflow(ctx, workflowOptions, k8sdeployments.RedeployServiceWorkflow, k8sdeployments.RedeployServiceWorkflowInput{
 		ServiceID:      svcID,
+		DeploymentID:   deploymentID,
 		Repo:           svc.Repo,
 		Branch:         svc.Branch,
 		GitProvider:    svc.GitProvider,
 		InstallationID: installationID,
+		CommitSHA:      commitSHA,
 		AppsDomain:     s.appsDomain,
 	})
 	if err != nil {
-		var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
-		if errors.As(err, &alreadyStarted) {
-			s.logger.Info("redeploy workflow already started, skipping duplicate",
-				"workflowID", workflowID,
-				"serviceID", svcID)
-			return workflowID, nil
-		}
-
 		s.logger.Error("failed to start redeploy workflow",
 			"workflowID", workflowID,
 			"error", err)
 		return "", fmt.Errorf("failed to start redeploy workflow: %w", err)
+	}
+
+	runID := we.GetRunID()
+	if err := s.deploymentsQ.UpdateDeploymentWorkflowRunID(ctx, deploymentsdb.UpdateDeploymentWorkflowRunIDParams{
+		ID:            deploymentID,
+		WorkflowRunID: &runID,
+	}); err != nil {
+		s.logger.Warn("failed to persist workflow run id", "deploymentID", deploymentID, "error", err)
 	}
 
 	s.logger.Info("started redeploy workflow",
@@ -469,7 +559,6 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 		return nil, err
 	}
 
-	// Check domain not already taken
 	existing, err := s.customDomainsQ.GetByDomain(ctx, domain)
 	if err == nil {
 		return nil, fmt.Errorf("domain %s is already attached to service %s", existing.Domain, existing.ServiceID)
@@ -484,7 +573,6 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 		return nil, err
 	}
 
-	// Check service doesn't already have a custom domain
 	_, err = s.customDomainsQ.GetByServiceID(ctx, svc.ID)
 	if err == nil {
 		return nil, fmt.Errorf("service %s already has a custom domain; remove it first", params.Name)
@@ -578,7 +666,6 @@ func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDom
 		}, nil
 	}
 
-	// DNS verified — update status and start attach workflow
 	s.customDomainsQ.UpdateStatus(ctx, customdomains.UpdateStatusParams{
 		ID:     cd.ID,
 		Status: "provisioning",

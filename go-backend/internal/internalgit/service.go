@@ -86,10 +86,11 @@ func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description 
 	}
 
 	// Store repo in database (upsert)
+	repoIDStr := fmt.Sprintf("%d", repo.ID)
 	_, err = s.repoQueries.CreateInternalRepo(ctx, internalrepos.CreateInternalRepoParams{
 		UserID:   userID,
 		Provider: "gitea",
-		RepoID:   repo.ID,
+		RepoID:   &repoIDStr,
 		FullName: repo.FullName,
 	})
 	if err != nil {

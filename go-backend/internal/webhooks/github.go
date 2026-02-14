@@ -101,7 +101,8 @@ func (h *Handlers) handleInstallationWebhook(w http.ResponseWriter, r *http.Requ
 		"sender_login", payload.Sender.Login)
 
 	// Find user by GitHub ID
-	creds, err := h.githubCredsQ.GetGitHubCredsByGitHubID(r.Context(), payload.Sender.ID)
+	senderID := payload.Sender.ID
+	creds, err := h.githubCredsQ.GetGitHubCredsByGitHubID(r.Context(), &senderID)
 	if err != nil {
 		h.logger.Warn("no user found for github id", "github_id", payload.Sender.ID)
 		w.WriteHeader(http.StatusOK)
