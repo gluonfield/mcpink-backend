@@ -11,6 +11,7 @@ import (
 	"github.com/augustdev/autoclip/internal/mcp_oauth"
 	"github.com/augustdev/autoclip/internal/mcpserver"
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/cors"
 	"go.uber.org/fx"
 )
 
@@ -27,6 +28,14 @@ func NewMCPRouter(
 	mcpOAuthConfig mcp_oauth.Config,
 ) *chi.Mux {
 	router := chi.NewRouter()
+
+	corsMiddleware := cors.New(cors.Options{
+		AllowCredentials: true,
+		AllowedOrigins:   []string{mcpOAuthConfig.FrontendURL},
+		AllowedMethods:   []string{"GET", "POST", "OPTIONS"},
+		AllowedHeaders:   []string{"Authorization", "Content-Type", "Accept"},
+	}).Handler
+	router.Use(corsMiddleware)
 
 	router.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
