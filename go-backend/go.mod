@@ -1,6 +1,6 @@
 module github.com/augustdev/autoclip
 
-go 1.25.0
+go 1.24.0
 
 tool github.com/99designs/gqlgen
 
