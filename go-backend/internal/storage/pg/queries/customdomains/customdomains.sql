@@ -1,6 +1,6 @@
 -- name: CreateCustomDomain :one
-INSERT INTO custom_domains (service_id, domain, expected_record_target)
-VALUES ($1, $2, $3) RETURNING *;
+INSERT INTO custom_domains (service_id, domain, expected_record_target, verification_token)
+VALUES ($1, $2, $3, $4) RETURNING *;
 
 -- name: GetByServiceID :one
 SELECT * FROM custom_domains WHERE service_id = $1;

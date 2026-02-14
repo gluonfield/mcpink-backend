@@ -35,6 +35,7 @@ func main() {
 			bootstrap.CreateTemporalClient,
 			bootstrap.NewK8sTemporalWorker,
 			bootstrap.NewK8sClient,
+			bootstrap.NewK8sDynamicClient,
 			pg.NewDatabase,
 			pg.NewServiceQueries,
 			pg.NewDeploymentQueries,

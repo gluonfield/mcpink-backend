@@ -217,6 +217,17 @@ type DeleteCustomDomainIngressInput struct {
 	ServiceName string
 }
 
+type ApplyCustomDomainCertificateInput struct {
+	Namespace   string
+	ServiceName string
+	Domain      string
+}
+
+type WaitForCertificateReadyInput struct {
+	Namespace       string
+	CertificateName string
+}
+
 type UpdateCustomDomainStatusInput struct {
 	CustomDomainID string
 	Status         string

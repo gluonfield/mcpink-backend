@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/augustdev/autoclip/internal/cloudflare"
 	"github.com/augustdev/autoclip/internal/dnsverify"
@@ -559,9 +560,16 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 		return nil, err
 	}
 
+	// Anti-squat: clean up expired/failed records so the real owner can claim the domain
 	existing, err := s.customDomainsQ.GetByDomain(ctx, domain)
 	if err == nil {
-		return nil, fmt.Errorf("domain %s is already attached to service %s", existing.Domain, existing.ServiceID)
+		canReclaim := existing.Status == "failed" ||
+			(existing.Status == "pending_dns" && existing.ExpiresAt.Valid && existing.ExpiresAt.Time.Before(time.Now()))
+		if canReclaim {
+			_ = s.customDomainsQ.Delete(ctx, existing.ID)
+		} else {
+			return nil, fmt.Errorf("domain %s is already attached to a service", existing.Domain)
+		}
 	}
 
 	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
@@ -578,16 +586,20 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 		return nil, fmt.Errorf("service %s already has a custom domain; remove it first", params.Name)
 	}
 
+	verificationToken := dnsverify.GenerateVerificationToken()
+	perServiceTarget := *svc.Name + "." + s.cnameTarget
+
 	cd, err := s.customDomainsQ.CreateCustomDomain(ctx, customdomains.CreateCustomDomainParams{
 		ServiceID:            svc.ID,
 		Domain:               domain,
-		ExpectedRecordTarget: s.cnameTarget,
+		ExpectedRecordTarget: perServiceTarget,
+		VerificationToken:    verificationToken,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create custom domain record: %w", err)
 	}
 
-	instructions := dnsverify.DNSInstructions(domain, s.cnameTarget)
+	instructions := dnsverify.DNSInstructions(domain, perServiceTarget, verificationToken)
 
 	s.logger.Info("custom domain added",
 		"service_id", svc.ID,
@@ -648,11 +660,12 @@ func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDom
 		}, nil
 	}
 
-	ok, dnsErr := dnsverify.VerifyCNAME(cd.Domain, cd.ExpectedRecordTarget)
-	if dnsErr != nil || !ok {
-		errMsg := "CNAME record not found or does not match"
-		if dnsErr != nil {
-			errMsg = dnsErr.Error()
+	// Step 1: Verify TXT ownership record
+	txtOK, txtErr := dnsverify.VerifyTXT(cd.Domain, cd.VerificationToken)
+	if txtErr != nil || !txtOK {
+		errMsg := fmt.Sprintf("TXT ownership verification failed. Add a TXT record: _dp-verify.%s with value dp-verify=%s", cd.Domain, cd.VerificationToken)
+		if txtErr != nil {
+			errMsg = txtErr.Error()
 		}
 		s.customDomainsQ.UpdateError(ctx, customdomains.UpdateErrorParams{
 			ID:        cd.ID,
@@ -662,7 +675,26 @@ func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDom
 			ServiceID: svc.ID,
 			Domain:    cd.Domain,
 			Status:    cd.Status,
-			Message:   fmt.Sprintf("DNS verification failed: %s. Expected CNAME %s -> %s", errMsg, cd.Domain, cd.ExpectedRecordTarget),
+			Message:   errMsg,
+		}, nil
+	}
+
+	// Step 2: Verify CNAME routing record
+	cnameOK, cnameErr := dnsverify.VerifyCNAME(cd.Domain, cd.ExpectedRecordTarget)
+	if cnameErr != nil || !cnameOK {
+		errMsg := fmt.Sprintf("CNAME record not found or does not match. Expected CNAME %s -> %s", cd.Domain, cd.ExpectedRecordTarget)
+		if cnameErr != nil {
+			errMsg = cnameErr.Error()
+		}
+		s.customDomainsQ.UpdateError(ctx, customdomains.UpdateErrorParams{
+			ID:        cd.ID,
+			LastError: &errMsg,
+		})
+		return &VerifyCustomDomainResult{
+			ServiceID: svc.ID,
+			Domain:    cd.Domain,
+			Status:    cd.Status,
+			Message:   errMsg,
 		}, nil
 	}
 
@@ -737,10 +769,6 @@ func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDom
 		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
 	}
 
-	if err := s.customDomainsQ.Delete(ctx, cd.ID); err != nil {
-		return nil, fmt.Errorf("failed to delete custom domain record: %w", err)
-	}
-
 	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("user not found: %w", err)
@@ -756,6 +784,7 @@ func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDom
 
 	workflowID := fmt.Sprintf("detach-cd-%s", cd.ID)
 
+	// Start cleanup workflow BEFORE deleting DB record to prevent orphaned K8s resources
 	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
 		ID:        workflowID,
 		TaskQueue: k8sdeployments.TaskQueue,
@@ -767,6 +796,10 @@ func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDom
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to start detach workflow: %w", err)
+	}
+
+	if err := s.customDomainsQ.Delete(ctx, cd.ID); err != nil {
+		return nil, fmt.Errorf("failed to delete custom domain record: %w", err)
 	}
 
 	return &RemoveCustomDomainResult{

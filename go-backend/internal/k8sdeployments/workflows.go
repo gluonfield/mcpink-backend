@@ -314,8 +314,8 @@ func AttachCustomDomainWorkflow(ctx workflow.Context, input AttachCustomDomainWo
 		"serviceName", input.ServiceName,
 		"domain", input.CustomDomain)
 
-	actCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
-		StartToCloseTimeout: 2 * time.Minute,
+	shortCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 30 * time.Second,
 		RetryPolicy: &temporal.RetryPolicy{
 			InitialInterval:    time.Second,
 			BackoffCoefficient: 2.0,
@@ -324,25 +324,59 @@ func AttachCustomDomainWorkflow(ctx workflow.Context, input AttachCustomDomainWo
 		},
 	})
 
+	waitCtx := workflow.WithActivityOptions(ctx, workflow.ActivityOptions{
+		StartToCloseTimeout: 10 * time.Minute,
+		HeartbeatTimeout:    30 * time.Second,
+		RetryPolicy: &temporal.RetryPolicy{
+			InitialInterval:    5 * time.Second,
+			BackoffCoefficient: 1.0,
+			MaximumAttempts:    1,
+		},
+	})
+
 	var activities *Activities
 
-	if err := workflow.ExecuteActivity(actCtx, activities.ApplyCustomDomainIngress, ApplyCustomDomainIngressInput{
-		Namespace:   input.Namespace,
-		ServiceName: input.ServiceName,
-		Domain:      input.CustomDomain,
-		Port:        input.Port,
-	}).Get(ctx, nil); err != nil {
-		_ = workflow.ExecuteActivity(actCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
+	markFailed := func(errMsg string) (AttachCustomDomainWorkflowResult, error) {
+		_ = workflow.ExecuteActivity(shortCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
 			CustomDomainID: input.CustomDomainID,
 			Status:         "failed",
 		}).Get(ctx, nil)
 		return AttachCustomDomainWorkflowResult{
 			Status:       "failed",
-			ErrorMessage: err.Error(),
-		}, err
+			ErrorMessage: errMsg,
+		}, fmt.Errorf("attach custom domain failed: %s", errMsg)
 	}
 
-	if err := workflow.ExecuteActivity(actCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
+	// Phase 1: Create Certificate CR (no Ingress yet → no Traefik 308 redirect → HTTP-01 works)
+	certName := input.ServiceName + "-cd"
+	if err := workflow.ExecuteActivity(shortCtx, activities.ApplyCustomDomainCertificate, ApplyCustomDomainCertificateInput{
+		Namespace:   input.Namespace,
+		ServiceName: input.ServiceName,
+		Domain:      input.CustomDomain,
+	}).Get(ctx, nil); err != nil {
+		return markFailed(fmt.Sprintf("failed to apply certificate: %v", err))
+	}
+
+	// Phase 2: Wait for certificate to be ready
+	if err := workflow.ExecuteActivity(waitCtx, activities.WaitForCertificateReady, WaitForCertificateReadyInput{
+		Namespace:       input.Namespace,
+		CertificateName: certName,
+	}).Get(ctx, nil); err != nil {
+		return markFailed(fmt.Sprintf("certificate provisioning failed: %v", err))
+	}
+
+	// Phase 3: Create Ingress WITH TLS (cert exists now, Traefik 308 redirect is fine)
+	if err := workflow.ExecuteActivity(shortCtx, activities.ApplyCustomDomainIngress, ApplyCustomDomainIngressInput{
+		Namespace:   input.Namespace,
+		ServiceName: input.ServiceName,
+		Domain:      input.CustomDomain,
+		Port:        input.Port,
+	}).Get(ctx, nil); err != nil {
+		return markFailed(fmt.Sprintf("failed to apply ingress: %v", err))
+	}
+
+	// Phase 4: Mark active
+	if err := workflow.ExecuteActivity(shortCtx, activities.UpdateCustomDomainDBStatus, UpdateCustomDomainStatusInput{
 		CustomDomainID: input.CustomDomainID,
 		Status:         "active",
 	}).Get(ctx, nil); err != nil {

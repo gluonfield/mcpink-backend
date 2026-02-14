@@ -32,6 +32,7 @@ type CustomDomain struct {
 	LastError            *string            `json:"last_error"`
 	CreatedAt            pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	VerificationToken    string             `json:"verification_token"`
 }
 
 type Deployment struct {

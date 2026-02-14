@@ -1,5 +1,11 @@
 # Project Guidelines
 
+## Security Model
+
+This is a production platform with untrusted users. Never assume the operator is the only user.
+All user-facing operations must be secure against malicious input and multi-tenant abuse.
+Custom domains require ownership verification (TXT record) before activation.
+
 This repository serves as a Go project template.
 
 ## Quick Start (New Project)

@@ -1,6 +1,8 @@
 package dnsverify
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net"
 	"strings"
@@ -16,6 +18,28 @@ func VerifyCNAME(domain, expectedTarget string) (bool, error) {
 	expected := NormalizeDomain(expectedTarget)
 
 	return normalized == expected, nil
+}
+
+func VerifyTXT(domain, expectedToken string) (bool, error) {
+	host := "_dp-verify." + NormalizeDomain(domain)
+	records, err := net.LookupTXT(host)
+	if err != nil {
+		return false, fmt.Errorf("TXT lookup failed for %s: %w", host, err)
+	}
+
+	needle := "dp-verify=" + expectedToken
+	for _, r := range records {
+		if strings.TrimSpace(r) == needle {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func GenerateVerificationToken() string {
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func NormalizeDomain(d string) string {
@@ -54,14 +78,19 @@ func ValidateCustomDomain(domain, platformDomain string) error {
 	return nil
 }
 
-func DNSInstructions(domain, cnameTarget string) string {
+func DNSInstructions(domain, cnameTarget, verificationToken string) string {
 	return fmt.Sprintf(
-		"Add a CNAME record for your domain:\n\n"+
-			"  Host: %s\n"+
-			"  Type: CNAME\n"+
-			"  Value: %s\n\n"+
-			"Important: If using Cloudflare, set the record to DNS-only (gray cloud), not Proxied.\n"+
-			"After configuring DNS, call verify_custom_domain to activate it.",
-		domain, cnameTarget,
+		"Add the following DNS records for your domain:\n\n"+
+			"1. Ownership verification (TXT):\n"+
+			"   Host: _dp-verify.%s\n"+
+			"   Type: TXT\n"+
+			"   Value: dp-verify=%s\n\n"+
+			"2. Routing (CNAME):\n"+
+			"   Host: %s\n"+
+			"   Type: CNAME\n"+
+			"   Value: %s\n\n"+
+			"Important: If using Cloudflare, set the CNAME record to DNS-only (gray cloud), not Proxied.\n"+
+			"After configuring both DNS records, call verify_custom_domain to activate it.",
+		domain, verificationToken, domain, cnameTarget,
 	)
 }

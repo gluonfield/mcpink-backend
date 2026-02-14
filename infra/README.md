@@ -56,7 +56,10 @@ The `deployer-server` is NOT the product server — it only receives webhooks an
    Traefik routes traffic via ingress rules
 
 4. Optional: custom domain
-   add_domain  → Create custom domain ingress + cert-manager TLS
+   add_domain  → Returns TXT + CNAME instructions
+   verify      → Checks both records, starts two-phase cert provisioning
+   cert CR     → cert-manager issues via HTTP-01 (no Ingress yet)
+   ingress     → TLS ingress created after cert is ready
 ```
 
 Image naming: `registry.internal:5000/dp-{user_id}-{project}/{service}:{git_sha}`
@@ -147,11 +150,16 @@ All `*.ml.ink` traffic routes through a Cloudflare LB. Each region's run-pool no
 | `grafana.ml.ink` | Proxied via CF LB | Run-pool origins | Monitoring |
 | `loki.ml.ink` | Proxied via CF LB | Run-pool origins | Log aggregation |
 | `prometheus.ml.ink` | Proxied via CF LB | Run-pool origins | Metrics |
-| `cname.ml.ink` | A (DNS-only) | Region LB public IP | Custom domain CNAME target |
+| `cname.ml.ink` | A (DNS-only) | Region LB public IP | Custom domain CNAME target (legacy) |
+| `*.cname.ml.ink` | A (DNS-only) | Region LB public IP | Per-service custom domain CNAME targets |
 
 ### Custom domains
 
-Customers point `CNAME → cname.ml.ink`. Each region must provide a TCP passthrough LB (ports 80, 443) that forwards to run-pool nodes. The `cname.ml.ink` A record points to that LB. cert-manager handles TLS via HTTP-01 challenges.
+Each service gets a per-service CNAME target: `{service-name}.cname.ml.ink`. Users must add both a TXT record (`_dp-verify.{domain}` for ownership proof) and a CNAME record pointing to the per-service target.
+
+Each region must provide a TCP passthrough LB (ports 80, 443) that forwards to run-pool nodes. The `*.cname.ml.ink` wildcard A record points to that LB (DNS-only, not proxied). For multi-region, explicit per-service A records override the wildcard to route services to specific clusters.
+
+cert-manager handles TLS via HTTP-01 challenges using a two-phase approach: Certificate CR created first (no Ingress), then Ingress with TLS added after cert is ready. This avoids Traefik v3's automatic HTTP→HTTPS redirect that would block the HTTP-01 solver.
 
 ### K8s conventions
 
@@ -187,7 +195,7 @@ Rough checklist — a new provider will almost certainly require additional step
 3. Provider-agnostic roles (firewall, gvisor, k3s_*) should work unchanged
 4. Set up private networking between nodes (provider-specific)
 5. Provision a TCP passthrough LB for custom domain traffic (ports 80, 443 → run-pool)
-6. Update `cname.ml.ink` A record to point to the new LB (or set up multi-region DNS)
+6. Add `*.cname.ml.ink` A record pointing to the new LB (for multi-region: explicit per-service records override wildcard)
 7. Add run-pool node IPs to Cloudflare LB origin pool
 8. Configure firewall to restrict 80/443 to LB + Cloudflare CIDRs
 9. Document provider specifics and decisions in `<region>/README.md`

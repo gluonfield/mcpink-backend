@@ -61,14 +61,34 @@ Cloudflare handles DDoS, health-checks, and TLS termination (full strict mode).
 
 ### Custom domains
 
+Per-service CNAME targets with TXT ownership verification:
+
 ```
-app.customer.com → CNAME → cname.ml.ink (DNS-only A → 46.225.35.234)
+1. User calls add_custom_domain → gets instructions:
+   - TXT: _dp-verify.app.customer.com → dp-verify={token}  (ownership proof)
+   - CNAME: app.customer.com → my-service.cname.ml.ink      (routing)
+
+2. User calls verify_custom_domain → both records checked
+
+3. Two-phase cert provisioning (Temporal workflow):
+   a. Certificate CR created (no Ingress yet → no Traefik 308 redirect)
+   b. cert-manager issues cert via HTTP-01 (unblocked)
+   c. Ingress WITH TLS created (cert exists → redirect is fine)
+   d. Status marked active
+
+Traffic flow:
+app.customer.com → CNAME → my-service.cname.ml.ink (wildcard A → 46.225.35.234)
   → Hetzner LB → TCP passthrough (80, 443) → run-pool (Traefik)
-  → port 80: cert-manager HTTP-01 challenge
-  → port 443: app with Let's Encrypt TLS
+  → Traefik routes by Host header → customer pod
 ```
 
-**Why TCP passthrough**: cert-manager needs to receive raw HTTP-01 challenges on port 80. If the LB terminated TLS, cert-manager couldn't prove domain ownership. TCP passthrough lets Traefik + cert-manager handle everything.
+**DNS records**: `*.cname.ml.ink` wildcard A → cluster LB IP (DNS-only, gray cloud). For multi-region, explicit per-service A records override the wildcard.
+
+**Why TCP passthrough**: cert-manager needs raw HTTP-01 challenges on port 80. TLS-terminating LB would break cert provisioning.
+
+**Why two-phase**: Traefik v3 auto-redirects HTTP→HTTPS (308) for any Ingress with a TLS section. Creating the Certificate CR first (without an Ingress) avoids this redirect during initial issuance.
+
+**Anti-squat**: Unverified domains expire after 7 days. TXT verification prevents unauthorized domain attachment.
 
 ## Hetzner Load Balancer
 
@@ -150,7 +170,7 @@ k8s/
 Templates are the contract between infra and Go code:
 - `customer-namespace-template.yml` — namespace + resource quota
 - `customer-service-template.yml` — secret, deployment, service, default ingress
-- `customer-custom-domain-template.yml` — custom domain ingress with cert-manager TLS
+- `customer-custom-domain-template.yml` — custom domain ingress (TLS via pre-provisioned Certificate CR)
 
 ## Applying changes
 

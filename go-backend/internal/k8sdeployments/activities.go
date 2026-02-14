@@ -10,12 +10,14 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 )
 
 type Activities struct {
 	logger         *slog.Logger
 	k8s            kubernetes.Interface
+	dynClient      dynamic.Interface
 	githubApp      *githubapp.Service
 	internalGitSvc *internalgit.Service
 	servicesQ      services.Querier
@@ -29,6 +31,7 @@ type Activities struct {
 func NewActivities(
 	logger *slog.Logger,
 	k8s kubernetes.Interface,
+	dynClient dynamic.Interface,
 	githubApp *githubapp.Service,
 	internalGitSvc *internalgit.Service,
 	servicesQ services.Querier,
@@ -41,6 +44,7 @@ func NewActivities(
 	return &Activities{
 		logger:         logger,
 		k8s:            k8s,
+		dynClient:      dynClient,
 		githubApp:      githubApp,
 		internalGitSvc: internalGitSvc,
 		servicesQ:      servicesQ,

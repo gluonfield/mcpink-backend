@@ -9,6 +9,7 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
@@ -248,9 +249,6 @@ func buildIngress(namespace, name, host string, port int32) *networkingv1.Ingres
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: namespace,
-			Annotations: map[string]string{
-				"traefik.ingress.kubernetes.io/router.middlewares": "dp-system-redirect-to-https@kubernetescrd",
-			},
 		},
 		Spec: networkingv1.IngressSpec{
 			IngressClassName: &ingressClassName,
@@ -281,6 +279,30 @@ func buildIngress(namespace, name, host string, port int32) *networkingv1.Ingres
 	}
 }
 
+func buildCustomDomainCertificate(namespace, serviceName, domain string) *unstructured.Unstructured {
+	certName := serviceName + "-cd"
+	secretName := certName + "-tls"
+
+	return &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "cert-manager.io/v1",
+			"kind":       "Certificate",
+			"metadata": map[string]any{
+				"name":      certName,
+				"namespace": namespace,
+			},
+			"spec": map[string]any{
+				"secretName": secretName,
+				"issuerRef": map[string]any{
+					"name": "letsencrypt-prod",
+					"kind": "ClusterIssuer",
+				},
+				"dnsNames": []any{domain},
+			},
+		},
+	}
+}
+
 func buildCustomDomainIngress(namespace, serviceName, customDomain string, port int32) *networkingv1.Ingress {
 	pathType := networkingv1.PathTypePrefix
 	ingressClassName := "traefik"
@@ -291,10 +313,6 @@ func buildCustomDomainIngress(namespace, serviceName, customDomain string, port 
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      ingressName,
 			Namespace: namespace,
-			Annotations: map[string]string{
-				"cert-manager.io/cluster-issuer":                  "letsencrypt-prod",
-				"traefik.ingress.kubernetes.io/router.middlewares": "dp-system-redirect-to-https@kubernetescrd",
-			},
 		},
 		Spec: networkingv1.IngressSpec{
 			IngressClassName: &ingressClassName,

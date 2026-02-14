@@ -10,18 +10,24 @@ import (
 )
 
 const createCustomDomain = `-- name: CreateCustomDomain :one
-INSERT INTO custom_domains (service_id, domain, expected_record_target)
-VALUES ($1, $2, $3) RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at
+INSERT INTO custom_domains (service_id, domain, expected_record_target, verification_token)
+VALUES ($1, $2, $3, $4) RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token
 `
 
 type CreateCustomDomainParams struct {
 	ServiceID            string `json:"service_id"`
 	Domain               string `json:"domain"`
 	ExpectedRecordTarget string `json:"expected_record_target"`
+	VerificationToken    string `json:"verification_token"`
 }
 
 func (q *Queries) CreateCustomDomain(ctx context.Context, arg CreateCustomDomainParams) (CustomDomain, error) {
-	row := q.db.QueryRow(ctx, createCustomDomain, arg.ServiceID, arg.Domain, arg.ExpectedRecordTarget)
+	row := q.db.QueryRow(ctx, createCustomDomain,
+		arg.ServiceID,
+		arg.Domain,
+		arg.ExpectedRecordTarget,
+		arg.VerificationToken,
+	)
 	var i CustomDomain
 	err := row.Scan(
 		&i.ID,
@@ -35,6 +41,7 @@ func (q *Queries) CreateCustomDomain(ctx context.Context, arg CreateCustomDomain
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
@@ -68,7 +75,7 @@ func (q *Queries) ExpireStale(ctx context.Context) error {
 }
 
 const getByDomain = `-- name: GetByDomain :one
-SELECT id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at FROM custom_domains WHERE lower(domain) = lower($1)
+SELECT id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token FROM custom_domains WHERE lower(domain) = lower($1)
 `
 
 func (q *Queries) GetByDomain(ctx context.Context, lower string) (CustomDomain, error) {
@@ -86,12 +93,13 @@ func (q *Queries) GetByDomain(ctx context.Context, lower string) (CustomDomain, 
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
 
 const getByServiceID = `-- name: GetByServiceID :one
-SELECT id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at FROM custom_domains WHERE service_id = $1
+SELECT id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token FROM custom_domains WHERE service_id = $1
 `
 
 func (q *Queries) GetByServiceID(ctx context.Context, serviceID string) (CustomDomain, error) {
@@ -109,13 +117,14 @@ func (q *Queries) GetByServiceID(ctx context.Context, serviceID string) (CustomD
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
 
 const updateError = `-- name: UpdateError :one
 UPDATE custom_domains SET last_error = $2, last_checked_at = NOW(), updated_at = NOW()
-WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at
+WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token
 `
 
 type UpdateErrorParams struct {
@@ -138,13 +147,14 @@ func (q *Queries) UpdateError(ctx context.Context, arg UpdateErrorParams) (Custo
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
 
 const updateStatus = `-- name: UpdateStatus :one
 UPDATE custom_domains SET status = $2, last_checked_at = NOW(), updated_at = NOW()
-WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at
+WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token
 `
 
 type UpdateStatusParams struct {
@@ -167,13 +177,14 @@ func (q *Queries) UpdateStatus(ctx context.Context, arg UpdateStatusParams) (Cus
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
 
 const updateVerified = `-- name: UpdateVerified :one
 UPDATE custom_domains SET status = 'active', verified_at = NOW(), updated_at = NOW()
-WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at
+WHERE id = $1 RETURNING id, service_id, domain, status, expected_record_target, expires_at, verified_at, last_checked_at, last_error, created_at, updated_at, verification_token
 `
 
 func (q *Queries) UpdateVerified(ctx context.Context, id string) (CustomDomain, error) {
@@ -191,6 +202,7 @@ func (q *Queries) UpdateVerified(ctx context.Context, id string) (CustomDomain, 
 		&i.LastError,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.VerificationToken,
 	)
 	return i, err
 }
