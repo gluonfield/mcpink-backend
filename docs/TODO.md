@@ -63,6 +63,10 @@
 - disk metrics on Grafana. What happens when too many versions of docker images? How many images can I store of my users? Is auto deletion of older versions handled - I should store 2 images, current and last? Where images stored - builder or ops?
 - Restructure /infra folder. Directory structure should make sense assuming we will have multiple regions ultimately, each region it's own k8s/k3s cluster.
 
+Questions
+
+- Can i limit gitea such that we always keep only last commits? I'm worried it's growing too much. Is there a way to limit repo size?
+
 ok i can build these yaml DSLs for generating videos, but what engine runs these? how to handle nice smooth zoom that scren studio does locateOnScreen image that pyaotogui has is super powerful, it can work well for me. Explain how would I implement all primitives: is the stack here becomes OBS + pyaotogui? One thing screen studio does well is that videos look cool. Around a frame it adds nice background making it seem like you're recording the app. Given the video ideas you have in the list create list of primitives, explain what concept videos can be automate which cannot. For example on top I can add AI avatar moving. Based on DSL/yaml agent can generate transcript and speach for 11labs and then furtuermore talking avatar
 
 For every video idea that we discussed I want you to add relevant tools or we hack our own tools

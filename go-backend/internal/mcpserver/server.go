@@ -122,7 +122,7 @@ func (s *Server) registerTools() {
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "get_service",
-		Description: "Get detailed information about a deployed service, optionally including environment variables and logs",
+		Description: "Get detailed information about a deployed service. Returns deployment status (queued/building/deploying/active/failed/cancelled) and runtime status (running/deploying/failed/not_deployed). Use deploy_log_lines and runtime_log_lines to fetch logs.",
 		InputSchema: schemaFor[GetServiceInput](),
 	}, s.handleGetService)
 

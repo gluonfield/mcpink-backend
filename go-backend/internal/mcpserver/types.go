@@ -21,17 +21,17 @@ type CreateServiceInput struct {
 	Name   string `json:"name" jsonschema:"description=Name for the deployment"`
 
 	Project   string   `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
-	BuildPack string   `json:"build_pack,omitempty" jsonschema:"description=Build pack to use,enum=railpack,enum=dockerfile,enum=static,enum=dockercompose,default=railpack"`
+	BuildPack string   `json:"build_pack,omitempty" jsonschema:"description=Build pack to use. 'railpack' (default) auto-detects and builds most apps. 'static' serves files as-is with no build step. 'dockerfile' uses a custom Dockerfile. Use 'railpack' with publish_directory for Vite/React/Vue SPAs that need a build step then static serving via nginx.,enum=railpack,enum=dockerfile,enum=static,enum=dockercompose,default=railpack"`
 	Port      *int     `json:"port,omitempty" jsonschema:"description=Port the application listens on"`
 	EnvVars   []EnvVar `json:"env_vars,omitempty" jsonschema:"description=Environment variables"`
 
-	Memory string `json:"memory,omitempty" jsonschema:"description=Memory limit,enum=128Mi,enum=256Mi,enum=512Mi,enum=1024Mi,enum=2048Mi,enum=4096Mi,default=256Mi"`
+	Memory string `json:"memory,omitempty" jsonschema:"description=Memory limit. Use 128Mi for static sites; 256Mi for most apps.,enum=128Mi,enum=256Mi,enum=512Mi,enum=1024Mi,enum=2048Mi,enum=4096Mi,default=256Mi"`
 	VCPUs  string `json:"vcpus,omitempty" jsonschema:"description=vCPUs,enum=0.5,enum=1,enum=2,enum=4,default=0.5"`
 
 	BuildCommand string `json:"build_command,omitempty" jsonschema:"description=Custom build command (overrides auto-detected). Only used with build_pack=railpack."`
 	StartCommand string `json:"start_command,omitempty" jsonschema:"description=Custom start command (overrides auto-detected). Only used with build_pack=railpack."`
 
-	PublishDirectory string `json:"publish_directory,omitempty" jsonschema:"description=Directory containing built static files (e.g. 'dist'). When set with build_pack=railpack the service is built then served as static files via nginx."`
+	PublishDirectory string `json:"publish_directory,omitempty" jsonschema:"description=Directory containing built static files (e.g. 'dist'). When set with build_pack=railpack the app is built then served as static files via nginx. Recommended for Vite/React/Vue SPAs."`
 
 	RootDirectory  string `json:"root_directory,omitempty" jsonschema:"description=Subdirectory within the repo to use as build context (e.g. 'frontend' or 'services/api'). For monorepo deployments."`
 	DockerfilePath string `json:"dockerfile_path,omitempty" jsonschema:"description=Path to Dockerfile relative to root_directory (e.g. 'worker.Dockerfile' or 'build/Dockerfile'). Only used with build_pack=dockerfile."`
@@ -65,20 +65,23 @@ type ListServicesOutput struct {
 	Services []ServiceInfo `json:"services"`
 }
 
-type BuildProgress struct {
-	Stage       int    `json:"stage"`
-	TotalStages int    `json:"total_stages"`
-	Message     string `json:"message,omitempty"`
+type DeploymentDetails struct {
+	Status       string  `json:"status"`
+	ErrorMessage *string `json:"error_message,omitempty"`
+	Logs         string  `json:"logs,omitempty"`
+}
+
+type RuntimeDetails struct {
+	Status string `json:"status"`
+	Logs   string `json:"logs,omitempty"`
 }
 
 type ServiceInfo struct {
-	ServiceID     string         `json:"service_id"`
-	Name          string         `json:"name"`
-	Status        string         `json:"status"`
-	Repo          string         `json:"repo"`
-	URL           *string        `json:"url,omitempty"`
-	CommitHash    *string        `json:"commit_hash,omitempty"`
-	BuildProgress *BuildProgress `json:"build_progress,omitempty"`
+	ServiceID  string             `json:"service_id"`
+	Name       string             `json:"name"`
+	Repo       string             `json:"repo"`
+	URL        *string            `json:"url,omitempty"`
+	Deployment *DeploymentDetails `json:"deployment,omitempty"`
 }
 
 const (
@@ -149,23 +152,19 @@ type GetServiceInput struct {
 }
 
 type GetServiceOutput struct {
-	ServiceID          string         `json:"service_id"`
-	Name               string         `json:"name"`
-	Project            string         `json:"project"`
-	Repo               string         `json:"repo"`
-	Branch             string         `json:"branch"`
-	Status             string         `json:"status"`
-	CommitHash         string         `json:"commit_hash,omitempty"`
-	URL                *string        `json:"url,omitempty"`
-	CreatedAt          string         `json:"created_at"`
-	UpdatedAt          string         `json:"updated_at"`
-	ErrorMessage       *string        `json:"error_message,omitempty"`
-	EnvVars            []EnvVarInfo   `json:"env_vars,omitempty"`
-	DeploymentLogs     string         `json:"deployment_logs,omitempty"`
-	RuntimeLogs        string         `json:"runtime_logs,omitempty"`
-	BuildProgress      *BuildProgress `json:"build_progress,omitempty"`
-	CustomDomain       string         `json:"custom_domain,omitempty"`
-	CustomDomainStatus string         `json:"custom_domain_status,omitempty"`
+	ServiceID          string             `json:"service_id"`
+	Name               string             `json:"name"`
+	Project            string             `json:"project"`
+	Repo               string             `json:"repo"`
+	Branch             string             `json:"branch"`
+	URL                *string            `json:"url,omitempty"`
+	CreatedAt          string             `json:"created_at"`
+	UpdatedAt          string             `json:"updated_at"`
+	Deployment         *DeploymentDetails `json:"deployment,omitempty"`
+	Runtime            *RuntimeDetails    `json:"runtime,omitempty"`
+	EnvVars            []EnvVarInfo       `json:"env_vars,omitempty"`
+	CustomDomain       string             `json:"custom_domain,omitempty"`
+	CustomDomainStatus string             `json:"custom_domain_status,omitempty"`
 }
 
 type EnvVarInfo struct {

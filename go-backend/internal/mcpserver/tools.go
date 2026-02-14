@@ -303,20 +303,17 @@ func (s *Server) handleListServices(ctx context.Context, req *mcp.CallToolReques
 			name = *svc.Name
 		}
 
-		status := "pending"
-		var commitHash *string
-		if dep, err := s.deployService.GetLatestDeployment(ctx, svc.ID); err == nil && dep != nil {
-			status = dep.Status
-			commitHash = dep.CommitHash
+		var dep *DeploymentDetails
+		if d, err := s.deployService.GetLatestDeployment(ctx, svc.ID); err == nil && d != nil {
+			dep = &DeploymentDetails{Status: d.Status}
 		}
 
 		services[i] = ServiceInfo{
 			ServiceID:  svc.ID,
 			Name:       name,
-			Status:     status,
 			Repo:       svc.Repo,
 			URL:        svc.Fqdn,
-			CommitHash: commitHash,
+			Deployment: dep,
 		}
 	}
 
@@ -524,37 +521,36 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, GetServiceOutput{}, nil
 	}
 
-	status := "pending"
-	var commitHash string
+	depStatus := ""
 	var errorMessage *string
-	var buildProgress *BuildProgress
 	if dep, err := s.deployService.GetLatestDeployment(ctx, svc.ID); err == nil && dep != nil {
-		status = dep.Status
-		if dep.CommitHash != nil {
-			commitHash = *dep.CommitHash
-		}
+		depStatus = dep.Status
 		errorMessage = dep.ErrorMessage
-		if len(dep.BuildProgress) > 0 {
-			var progress BuildProgress
-			if err := json.Unmarshal(dep.BuildProgress, &progress); err == nil {
-				buildProgress = &progress
-			}
+	}
+
+	var deployment *DeploymentDetails
+	if depStatus != "" {
+		deployment = &DeploymentDetails{
+			Status:       depStatus,
+			ErrorMessage: errorMessage,
 		}
 	}
 
+	runtime := &RuntimeDetails{
+		Status: depStatus,
+	}
+
 	output := GetServiceOutput{
-		ServiceID:     svc.ID,
-		Name:          helpers.Deref(svc.Name),
-		Project:       project,
-		Repo:          svc.Repo,
-		Branch:        svc.Branch,
-		Status:        status,
-		CommitHash:    commitHash,
-		URL:           svc.Fqdn,
-		CreatedAt:     svc.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:     svc.UpdatedAt.Time.Format(time.RFC3339),
-		ErrorMessage:  errorMessage,
-		BuildProgress: buildProgress,
+		ServiceID:  svc.ID,
+		Name:       helpers.Deref(svc.Name),
+		Project:    project,
+		Repo:       svc.Repo,
+		Branch:     svc.Branch,
+		URL:        svc.Fqdn,
+		CreatedAt:  svc.CreatedAt.Time.Format(time.RFC3339),
+		UpdatedAt:  svc.UpdatedAt.Time.Format(time.RFC3339),
+		Deployment: deployment,
+		Runtime:    runtime,
 	}
 
 	if cd, err := s.deployService.GetCustomDomainByServiceID(ctx, svc.ID); err == nil {
@@ -572,13 +568,13 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		}
 	}
 
-	if input.DeployLogLines > 0 {
+	if input.DeployLogLines > 0 && deployment != nil {
 		limit := min(input.DeployLogLines, MaxLogLines)
 		ns := k8sdeployments.NamespaceName(user.ID, project)
 		svcName := k8sdeployments.ServiceName(helpers.Deref(svc.Name))
 		lines, err := k8sdeployments.QueryBuildLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svcName, 24*time.Hour, limit)
 		if err == nil && len(lines) > 0 {
-			output.DeploymentLogs = strings.Join(lines, "\n")
+			deployment.Logs = strings.Join(lines, "\n")
 		}
 	}
 
@@ -588,7 +584,7 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		svcName := k8sdeployments.ServiceName(helpers.Deref(svc.Name))
 		lines, err := k8sdeployments.QueryRunLogs(ctx, s.lokiQueryURL, s.lokiUsername, s.lokiPassword, ns, svcName, 24*time.Hour, limit)
 		if err == nil && len(lines) > 0 {
-			output.RuntimeLogs = strings.Join(lines, "\n")
+			runtime.Logs = strings.Join(lines, "\n")
 		}
 	}
 
