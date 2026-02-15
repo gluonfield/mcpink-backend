@@ -44,6 +44,7 @@ SET status = 'active',
 WHERE id = $1
 RETURNING *;
 
+
 -- name: UpdateStatus :one
 UPDATE delegated_zones
 SET status = $2,
