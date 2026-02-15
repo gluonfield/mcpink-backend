@@ -118,3 +118,9 @@ type DeleteCertificateInput struct {
 	CertificateName string
 }
 
+type CopySecretInput struct {
+	SecretName      string
+	SourceNamespace string
+	TargetNamespace string
+}
+

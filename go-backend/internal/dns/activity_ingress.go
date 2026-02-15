@@ -20,6 +20,33 @@ var ingressRouteGVR = schema.GroupVersionResource{
 
 const certNamespace = "dp-system"
 
+func (a *Activities) CopySecret(ctx context.Context, input CopySecretInput) error {
+	a.logger.Info("CopySecret",
+		"secret", input.SecretName,
+		"from", input.SourceNamespace,
+		"to", input.TargetNamespace)
+
+	src, err := a.k8s.CoreV1().Secrets(input.SourceNamespace).Get(ctx, input.SecretName, metav1.GetOptions{})
+	if err != nil {
+		return fmt.Errorf("get source secret: %w", err)
+	}
+
+	dst := src.DeepCopy()
+	dst.Namespace = input.TargetNamespace
+	dst.ResourceVersion = ""
+	dst.UID = ""
+
+	_, err = a.k8s.CoreV1().Secrets(input.TargetNamespace).Create(ctx, dst, metav1.CreateOptions{})
+	if apierrors.IsAlreadyExists(err) {
+		_, err = a.k8s.CoreV1().Secrets(input.TargetNamespace).Update(ctx, dst, metav1.UpdateOptions{})
+	}
+	if err != nil {
+		return fmt.Errorf("copy secret to %s: %w", input.TargetNamespace, err)
+	}
+
+	return nil
+}
+
 func (a *Activities) ApplySubdomainIngress(ctx context.Context, input ApplySubdomainIngressInput) error {
 	a.logger.Info("ApplySubdomainIngress",
 		"namespace", input.Namespace,
@@ -90,7 +117,7 @@ func buildSubdomainIngressRoute(namespace, serviceName, fqdn, certSecretName str
 					},
 				},
 				"tls": map[string]any{
-					"secretName": certNamespace + "/" + certSecretName,
+					"secretName": certSecretName,
 				},
 			},
 		},

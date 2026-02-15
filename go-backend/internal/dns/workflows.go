@@ -135,6 +135,17 @@ func AttachSubdomainWorkflow(ctx workflow.Context, input AttachSubdomainInput) (
 		}, err
 	}
 
+	if err := workflow.ExecuteActivity(shortCtx, a.CopySecret, CopySecretInput{
+		SecretName:      input.CertSecret,
+		SourceNamespace: "dp-system",
+		TargetNamespace: input.Namespace,
+	}).Get(ctx, nil); err != nil {
+		return AttachSubdomainResult{
+			Status:       "failed",
+			ErrorMessage: fmt.Sprintf("failed to copy TLS secret: %v", err),
+		}, err
+	}
+
 	if err := workflow.ExecuteActivity(shortCtx, a.ApplySubdomainIngress, ApplySubdomainIngressInput{
 		Namespace:   input.Namespace,
 		ServiceName: input.ServiceName,
