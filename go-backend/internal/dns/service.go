@@ -156,7 +156,7 @@ func (s *Service) VerifyDelegation(ctx context.Context, params VerifyDelegationP
 		if dz.Status == "pending_verification" {
 			txtOK, txtErr := VerifyTXT(dz.Zone, dz.VerificationToken)
 			if txtErr != nil || !txtOK {
-				txtHost := siblingTXTHost(dz.Zone)
+				txtHost := txtVerifyHost(dz.Zone)
 				errMsg := fmt.Sprintf("TXT verification failed. Add TXT record: %s with value dp-verify=%s", txtHost, dz.VerificationToken)
 				if txtErr != nil {
 					errMsg = txtErr.Error()

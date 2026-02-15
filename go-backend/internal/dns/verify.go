@@ -8,20 +8,17 @@ import (
 	"strings"
 )
 
-// siblingTXTHost returns the TXT verification hostname placed above the
-// delegation cut so it remains queryable even after NS records are set.
-// Example: zone "dogs.breacher.org" → "dogs._dp-verify.breacher.org"
-func siblingTXTHost(zone string) string {
-	zone = NormalizeDomain(zone)
-	idx := strings.Index(zone, ".")
-	if idx < 0 {
-		return "_dp-verify." + zone
-	}
-	return zone[:idx] + "._dp-verify." + zone[idx+1:]
+// txtVerifyHost returns the TXT verification hostname for a zone.
+// Always a child record under the zone, verified before NS delegation.
+//
+//	dogs.breacher.org → _dp-verify.dogs.breacher.org
+//	mydomain.com      → _dp-verify.mydomain.com
+func txtVerifyHost(zone string) string {
+	return "_dp-verify." + NormalizeDomain(zone)
 }
 
 func VerifyTXT(zone, expectedToken string) (bool, error) {
-	host := siblingTXTHost(zone)
+	host := txtVerifyHost(zone)
 	records, err := net.LookupTXT(host)
 	if err != nil {
 		return false, fmt.Errorf("TXT lookup failed for %s: %w", host, err)
@@ -88,7 +85,7 @@ func ValidateDelegatedZone(zone, platformDomain string) error {
 	}
 
 	if !strings.Contains(zone, ".") {
-		return fmt.Errorf("apex domains cannot be delegated; use a subdomain (e.g. apps.%s)", zone)
+		return fmt.Errorf("invalid zone: must be a domain name (e.g. %s.com or apps.%s.com)", zone, zone)
 	}
 
 	parts := strings.Split(zone, ".")
@@ -102,18 +99,20 @@ func ValidateDelegatedZone(zone, platformDomain string) error {
 }
 
 func DelegationInstructions(zone, token string, nameservers []string) string {
-	txtHost := siblingTXTHost(zone)
+	txtHost := txtVerifyHost(zone)
 	nsList := ""
 	for _, ns := range nameservers {
 		nsList += fmt.Sprintf("   %s  NS  %s\n", zone, ns)
 	}
 
 	return fmt.Sprintf(
-		"Add all records at your DNS provider, then call verify_delegation:\n\n"+
+		"Step 1 — Add this TXT record and call verify_delegation:\n\n"+
 			"   Host: %s\n"+
 			"   Type: TXT\n"+
 			"   Value: dp-verify=%s\n\n"+
-			"%s",
+			"Step 2 — After TXT is verified, add NS records:\n\n"+
+			"%s\n"+
+			"Then call verify_delegation again.",
 		txtHost, token, nsList,
 	)
 }
