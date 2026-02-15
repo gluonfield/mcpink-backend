@@ -29,10 +29,15 @@ func NewClient(cfg Config) *Client {
 func (c *Client) CreateZone(zone string, nameservers []string, initialRRSets []RRSet) error {
 	canonicalZone := ensureTrailingDot(zone)
 
+	canonicalNS := make([]string, len(nameservers))
+	for i, ns := range nameservers {
+		canonicalNS[i] = ensureTrailingDot(ns)
+	}
+
 	body := CreateZoneRequest{
 		Name:        canonicalZone,
 		Kind:        "Native",
-		Nameservers: nameservers,
+		Nameservers: canonicalNS,
 		RRSets:      initialRRSets,
 	}
 

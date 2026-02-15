@@ -141,6 +141,12 @@ spec:
               value: http://loki.dp-system:3100/loki/api/v1/query_range
             - name: CLUSTER_REGION
               value: "eu-central-1"
+            # PowerDNS (viper: powerdns.*)
+            - name: POWERDNS_APIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: powerdns-credentials
+                  key: api-key
           resources:
             requests:
               cpu: "200m"
