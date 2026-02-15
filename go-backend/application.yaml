@@ -95,3 +95,12 @@ k8sworker:
 
 cluster:
   region: "eu-central-1"
+
+powerdns:
+  apiurl: "http://10.0.0.2:8081"
+  apikey: ""
+
+dns:
+  nameservers:
+    - ns1.ml.ink
+    - ns2.ml.ink

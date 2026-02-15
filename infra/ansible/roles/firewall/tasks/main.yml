@@ -102,6 +102,32 @@
     rule_num: 1
   notify: Persist iptables rules
 
+- name: Allow public DNS queries (UDP) on dns nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: udp
+    destination_port: "53"
+    jump: ACCEPT
+    comment: allow dns udp queries
+    state: present
+    action: insert
+    rule_num: 1
+  when: "'dns' in group_names"
+  notify: Persist iptables rules
+
+- name: Allow public DNS queries (TCP) on dns nodes
+  ansible.builtin.iptables:
+    chain: INPUT
+    protocol: tcp
+    destination_port: "53"
+    jump: ACCEPT
+    comment: allow dns tcp queries
+    state: present
+    action: insert
+    rule_num: 1
+  when: "'dns' in group_names"
+  notify: Persist iptables rules
+
 - name: Allow public Traefik ingress ports from anywhere on run nodes
   ansible.builtin.iptables:
     chain: INPUT

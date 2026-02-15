@@ -19,11 +19,11 @@ import (
 type config struct {
 	fx.Out
 
-	GraphQLAPI bootstrap.GraphQLAPIConfig
-	Db         pg.DbConfig
-	GitHubApp  githubapp.Config
-	Gitea      internalgit.Config
-	Temporal   bootstrap.TemporalClientConfig
+	GraphQLAPI  bootstrap.GraphQLAPIConfig
+	Db          pg.DbConfig
+	GitHubApp   githubapp.Config
+	Gitea       internalgit.Config
+	Temporal    bootstrap.TemporalClientConfig
 }
 
 func main() {
@@ -42,10 +42,8 @@ func main() {
 			pg.NewClusterMap,
 			deployments.NewService,
 			webhooks.NewHandlers,
-			// Transitive deps for deployments.NewService
 			pg.NewUserQueries,
 			pg.NewProjectQueries,
-			pg.NewCustomDomainQueries,
 		),
 		fx.Invoke(
 			startDeployerServer,

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/augustdev/autoclip/internal/deployments"
+	"github.com/augustdev/autoclip/internal/dns"
 	"github.com/augustdev/autoclip/internal/helpers"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/resources"
@@ -555,11 +556,12 @@ func (s *Server) handleGetService(ctx context.Context, req *mcp.CallToolRequest,
 		Runtime:    runtime,
 	}
 
-	if cd, err := s.deployService.GetCustomDomainByServiceID(ctx, svc.ID); err == nil {
+	if zr, dz, err := s.dnsService.GetCustomDomainForService(ctx, svc.ID); err == nil {
+		domain := zr.Name + "." + dz.Zone
 		output.CustomDomain = &CustomDomainDetails{
-			Domain: cd.Domain,
-			Status: cd.Status,
-			Error:  cd.LastError,
+			Domain: domain,
+			Status: dz.Status,
+			Error:  dz.LastError,
 		}
 	}
 
@@ -677,7 +679,7 @@ func (s *Server) handleAddCustomDomain(ctx context.Context, req *mcp.CallToolReq
 		project = input.Project
 	}
 
-	result, err := s.deployService.AddCustomDomain(ctx, deployments.AddCustomDomainParams{
+	result, err := s.dnsService.AddCustomDomain(ctx, dns.AddCustomDomainParams{
 		Name:    input.Name,
 		Project: project,
 		UserID:  user.ID,
@@ -688,38 +690,6 @@ func (s *Server) handleAddCustomDomain(ctx context.Context, req *mcp.CallToolReq
 	}
 
 	return nil, AddCustomDomainOutput{
-		ServiceID:    result.ServiceID,
-		Domain:       result.Domain,
-		Status:       result.Status,
-		Instructions: result.Instructions,
-	}, nil
-}
-
-func (s *Server) handleVerifyCustomDomain(ctx context.Context, req *mcp.CallToolRequest, input VerifyCustomDomainInput) (*mcp.CallToolResult, VerifyCustomDomainOutput, error) {
-	user := UserFromContext(ctx)
-	if user == nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, VerifyCustomDomainOutput{}, nil
-	}
-
-	if input.Name == "" {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "name is required"}}}, VerifyCustomDomainOutput{}, nil
-	}
-
-	project := "default"
-	if input.Project != "" {
-		project = input.Project
-	}
-
-	result, err := s.deployService.VerifyCustomDomain(ctx, deployments.VerifyCustomDomainParams{
-		Name:    input.Name,
-		Project: project,
-		UserID:  user.ID,
-	})
-	if err != nil {
-		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, VerifyCustomDomainOutput{}, nil
-	}
-
-	return nil, VerifyCustomDomainOutput{
 		ServiceID: result.ServiceID,
 		Domain:    result.Domain,
 		Status:    result.Status,
@@ -742,7 +712,7 @@ func (s *Server) handleRemoveCustomDomain(ctx context.Context, req *mcp.CallTool
 		project = input.Project
 	}
 
-	result, err := s.deployService.RemoveCustomDomain(ctx, deployments.RemoveCustomDomainParams{
+	result, err := s.dnsService.RemoveCustomDomain(ctx, dns.RemoveCustomDomainParams{
 		Name:    input.Name,
 		Project: project,
 		UserID:  user.ID,
@@ -755,4 +725,106 @@ func (s *Server) handleRemoveCustomDomain(ctx context.Context, req *mcp.CallTool
 		ServiceID: result.ServiceID,
 		Message:   result.Message,
 	}, nil
+}
+
+func (s *Server) handleDelegateZone(ctx context.Context, req *mcp.CallToolRequest, input DelegateZoneInput) (*mcp.CallToolResult, DelegateZoneOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, DelegateZoneOutput{}, nil
+	}
+
+	if input.Zone == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "zone is required"}}}, DelegateZoneOutput{}, nil
+	}
+
+	result, err := s.dnsService.DelegateZone(ctx, dns.DelegateZoneParams{
+		UserID: user.ID,
+		Zone:   input.Zone,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, DelegateZoneOutput{}, nil
+	}
+
+	return nil, DelegateZoneOutput{
+		ZoneID:       result.ZoneID,
+		Zone:         result.Zone,
+		Status:       result.Status,
+		Instructions: result.Instructions,
+	}, nil
+}
+
+func (s *Server) handleVerifyDelegation(ctx context.Context, req *mcp.CallToolRequest, input VerifyDelegationInput) (*mcp.CallToolResult, VerifyDelegationOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, VerifyDelegationOutput{}, nil
+	}
+
+	if input.Zone == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "zone is required"}}}, VerifyDelegationOutput{}, nil
+	}
+
+	result, err := s.dnsService.VerifyDelegation(ctx, dns.VerifyDelegationParams{
+		UserID: user.ID,
+		Zone:   input.Zone,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, VerifyDelegationOutput{}, nil
+	}
+
+	return nil, VerifyDelegationOutput{
+		ZoneID:       result.ZoneID,
+		Zone:         result.Zone,
+		Status:       result.Status,
+		Message:      result.Message,
+		Instructions: result.Instructions,
+	}, nil
+}
+
+func (s *Server) handleRemoveDelegation(ctx context.Context, req *mcp.CallToolRequest, input RemoveDelegationInput) (*mcp.CallToolResult, RemoveDelegationOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, RemoveDelegationOutput{}, nil
+	}
+
+	if input.Zone == "" {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "zone is required"}}}, RemoveDelegationOutput{}, nil
+	}
+
+	result, err := s.dnsService.RemoveDelegation(ctx, dns.RemoveDelegationParams{
+		UserID: user.ID,
+		Zone:   input.Zone,
+	})
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: err.Error()}}}, RemoveDelegationOutput{}, nil
+	}
+
+	return nil, RemoveDelegationOutput{
+		ZoneID:  result.ZoneID,
+		Message: result.Message,
+	}, nil
+}
+
+func (s *Server) handleListDelegations(ctx context.Context, req *mcp.CallToolRequest, input ListDelegationsInput) (*mcp.CallToolResult, ListDelegationsOutput, error) {
+	user := UserFromContext(ctx)
+	if user == nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: "not authenticated"}}}, ListDelegationsOutput{}, nil
+	}
+
+	zones, err := s.dnsService.ListDelegations(ctx, user.ID)
+	if err != nil {
+		return &mcp.CallToolResult{IsError: true, Content: []mcp.Content{&mcp.TextContent{Text: fmt.Sprintf("failed to list delegations: %v", err)}}}, ListDelegationsOutput{}, nil
+	}
+
+	delegations := make([]DelegationInfo, len(zones))
+	for i, z := range zones {
+		delegations[i] = DelegationInfo{
+			ZoneID:    z.ID,
+			Zone:      z.Zone,
+			Status:    z.Status,
+			Error:     z.LastError,
+			CreatedAt: z.CreatedAt.Time.Format(time.RFC3339),
+		}
+	}
+
+	return nil, ListDelegationsOutput{Delegations: delegations}, nil
 }

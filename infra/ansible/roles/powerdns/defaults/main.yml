@@ -1,0 +1,14 @@
+---
+powerdns_db_name: pdns
+powerdns_db_user: pdns
+# powerdns_db_password: must be provided via --extra-vars or vault
+# powerdns_api_key: must be provided via --extra-vars or vault
+# powerdns_tsig_key: must be provided via --extra-vars or vault (base64 HMAC-SHA256)
+
+powerdns_api_port: 8081
+powerdns_listen_port: 53
+
+# Hetzner DNS resolvers (used after disabling systemd-resolved)
+powerdns_upstream_dns:
+  - 185.12.64.1
+  - 185.12.64.2

@@ -5,7 +5,6 @@ import (
 
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
@@ -24,7 +23,6 @@ type Activities struct {
 	deploymentsQ   deploymentsdb.Querier
 	projectsQ      projects.Querier
 	usersQ         users.Querier
-	customDomainsQ customdomains.Querier
 	config         Config
 }
 
@@ -38,7 +36,6 @@ func NewActivities(
 	deploymentsQ deploymentsdb.Querier,
 	projectsQ projects.Querier,
 	usersQ users.Querier,
-	customDomainsQ customdomains.Querier,
 	config Config,
 ) *Activities {
 	return &Activities{
@@ -51,7 +48,6 @@ func NewActivities(
 		deploymentsQ:   deploymentsQ,
 		projectsQ:      projectsQ,
 		usersQ:         usersQ,
-		customDomainsQ: customDomainsQ,
 		config:         config,
 	}
 }

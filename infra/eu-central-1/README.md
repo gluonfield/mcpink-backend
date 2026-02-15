@@ -12,6 +12,7 @@ Source of truth for all hosts. IPs also live in `inventory/hosts.yml` for Ansibl
 | build-1                 | 46.225.92.127   | 10.0.0.3   | Cloud VPS (4 vCPU, 16GB)      | BuildKit image builds         | `ssh root@46.225.92.127`   |
 | ops-1                   | 116.202.163.209 | 10.0.1.4   | Dedicated (Xeon E-2176G)      | Registry, Gitea, monitoring   | `ssh root@116.202.163.209` |
 | run-1                   | 157.90.130.187  | 10.0.1.3   | Dedicated (EPYC 7502P, 256GB) | Customer workloads            | `ssh root@157.90.130.187`  |
+| dns-eu-1                | 46.225.65.56    | 10.0.0.2   | Cloud VPS CX22 (4GB)          | PowerDNS authoritative DNS    | `ssh root@46.225.65.56`    |
 | load-balancer-central-1 | 46.225.35.234   | 10.0.0.5   | Hetzner LB (lb11)             | Custom domain TCP passthrough | Hetzner Console only       |
 
 ### Notable hardware
@@ -59,36 +60,42 @@ Client → Cloudflare LB → run-pool (Traefik, TLS via wildcard cert) → custo
 
 Cloudflare handles DDoS, health-checks, and TLS termination (full strict mode).
 
-### Custom domains
+### Custom domains (DNS delegation)
 
-Per-service CNAME targets with TXT ownership verification:
+Users delegate a subdomain zone once via NS records. The platform controls the zone via PowerDNS (dns-eu-1), issues a wildcard cert via DNS-01, and creates subdomains instantly.
 
 ```
-1. User calls add_custom_domain → gets instructions:
-   - TXT: _dp-verify.app.customer.com → dp-verify={token}  (ownership proof)
-   - CNAME: app.customer.com → my-service.cname.ml.ink      (routing)
+1. User calls delegate_zone("apps.example.com")
+   → Returns TXT verification instructions
 
-2. User calls verify_custom_domain → both records checked
+2. User calls verify_delegation (phase 1: TXT ownership proof)
+   → Returns NS delegation instructions (ns1.ml.ink, ns2.ml.ink)
 
-3. Two-phase cert provisioning (Temporal workflow):
-   a. Certificate CR created (no Ingress yet → no Traefik 308 redirect)
-   b. cert-manager issues cert via HTTP-01 (unblocked)
-   c. Ingress WITH TLS created (cert exists → redirect is fine)
-   d. Status marked active
+3. User calls verify_delegation (phase 2: NS check)
+   → Temporal workflow:
+     a. Create zone in PowerDNS (SOA + NS + wildcard A record)
+     b. Issue wildcard cert *.apps.example.com via DNS-01 (RFC2136 → PowerDNS)
+     c. Zone status → active
+
+4. User calls add_custom_domain("api", service_name)
+   → Create A record in PowerDNS + Ingress referencing wildcard cert
+   → Live in seconds
 
 Traffic flow:
-app.customer.com → CNAME → my-service.cname.ml.ink (wildcard A → 46.225.35.234)
-  → Hetzner LB → TCP passthrough (80, 443) → run-pool (Traefik)
+api.apps.example.com
+  → Recursive resolver → NS ns1.ml.ink → PowerDNS (46.225.65.56)
+    → A 46.225.35.234
+  → Hetzner LB → TCP passthrough → Traefik (run-1)
   → Traefik routes by Host header → customer pod
 ```
 
-**DNS records**: `*.cname.ml.ink` wildcard A → cluster LB IP (DNS-only, gray cloud). For multi-region, explicit per-service A records override the wildcard.
+**PowerDNS**: Authoritative DNS on dns-eu-1 (46.225.65.56 / 10.0.0.2). API on private network only (8081). Local PostgreSQL backend.
 
-**Why TCP passthrough**: cert-manager needs raw HTTP-01 challenges on port 80. TLS-terminating LB would break cert provisioning.
+**TLS**: Wildcard cert per delegated zone via DNS-01 (cert-manager RFC2136 solver → PowerDNS). No per-service certs.
 
-**Why two-phase**: Traefik v3 auto-redirects HTTP→HTTPS (308) for any Ingress with a TLS section. Creating the Certificate CR first (without an Ingress) avoids this redirect during initial issuance.
+**Why TCP passthrough**: Traefik terminates TLS using wildcard certs from cert-manager. TLS-terminating LB would break this.
 
-**Anti-squat**: Unverified domains expire after 7 days. TXT verification prevents unauthorized domain attachment.
+**Anti-squat**: Unverified zones expire after 7 days. TXT verification while user still controls DNS prevents unauthorized claiming.
 
 ## Hetzner Load Balancer
 

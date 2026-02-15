@@ -28,21 +28,24 @@ type Cluster struct {
 	CnameTarget string             `json:"cname_target"`
 	Status      string             `json:"status"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	IngressIp   string             `json:"ingress_ip"`
+	HasDns      bool               `json:"has_dns"`
 }
 
-type CustomDomain struct {
-	ID                   string             `json:"id"`
-	ServiceID            string             `json:"service_id"`
-	Domain               string             `json:"domain"`
-	Status               string             `json:"status"`
-	ExpectedRecordTarget string             `json:"expected_record_target"`
-	ExpiresAt            pgtype.Timestamptz `json:"expires_at"`
-	VerifiedAt           pgtype.Timestamptz `json:"verified_at"`
-	LastCheckedAt        pgtype.Timestamptz `json:"last_checked_at"`
-	LastError            *string            `json:"last_error"`
-	CreatedAt            pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-	VerificationToken    string             `json:"verification_token"`
+type DelegatedZone struct {
+	ID                 string             `json:"id"`
+	UserID             string             `json:"user_id"`
+	Zone               string             `json:"zone"`
+	Status             string             `json:"status"`
+	VerificationToken  string             `json:"verification_token"`
+	WildcardCertSecret *string            `json:"wildcard_cert_secret"`
+	CertIssuedAt       pgtype.Timestamptz `json:"cert_issued_at"`
+	VerifiedAt         pgtype.Timestamptz `json:"verified_at"`
+	DelegatedAt        pgtype.Timestamptz `json:"delegated_at"`
+	ExpiresAt          pgtype.Timestamptz `json:"expires_at"`
+	LastError          *string            `json:"last_error"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Deployment struct {
@@ -67,21 +70,6 @@ type Deployment struct {
 	FinishedAt      pgtype.Timestamptz `json:"finished_at"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-}
-
-type DnsRecord struct {
-	ID                 string             `json:"id"`
-	ServiceID          string             `json:"service_id"`
-	CloudflareRecordID *string            `json:"cloudflare_record_id"`
-	Subdomain          string             `json:"subdomain"`
-	FullDomain         string             `json:"full_domain"`
-	TargetIp           string             `json:"target_ip"`
-	Type               string             `json:"type"`
-	Name               string             `json:"name"`
-	Content            string             `json:"content"`
-	Proxied            bool               `json:"proxied"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 }
 
 type GithubCred struct {
@@ -173,4 +161,12 @@ type User struct {
 	GithubScopes   []string           `json:"github_scopes"`
 	CreatedAt      pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt      pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ZoneRecord struct {
+	ID        string             `json:"id"`
+	ZoneID    string             `json:"zone_id"`
+	ServiceID string             `json:"service_id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

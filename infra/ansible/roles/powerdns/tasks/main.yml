@@ -1,0 +1,151 @@
+---
+# --- PostgreSQL (local, dedicated to PowerDNS) ---
+
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql
+      - postgresql-client
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure PostgreSQL is running
+  systemd:
+    name: postgresql
+    state: started
+    enabled: true
+
+- name: Create PowerDNS database user
+  become: true
+  become_user: postgres
+  shell: |
+    set -euo pipefail
+    if psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ powerdns_db_user }}'" | grep -q 1; then
+      exit 0
+    fi
+    psql -c "CREATE USER {{ powerdns_db_user }} WITH PASSWORD '{{ powerdns_db_password }}'"
+  args:
+    executable: /bin/bash
+  register: pdns_user_create
+  changed_when: "'CREATE ROLE' in pdns_user_create.stdout"
+  no_log: true
+
+- name: Create PowerDNS database
+  become: true
+  become_user: postgres
+  shell: |
+    set -euo pipefail
+    if psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ powerdns_db_name }}'" | grep -q 1; then
+      exit 0
+    fi
+    psql -c "CREATE DATABASE {{ powerdns_db_name }} OWNER {{ powerdns_db_user }}"
+  args:
+    executable: /bin/bash
+  register: pdns_db_create
+  changed_when: "'CREATE DATABASE' in pdns_db_create.stdout"
+
+# --- PowerDNS ---
+
+- name: Install PowerDNS and PostgreSQL backend
+  apt:
+    name:
+      - pdns-server
+      - pdns-backend-pgsql
+    state: present
+
+- name: Stop systemd-resolved to free port 53
+  systemd:
+    name: systemd-resolved
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Remove resolv.conf symlink if present
+  shell: |
+    set -euo pipefail
+    if [ -L /etc/resolv.conf ]; then
+      rm /etc/resolv.conf
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Configure static DNS resolution
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      {% for ns in powerdns_upstream_dns %}
+      nameserver {{ ns }}
+      {% endfor %}
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Initialize PowerDNS database schema
+  become: true
+  become_user: postgres
+  shell: |
+    set -euo pipefail
+    if psql -d {{ powerdns_db_name }} -c "SELECT 1 FROM domains LIMIT 1" 2>/dev/null; then
+      exit 0
+    fi
+    SCHEMA=/usr/share/doc/pdns-backend-pgsql/schema.pgsql.sql
+    if [ ! -f "$SCHEMA" ] && [ -f "${SCHEMA}.gz" ]; then
+      zcat "${SCHEMA}.gz" > /tmp/pdns-schema.sql
+      SCHEMA=/tmp/pdns-schema.sql
+    fi
+    psql -d {{ powerdns_db_name }} -f "$SCHEMA"
+  args:
+    executable: /bin/bash
+  register: pdns_schema
+  changed_when: "'CREATE TABLE' in pdns_schema.stdout"
+
+- name: Grant PowerDNS user access to all tables
+  become: true
+  become_user: postgres
+  shell: |
+    set -euo pipefail
+    psql -d {{ powerdns_db_name }} -c "
+      GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO {{ powerdns_db_user }};
+      GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO {{ powerdns_db_user }};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {{ powerdns_db_user }};
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO {{ powerdns_db_user }};
+    "
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Remove default PowerDNS backend configs
+  shell: rm -f /etc/powerdns/pdns.d/*.conf
+  args:
+    executable: /bin/bash
+  changed_when: false
+  notify: Restart PowerDNS
+
+- name: Install PowerDNS configuration
+  template:
+    src: pdns.conf.j2
+    dest: /etc/powerdns/pdns.conf
+    owner: root
+    group: pdns
+    mode: "0640"
+  notify: Restart PowerDNS
+
+- name: Ensure PowerDNS is running
+  systemd:
+    name: pdns
+    state: started
+    enabled: true
+
+- name: Configure TSIG key for cert-manager RFC2136
+  shell: |
+    set -euo pipefail
+    if pdnsutil list-tsig-keys | grep -q '^cert-manager\.'; then
+      pdnsutil delete-tsig-key cert-manager
+    fi
+    pdnsutil import-tsig-key cert-manager hmac-sha256 '{{ powerdns_tsig_key }}'
+  args:
+    executable: /bin/bash
+  when: powerdns_tsig_key | default('') | length > 0
+  no_log: true

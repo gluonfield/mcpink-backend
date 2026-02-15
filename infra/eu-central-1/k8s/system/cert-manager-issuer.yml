@@ -18,10 +18,11 @@ spec:
         selector:
           dnsZones:
             - ml.ink
-      - http01:
-          ingress:
-            ingressClassName: traefik
-            ingressTemplate:
-              metadata:
-                annotations:
-                  traefik.ingress.kubernetes.io/router.entrypoints: web
+      - dns01:
+          rfc2136:
+            nameserver: 10.0.0.2:53
+            tsigKeyName: cert-manager
+            tsigAlgorithm: HMACSHA256
+            tsigSecretSecretRef:
+              name: powerdns-tsig-key
+              key: tsig-secret

@@ -6,6 +6,7 @@ import (
 
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/deployments"
+	"github.com/augustdev/autoclip/internal/dns"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/resources"
@@ -25,6 +26,7 @@ type Server struct {
 	mcpServer        *mcp.Server
 	authService      *auth.Service
 	deployService    *deployments.Service
+	dnsService       *dns.Service
 	resourcesService *resources.Service
 	githubAppService *githubapp.Service
 	internalGitSvc   *internalgit.Service
@@ -40,7 +42,7 @@ type LokiConfig struct {
 	Password string
 }
 
-func NewServer(authService *auth.Service, deployService *deployments.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, internalGitSvc *internalgit.Service, lokiCfg LokiConfig, logger *slog.Logger) *Server {
+func NewServer(authService *auth.Service, deployService *deployments.Service, dnsService *dns.Service, resourcesService *resources.Service, githubAppService *githubapp.Service, internalGitSvc *internalgit.Service, lokiCfg LokiConfig, logger *slog.Logger) *Server {
 	mcpServer := mcp.NewServer(
 		&mcp.Implementation{
 			Name:    "Ink MCP",
@@ -56,6 +58,7 @@ func NewServer(authService *auth.Service, deployService *deployments.Service, re
 		mcpServer:        mcpServer,
 		authService:      authService,
 		deployService:    deployService,
+		dnsService:       dnsService,
 		resourcesService: resourcesService,
 		githubAppService: githubAppService,
 		internalGitSvc:   internalGitSvc,
@@ -151,16 +154,34 @@ func (s *Server) registerTools() {
 	}, s.handleAddCustomDomain)
 
 	mcp.AddTool(s.mcpServer, &mcp.Tool{
-		Name:        "verify_custom_domain",
-		Description: "Verify DNS and activate custom domain. Call after configuring DNS records.",
-		InputSchema: schemaFor[VerifyCustomDomainInput](),
-	}, s.handleVerifyCustomDomain)
-
-	mcp.AddTool(s.mcpServer, &mcp.Tool{
 		Name:        "remove_custom_domain",
 		Description: "Remove a custom domain from a service.",
 		InputSchema: schemaFor[RemoveCustomDomainInput](),
 	}, s.handleRemoveCustomDomain)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "delegate_zone",
+		Description: "Delegate a subdomain zone to the platform. Returns TXT verification instructions.",
+		InputSchema: schemaFor[DelegateZoneInput](),
+	}, s.handleDelegateZone)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "verify_delegation",
+		Description: "Verify zone delegation (phase 1: TXT ownership, phase 2: NS records). Call after configuring DNS records.",
+		InputSchema: schemaFor[VerifyDelegationInput](),
+	}, s.handleVerifyDelegation)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "remove_delegation",
+		Description: "Remove a delegated zone and all its subdomains.",
+		InputSchema: schemaFor[RemoveDelegationInput](),
+	}, s.handleRemoveDelegation)
+
+	mcp.AddTool(s.mcpServer, &mcp.Tool{
+		Name:        "list_delegations",
+		Description: "List all delegated zones with their status.",
+		InputSchema: schemaFor[ListDelegationsInput](),
+	}, s.handleListDelegations)
 }
 
 func (s *Server) Handler() http.Handler {

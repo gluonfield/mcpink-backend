@@ -28,7 +28,7 @@ func (a *Activities) Deploy(ctx context.Context, input DeployInput) (*DeployResu
 		appPort = id.Service.Port
 	}
 	port := effectiveAppPort(id.Service.BuildPack, appPort, bc.PublishDirectory)
-	portInt := parsePort(port)
+	portInt := ParsePortString(port)
 
 	envVars := parseEnvVars(id.Service.EnvVars)
 	envVars["PORT"] = port

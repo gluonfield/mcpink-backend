@@ -226,25 +226,15 @@ type GetGitTokenOutput struct {
 	ExpiresAt string `json:"expires_at"`
 }
 
+// Custom domain (backed by delegated zones)
+
 type AddCustomDomainInput struct {
 	Name    string `json:"name" jsonschema:"description=Name of the service to attach a custom domain to"`
-	Domain  string `json:"domain" jsonschema:"description=Custom domain to attach (e.g. 'app.example.com'). Must be a subdomain with a CNAME record."`
+	Domain  string `json:"domain" jsonschema:"description=Custom domain to attach (e.g. 'api.apps.example.com'). Must be under a delegated zone."`
 	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
 }
 
 type AddCustomDomainOutput struct {
-	ServiceID    string `json:"service_id"`
-	Domain       string `json:"domain"`
-	Status       string `json:"status"`
-	Instructions string `json:"instructions"`
-}
-
-type VerifyCustomDomainInput struct {
-	Name    string `json:"name" jsonschema:"description=Name of the service whose custom domain to verify"`
-	Project string `json:"project,omitempty" jsonschema:"description=Project name,default=default"`
-}
-
-type VerifyCustomDomainOutput struct {
 	ServiceID string `json:"service_id"`
 	Domain    string `json:"domain"`
 	Status    string `json:"status"`
@@ -259,4 +249,52 @@ type RemoveCustomDomainInput struct {
 type RemoveCustomDomainOutput struct {
 	ServiceID string `json:"service_id"`
 	Message   string `json:"message"`
+}
+
+// Delegation tools
+
+type DelegateZoneInput struct {
+	Zone string `json:"zone" jsonschema:"description=Subdomain zone to delegate (e.g. 'apps.example.com')"`
+}
+
+type DelegateZoneOutput struct {
+	ZoneID       string `json:"zone_id"`
+	Zone         string `json:"zone"`
+	Status       string `json:"status"`
+	Instructions string `json:"instructions"`
+}
+
+type VerifyDelegationInput struct {
+	Zone string `json:"zone" jsonschema:"description=Zone to verify (e.g. 'apps.example.com')"`
+}
+
+type VerifyDelegationOutput struct {
+	ZoneID       string `json:"zone_id"`
+	Zone         string `json:"zone"`
+	Status       string `json:"status"`
+	Message      string `json:"message"`
+	Instructions string `json:"instructions,omitempty"`
+}
+
+type RemoveDelegationInput struct {
+	Zone string `json:"zone" jsonschema:"description=Zone to remove (e.g. 'apps.example.com')"`
+}
+
+type RemoveDelegationOutput struct {
+	ZoneID  string `json:"zone_id"`
+	Message string `json:"message"`
+}
+
+type ListDelegationsInput struct{}
+
+type DelegationInfo struct {
+	ZoneID    string  `json:"zone_id"`
+	Zone      string  `json:"zone"`
+	Status    string  `json:"status"`
+	Error     *string `json:"error,omitempty"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type ListDelegationsOutput struct {
+	Delegations []DelegationInfo `json:"delegations"`
 }

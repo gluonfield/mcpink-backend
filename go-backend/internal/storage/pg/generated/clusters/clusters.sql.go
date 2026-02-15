@@ -10,7 +10,7 @@ import (
 )
 
 const listClusters = `-- name: ListClusters :many
-SELECT region, name, task_queue, apps_domain, cname_target, status, created_at FROM clusters
+SELECT region, name, task_queue, apps_domain, cname_target, status, created_at, ingress_ip, has_dns FROM clusters
 `
 
 func (q *Queries) ListClusters(ctx context.Context) ([]Cluster, error) {
@@ -30,6 +30,8 @@ func (q *Queries) ListClusters(ctx context.Context) ([]Cluster, error) {
 			&i.CnameTarget,
 			&i.Status,
 			&i.CreatedAt,
+			&i.IngressIp,
+			&i.HasDns,
 		); err != nil {
 			return nil, err
 		}

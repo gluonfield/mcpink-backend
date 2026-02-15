@@ -16,11 +16,11 @@ import (
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/authz"
 	"github.com/augustdev/autoclip/internal/deployments"
+	"github.com/augustdev/autoclip/internal/dns"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/graph"
 	"github.com/augustdev/autoclip/internal/prometheus"
 	"github.com/augustdev/autoclip/internal/storage/pg"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
@@ -42,26 +42,26 @@ func NewResolver(
 	logger *slog.Logger,
 	authService *auth.Service,
 	deployService *deployments.Service,
+	dnsService *dns.Service,
 	githubAppService *githubapp.Service,
 	serviceQueries services.Querier,
 	projectQueries projects.Querier,
 	resourceQueries resources.Querier,
-	customDomainQueries customdomains.Querier,
 	firebaseAuth *firebaseauth.Client,
 	prometheusClient *prometheus.Client,
 ) *graph.Resolver {
 	return &graph.Resolver{
-		Db:                  pgdb,
-		Logger:              logger,
-		AuthService:         authService,
-		DeployService:       deployService,
-		GitHubAppService:    githubAppService,
-		ServiceQueries:      serviceQueries,
-		ProjectQueries:      projectQueries,
-		ResourceQueries:     resourceQueries,
-		CustomDomainQueries: customDomainQueries,
-		FirebaseAuth:        firebaseAuth,
-		PrometheusClient:    prometheusClient,
+		Db:               pgdb,
+		Logger:           logger,
+		AuthService:      authService,
+		DeployService:    deployService,
+		DNSService:       dnsService,
+		GitHubAppService: githubAppService,
+		ServiceQueries:   serviceQueries,
+		ProjectQueries:   projectQueries,
+		ResourceQueries:  resourceQueries,
+		FirebaseAuth:     firebaseAuth,
+		PrometheusClient: prometheusClient,
 	}
 }
 

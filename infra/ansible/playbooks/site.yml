@@ -25,6 +25,13 @@
     - role: registry_client
     - role: firewall
 
+- name: Install and configure PowerDNS
+  hosts: dns
+  become: true
+  roles:
+    - role: powerdns
+    - role: firewall
+
 - name: Install addons and apply manifests
   hosts: ctrl
   become: true

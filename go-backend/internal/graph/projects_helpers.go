@@ -24,9 +24,10 @@ func (r *Resolver) getServicesForProject(ctx context.Context, projectID string) 
 		if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
 			enrichServiceWithDeployment(result[i], dep)
 		}
-		if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
-			result[i].CustomDomain = &cd.Domain
-			result[i].CustomDomainStatus = &cd.Status
+		if zr, dz, err := r.DNSService.GetCustomDomainForService(ctx, dbSvc.ID); err == nil {
+			domain := zr.Name + "." + dz.Zone
+			result[i].CustomDomain = &domain
+			result[i].CustomDomainStatus = &dz.Status
 		}
 	}
 	return result, nil

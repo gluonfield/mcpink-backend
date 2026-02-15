@@ -6,12 +6,9 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
-	"github.com/augustdev/autoclip/internal/dnsverify"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/clusters"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
 	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
@@ -29,7 +26,6 @@ type Service struct {
 	projectsQ      projects.Querier
 	usersQ         users.Querier
 	ghCredsQ       githubcreds.Querier
-	customDomainsQ customdomains.Querier
 	clusters       map[string]clusters.Cluster
 	logger         *slog.Logger
 }
@@ -41,7 +37,6 @@ func NewService(
 	projectsQ projects.Querier,
 	usersQ users.Querier,
 	ghCredsQ githubcreds.Querier,
-	customDomainsQ customdomains.Querier,
 	clusters map[string]clusters.Cluster,
 	logger *slog.Logger,
 ) *Service {
@@ -52,7 +47,6 @@ func NewService(
 		projectsQ:      projectsQ,
 		usersQ:         usersQ,
 		ghCredsQ:       ghCredsQ,
-		customDomainsQ: customDomainsQ,
 		clusters:       clusters,
 		logger:         logger,
 	}
@@ -155,7 +149,6 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		return nil, fmt.Errorf("region %q is not available (status=%s)", region, cluster.Status)
 	}
 
-	// Create service row (no deployment state)
 	_, err := s.servicesQ.CreateService(ctx, services.CreateServiceParams{
 		ID:          svcID,
 		UserID:      input.UserID,
@@ -177,7 +170,6 @@ func (s *Service) CreateService(ctx context.Context, input CreateServiceInput) (
 		return nil, fmt.Errorf("failed to create service record: %w", err)
 	}
 
-	// Create deployment row with config snapshot
 	_, err = s.deploymentsQ.CreateDeployment(ctx, deploymentsdb.CreateDeploymentParams{
 		ID:              deploymentID,
 		ServiceID:       svcID,
@@ -296,7 +288,7 @@ func (s *Service) GetServiceByNameAndProject(ctx context.Context, name, projectI
 
 type GetServiceByNameParams struct {
 	Name    string
-	Project string // "default" uses user's default project
+	Project string
 	UserID  string
 }
 
@@ -317,7 +309,6 @@ func (s *Service) GetServiceByName(ctx context.Context, params GetServiceByNameP
 	return &svc, nil
 }
 
-// GetCurrentDeployment returns the current deployment for a service, or nil if none.
 func (s *Service) GetCurrentDeployment(ctx context.Context, serviceID string) (*deploymentsdb.Deployment, error) {
 	svc, err := s.servicesQ.GetServiceByID(ctx, serviceID)
 	if err != nil {
@@ -333,7 +324,6 @@ func (s *Service) GetCurrentDeployment(ctx context.Context, serviceID string) (*
 	return &dep, nil
 }
 
-// GetLatestDeployment returns the latest deployment for a service.
 func (s *Service) GetLatestDeployment(ctx context.Context, serviceID string) (*deploymentsdb.Deployment, error) {
 	dep, err := s.deploymentsQ.GetLatestDeploymentByServiceID(ctx, serviceID)
 	if err != nil {
@@ -376,7 +366,6 @@ func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, trigg
 	deploymentID := shortuuid.New()
 	workflowID := fmt.Sprintf("deploy-%s", deploymentID)
 
-	// Cancel in-flight deployments
 	cancelledWorkflows, err := s.deploymentsQ.CancelInFlightDeployments(ctx, deploymentsdb.CancelInFlightDeploymentsParams{
 		ServiceID: svcID,
 		ID:        deploymentID,
@@ -390,7 +379,6 @@ func (s *Service) redeployWithTrigger(ctx context.Context, svcID, trigger, trigg
 		}
 	}
 
-	// Snapshot current service config into deployment
 	envVarsSnapshot := svc.EnvVars
 	if len(envVarsSnapshot) == 0 {
 		envVarsSnapshot = []byte("[]")
@@ -555,294 +543,5 @@ func (s *Service) DeleteService(ctx context.Context, params DeleteServiceParams)
 		Name:       name,
 		WorkflowID: run.GetID(),
 	}, nil
-}
-
-type AddCustomDomainParams struct {
-	Name    string
-	Project string
-	UserID  string
-	Domain  string
-}
-
-type AddCustomDomainResult struct {
-	ServiceID    string
-	Domain       string
-	Status       string
-	Instructions string
-}
-
-func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainParams) (*AddCustomDomainResult, error) {
-	domain := dnsverify.NormalizeDomain(params.Domain)
-
-	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
-		Name:    params.Name,
-		Project: params.Project,
-		UserID:  params.UserID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	cluster, ok := s.clusters[svc.Region]
-	if !ok {
-		return nil, fmt.Errorf("unknown region %q for service %s", svc.Region, svc.ID)
-	}
-
-	if err := dnsverify.ValidateCustomDomain(domain, cluster.AppsDomain); err != nil {
-		return nil, err
-	}
-
-	// Anti-squat: clean up expired/failed records so the real owner can claim the domain
-	existing, err := s.customDomainsQ.GetByDomain(ctx, domain)
-	if err == nil {
-		canReclaim := existing.Status == "failed" ||
-			(existing.Status == "pending_dns" && existing.ExpiresAt.Valid && existing.ExpiresAt.Time.Before(time.Now()))
-		if canReclaim {
-			_ = s.customDomainsQ.Delete(ctx, existing.ID)
-		} else {
-			return nil, fmt.Errorf("domain %s is already attached to a service", existing.Domain)
-		}
-	}
-
-	_, err = s.customDomainsQ.GetByServiceID(ctx, svc.ID)
-	if err == nil {
-		return nil, fmt.Errorf("service %s already has a custom domain; remove it first", params.Name)
-	}
-
-	verificationToken := dnsverify.GenerateVerificationToken()
-	perServiceTarget := *svc.Name + "." + cluster.CnameTarget
-
-	cd, err := s.customDomainsQ.CreateCustomDomain(ctx, customdomains.CreateCustomDomainParams{
-		ServiceID:            svc.ID,
-		Domain:               domain,
-		ExpectedRecordTarget: perServiceTarget,
-		VerificationToken:    verificationToken,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create custom domain record: %w", err)
-	}
-
-	instructions := dnsverify.DNSInstructions(domain, perServiceTarget, verificationToken)
-
-	s.logger.Info("custom domain added",
-		"service_id", svc.ID,
-		"domain", domain,
-		"custom_domain_id", cd.ID)
-
-	return &AddCustomDomainResult{
-		ServiceID:    svc.ID,
-		Domain:       domain,
-		Status:       cd.Status,
-		Instructions: instructions,
-	}, nil
-}
-
-type VerifyCustomDomainParams struct {
-	Name    string
-	Project string
-	UserID  string
-}
-
-type VerifyCustomDomainResult struct {
-	ServiceID string
-	Domain    string
-	Status    string
-	Message   string
-}
-
-func (s *Service) VerifyCustomDomain(ctx context.Context, params VerifyCustomDomainParams) (*VerifyCustomDomainResult, error) {
-	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
-		Name:    params.Name,
-		Project: params.Project,
-		UserID:  params.UserID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	cd, err := s.customDomainsQ.GetByServiceID(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
-	}
-
-	if cd.Status == "active" {
-		return &VerifyCustomDomainResult{
-			ServiceID: svc.ID,
-			Domain:    cd.Domain,
-			Status:    "active",
-			Message:   "Custom domain is already active",
-		}, nil
-	}
-
-	if cd.Status == "provisioning" {
-		return &VerifyCustomDomainResult{
-			ServiceID: svc.ID,
-			Domain:    cd.Domain,
-			Status:    "provisioning",
-			Message:   "Custom domain is being provisioned; please wait",
-		}, nil
-	}
-
-	// Step 1: Verify TXT ownership record
-	txtOK, txtErr := dnsverify.VerifyTXT(cd.Domain, cd.VerificationToken)
-	if txtErr != nil || !txtOK {
-		errMsg := fmt.Sprintf("TXT ownership verification failed. Add a TXT record: _dp-verify.%s with value dp-verify=%s", cd.Domain, cd.VerificationToken)
-		if txtErr != nil {
-			errMsg = txtErr.Error()
-		}
-		s.customDomainsQ.UpdateError(ctx, customdomains.UpdateErrorParams{
-			ID:        cd.ID,
-			LastError: &errMsg,
-		})
-		return &VerifyCustomDomainResult{
-			ServiceID: svc.ID,
-			Domain:    cd.Domain,
-			Status:    cd.Status,
-			Message:   errMsg,
-		}, nil
-	}
-
-	// Step 2: Verify CNAME routing record
-	cnameOK, cnameErr := dnsverify.VerifyCNAME(cd.Domain, cd.ExpectedRecordTarget)
-	if cnameErr != nil || !cnameOK {
-		errMsg := fmt.Sprintf("CNAME record not found or does not match. Expected CNAME %s -> %s", cd.Domain, cd.ExpectedRecordTarget)
-		if cnameErr != nil {
-			errMsg = cnameErr.Error()
-		}
-		s.customDomainsQ.UpdateError(ctx, customdomains.UpdateErrorParams{
-			ID:        cd.ID,
-			LastError: &errMsg,
-		})
-		return &VerifyCustomDomainResult{
-			ServiceID: svc.ID,
-			Domain:    cd.Domain,
-			Status:    cd.Status,
-			Message:   errMsg,
-		}, nil
-	}
-
-	s.customDomainsQ.UpdateStatus(ctx, customdomains.UpdateStatusParams{
-		ID:     cd.ID,
-		Status: "provisioning",
-	})
-
-	cluster, ok := s.clusters[svc.Region]
-	if !ok {
-		return nil, fmt.Errorf("unknown region %q for service %s", svc.Region, svc.ID)
-	}
-
-	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-
-	proj, err := s.projectsQ.GetProjectByID(ctx, svc.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
-	}
-
-	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
-	serviceName := k8sdeployments.ServiceName(*svc.Name)
-
-	workflowID := fmt.Sprintf("attach-cd-%s", cd.ID)
-
-	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
-	}, k8sdeployments.AttachCustomDomainWorkflow, k8sdeployments.AttachCustomDomainWorkflowInput{
-		CustomDomainID: cd.ID,
-		ServiceID:      svc.ID,
-		Namespace:      namespace,
-		ServiceName:    serviceName,
-		CustomDomain:   cd.Domain,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to start attach workflow: %w", err)
-	}
-
-	return &VerifyCustomDomainResult{
-		ServiceID: svc.ID,
-		Domain:    cd.Domain,
-		Status:    "provisioning",
-		Message:   "DNS verified! Provisioning TLS certificate...",
-	}, nil
-}
-
-type RemoveCustomDomainParams struct {
-	Name    string
-	Project string
-	UserID  string
-}
-
-type RemoveCustomDomainResult struct {
-	ServiceID string
-	Message   string
-}
-
-func (s *Service) RemoveCustomDomain(ctx context.Context, params RemoveCustomDomainParams) (*RemoveCustomDomainResult, error) {
-	svc, err := s.GetServiceByName(ctx, GetServiceByNameParams{
-		Name:    params.Name,
-		Project: params.Project,
-		UserID:  params.UserID,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	cd, err := s.customDomainsQ.GetByServiceID(ctx, svc.ID)
-	if err != nil {
-		return nil, fmt.Errorf("no custom domain configured for service %s", params.Name)
-	}
-
-	cluster, ok := s.clusters[svc.Region]
-	if !ok {
-		return nil, fmt.Errorf("unknown region %q for service %s", svc.Region, svc.ID)
-	}
-
-	user, err := s.usersQ.GetUserByID(ctx, svc.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("user not found: %w", err)
-	}
-
-	proj, err := s.projectsQ.GetProjectByID(ctx, svc.ProjectID)
-	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
-	}
-
-	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
-	serviceName := k8sdeployments.ServiceName(*svc.Name)
-
-	workflowID := fmt.Sprintf("detach-cd-%s", cd.ID)
-
-	// Start cleanup workflow BEFORE deleting DB record to prevent orphaned K8s resources
-	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: cluster.TaskQueue,
-	}, k8sdeployments.DetachCustomDomainWorkflow, k8sdeployments.DetachCustomDomainWorkflowInput{
-		CustomDomainID: cd.ID,
-		ServiceID:      svc.ID,
-		Namespace:      namespace,
-		ServiceName:    serviceName,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to start detach workflow: %w", err)
-	}
-
-	if err := s.customDomainsQ.Delete(ctx, cd.ID); err != nil {
-		return nil, fmt.Errorf("failed to delete custom domain record: %w", err)
-	}
-
-	return &RemoveCustomDomainResult{
-		ServiceID: svc.ID,
-		Message:   fmt.Sprintf("Custom domain %s removed", cd.Domain),
-	}, nil
-}
-
-func (s *Service) GetCustomDomainByServiceID(ctx context.Context, serviceID string) (*customdomains.CustomDomain, error) {
-	cd, err := s.customDomainsQ.GetByServiceID(ctx, serviceID)
-	if err != nil {
-		return nil, err
-	}
-	return &cd, nil
 }
 

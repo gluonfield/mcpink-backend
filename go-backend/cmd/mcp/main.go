@@ -6,6 +6,7 @@ import (
 	"github.com/augustdev/autoclip/internal/auth"
 	"github.com/augustdev/autoclip/internal/bootstrap"
 	"github.com/augustdev/autoclip/internal/deployments"
+	"github.com/augustdev/autoclip/internal/dns"
 	"github.com/augustdev/autoclip/internal/github_oauth"
 	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/internalgit"
@@ -14,6 +15,7 @@ import (
 	"github.com/augustdev/autoclip/internal/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/turso"
+
 	"go.uber.org/fx"
 )
 
@@ -32,6 +34,7 @@ type config struct {
 	MCPOAuth       mcp_oauth.Config
 	Firebase       bootstrap.FirebaseConfig
 	Loki           mcpserver.LokiConfig
+	DNS            dns.Config
 }
 
 func main() {
@@ -49,7 +52,8 @@ func main() {
 			pg.NewGitHubCredsQueries,
 			pg.NewResourceQueries,
 			pg.NewInternalReposQueries,
-			pg.NewCustomDomainQueries,
+			pg.NewDelegatedZoneQueries,
+			pg.NewZoneRecordQueries,
 			pg.NewClusterMap,
 			bootstrap.CreateTemporalClient,
 			github_oauth.NewOAuthService,
@@ -57,6 +61,7 @@ func main() {
 			auth.NewService,
 			bootstrap.NewTursoClient,
 			deployments.NewService,
+			dns.NewService,
 			resources.NewService,
 			internalgit.NewService,
 			bootstrap.NewTokenValidator,

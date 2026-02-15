@@ -10,15 +10,15 @@ import (
 
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/apikeys"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/clusters"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/customdomains"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/delegatedzones"
 	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
-	"github.com/augustdev/autoclip/internal/storage/pg/generated/dnsrecords"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/services"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/zonerecords"
 	pgxdecimal "github.com/jackc/pgx-shopspring-decimal"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -43,8 +43,8 @@ type DB struct {
 	githubCredsQ     githubcreds.Querier
 	resourceQueries  resources.Querier
 	internalReposQ   internalrepos.Querier
-	dnsrecordsQ      dnsrecords.Querier
-	customDomainsQ   customdomains.Querier
+	delegatedZonesQ  delegatedzones.Querier
+	zoneRecordsQ     zonerecords.Querier
 	deploymentsQ     deploymentsdb.Querier
 	clustersQ        clusters.Querier
 }
@@ -140,8 +140,8 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		githubCredsQ:    githubcreds.New(pool),
 		resourceQueries: resources.New(pool),
 		internalReposQ:  internalrepos.New(pool),
-		dnsrecordsQ:     dnsrecords.New(pool),
-		customDomainsQ:  customdomains.New(pool),
+		delegatedZonesQ: delegatedzones.New(pool),
+		zoneRecordsQ:    zonerecords.New(pool),
 		deploymentsQ:    deploymentsdb.New(pool),
 		clustersQ:       clusters.New(pool),
 	}, nil
@@ -184,12 +184,12 @@ func NewInternalReposQueries(database *DB) internalrepos.Querier {
 	return database.internalReposQ
 }
 
-func NewDNSRecordQueries(database *DB) dnsrecords.Querier {
-	return database.dnsrecordsQ
+func NewDelegatedZoneQueries(database *DB) delegatedzones.Querier {
+	return database.delegatedZonesQ
 }
 
-func NewCustomDomainQueries(database *DB) customdomains.Querier {
-	return database.customDomainsQ
+func NewZoneRecordQueries(database *DB) zonerecords.Querier {
+	return database.zoneRecordsQ
 }
 
 func NewDeploymentQueries(database *DB) deploymentsdb.Querier {

@@ -244,6 +244,16 @@
     executable: /bin/bash
   when: cloudflare_api_token | default('') | length > 0
 
+- name: Create PowerDNS TSIG key secret for cert-manager when provided
+  shell: |
+    set -euo pipefail
+    k3s kubectl -n cert-manager create secret generic powerdns-tsig-key \
+      --from-literal=tsig-secret={{ powerdns_tsig_key | quote }} \
+      --dry-run=client -o yaml | k3s kubectl apply -f -
+  args:
+    executable: /bin/bash
+  when: powerdns_tsig_key | default('') | length > 0
+
 - name: Install or upgrade Traefik
   command: >-
     /usr/local/bin/helm upgrade --install {{ traefik_release_name }} {{ traefik_chart_ref }}

@@ -1,0 +1,36 @@
+# PowerDNS Authoritative Server — managed by Ansible
+
+launch=gpgsql
+gpgsql-host=127.0.0.1
+gpgsql-port=5432
+gpgsql-dbname={{ powerdns_db_name }}
+gpgsql-user={{ powerdns_db_user }}
+gpgsql-password={{ powerdns_db_password }}
+
+# API (private network only)
+api=yes
+api-key={{ powerdns_api_key }}
+webserver=yes
+webserver-address={{ private_ip }}
+webserver-port={{ powerdns_api_port }}
+webserver-allow-from={{ vswitch_network_cidr }}
+
+# DNS listener
+local-address=0.0.0.0
+local-port={{ powerdns_listen_port }}
+
+# Zone transfers (AXFR) — private network only, TSIG when US secondary added
+allow-axfr-ips={{ vswitch_network_cidr }}
+disable-axfr=no
+
+# Dynamic updates (RFC2136 for cert-manager)
+dnsupdate=yes
+allow-dnsupdate-from={{ vswitch_network_cidr }}
+
+# Caching
+query-cache-ttl=20
+cache-ttl=60
+default-ttl=60
+
+# Security
+version-string=anonymous

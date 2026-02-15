@@ -9,12 +9,11 @@ import (
 	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
-func parsePort(port string) int32 {
+func ParsePortString(port string) int32 {
 	p, _ := strconv.ParseInt(port, 10, 32)
 	if p == 0 {
 		p = 3000
@@ -279,72 +278,3 @@ func buildIngress(namespace, name, host string, port int32) *networkingv1.Ingres
 	}
 }
 
-func buildCustomDomainCertificate(namespace, serviceName, domain string) *unstructured.Unstructured {
-	certName := serviceName + "-cd"
-	secretName := certName + "-tls"
-
-	return &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "cert-manager.io/v1",
-			"kind":       "Certificate",
-			"metadata": map[string]any{
-				"name":      certName,
-				"namespace": namespace,
-			},
-			"spec": map[string]any{
-				"secretName": secretName,
-				"issuerRef": map[string]any{
-					"name": "letsencrypt-prod",
-					"kind": "ClusterIssuer",
-				},
-				"dnsNames": []any{domain},
-			},
-		},
-	}
-}
-
-func buildCustomDomainIngress(namespace, serviceName, customDomain string, port int32) *networkingv1.Ingress {
-	pathType := networkingv1.PathTypePrefix
-	ingressClassName := "traefik"
-	ingressName := serviceName + "-cd"
-
-	return &networkingv1.Ingress{
-		TypeMeta: metav1.TypeMeta{Kind: "Ingress", APIVersion: "networking.k8s.io/v1"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      ingressName,
-			Namespace: namespace,
-		},
-		Spec: networkingv1.IngressSpec{
-			IngressClassName: &ingressClassName,
-			TLS: []networkingv1.IngressTLS{
-				{
-					Hosts:      []string{customDomain},
-					SecretName: ingressName + "-tls",
-				},
-			},
-			Rules: []networkingv1.IngressRule{
-				{
-					Host: customDomain,
-					IngressRuleValue: networkingv1.IngressRuleValue{
-						HTTP: &networkingv1.HTTPIngressRuleValue{
-							Paths: []networkingv1.HTTPIngressPath{
-								{
-									Path:     "/",
-									PathType: &pathType,
-									Backend: networkingv1.IngressBackend{
-										Service: &networkingv1.IngressServiceBackend{
-											Name: serviceName,
-											Port: networkingv1.ServiceBackendPort{
-												Number: port,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
-}

@@ -68,9 +68,10 @@ func (r *queryResolver) ListServices(ctx context.Context, first *int32, after *s
 		if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
 			enrichServiceWithDeployment(nodes[i], dep)
 		}
-		if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
-			nodes[i].CustomDomain = &cd.Domain
-			nodes[i].CustomDomainStatus = &cd.Status
+		if zr, dz, err := r.DNSService.GetCustomDomainForService(ctx, dbSvc.ID); err == nil {
+			domain := zr.Name + "." + dz.Zone
+			nodes[i].CustomDomain = &domain
+			nodes[i].CustomDomainStatus = &dz.Status
 		}
 	}
 
@@ -109,9 +110,10 @@ func (r *queryResolver) ServiceDetails(ctx context.Context, id string) (*model.S
 	if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
 		enrichServiceWithDeployment(svcModel, dep)
 	}
-	if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
-		svcModel.CustomDomain = &cd.Domain
-		svcModel.CustomDomainStatus = &cd.Status
+	if zr, dz, err := r.DNSService.GetCustomDomainForService(ctx, dbSvc.ID); err == nil {
+		domain := zr.Name + "." + dz.Zone
+		svcModel.CustomDomain = &domain
+		svcModel.CustomDomainStatus = &dz.Status
 	}
 	return svcModel, nil
 }
