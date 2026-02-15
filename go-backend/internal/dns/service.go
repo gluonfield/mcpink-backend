@@ -151,102 +151,36 @@ func (s *Service) VerifyDelegation(ctx context.Context, params VerifyDelegationP
 		}, nil
 	}
 
-	// Phase 1: TXT verification (pending_verification → pending_delegation)
-	if dz.Status == "pending_verification" {
-		txtOK, txtErr := VerifyTXT(dz.Zone, dz.VerificationToken)
-		if txtErr != nil || !txtOK {
-			errMsg := fmt.Sprintf("TXT verification failed. Add TXT record: _dp-verify.%s with value dp-verify=%s", dz.Zone, dz.VerificationToken)
-			if txtErr != nil {
-				errMsg = txtErr.Error()
+	// TXT verification → provisioning (zone created in PowerDNS, waits for NS)
+	if dz.Status == "pending_verification" || dz.Status == "pending_delegation" {
+		if dz.Status == "pending_verification" {
+			txtOK, txtErr := VerifyTXT(dz.Zone, dz.VerificationToken)
+			if txtErr != nil || !txtOK {
+				errMsg := fmt.Sprintf("TXT verification failed. Add TXT record: _dp-verify.%s with value dp-verify=%s", dz.Zone, dz.VerificationToken)
+				if txtErr != nil {
+					errMsg = txtErr.Error()
+				}
+				s.delegatedZonesQ.UpdateError(ctx, delegatedzones.UpdateErrorParams{
+					ID:        dz.ID,
+					LastError: &errMsg,
+				})
+				return &VerifyDelegationResult{
+					ZoneID:  dz.ID,
+					Zone:    dz.Zone,
+					Status:  dz.Status,
+					Message: errMsg,
+				}, nil
 			}
-			s.delegatedZonesQ.UpdateError(ctx, delegatedzones.UpdateErrorParams{
-				ID:        dz.ID,
-				LastError: &errMsg,
-			})
-			return &VerifyDelegationResult{
-				ZoneID:  dz.ID,
-				Zone:    dz.Zone,
-				Status:  dz.Status,
-				Message: errMsg,
-			}, nil
+
+			s.delegatedZonesQ.UpdateTXTVerified(ctx, dz.ID)
 		}
 
-		dz, err = s.delegatedZonesQ.UpdateTXTVerified(ctx, dz.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update zone status: %w", err)
-		}
-
-		nsList := ""
-		for _, ns := range s.nameservers {
-			nsList += fmt.Sprintf("   %s  NS  %s\n", dz.Zone, ns)
-		}
-
-		return &VerifyDelegationResult{
-			ZoneID:       dz.ID,
-			Zone:         dz.Zone,
-			Status:       dz.Status,
-			Message:      "TXT verified! Now add NS records to delegate the zone.",
-			Instructions: fmt.Sprintf("Add the following NS records at your registrar:\n\n%s\nThen call verify_delegation again.", nsList),
-		}, nil
+		return s.startActivation(ctx, dz)
 	}
 
-	// Phase 2: NS verification (pending_delegation → provisioning → active via workflow)
-	if dz.Status == "pending_delegation" {
-		nsOK, nsErr := VerifyNS(dz.Zone, s.nameservers)
-		if nsErr != nil || !nsOK {
-			errMsg := fmt.Sprintf("NS records not found. Expected NS records pointing to %s", strings.Join(s.nameservers, ", "))
-			if nsErr != nil {
-				errMsg = nsErr.Error()
-			}
-			s.delegatedZonesQ.UpdateError(ctx, delegatedzones.UpdateErrorParams{
-				ID:        dz.ID,
-				LastError: &errMsg,
-			})
-			return &VerifyDelegationResult{
-				ZoneID:  dz.ID,
-				Zone:    dz.Zone,
-				Status:  dz.Status,
-				Message: errMsg,
-			}, nil
-		}
-
-		dz, err = s.delegatedZonesQ.UpdateProvisioning(ctx, dz.ID)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update zone status: %w", err)
-		}
-
-		// Pick any active cluster for ingress IP
-		var cluster clusters.Cluster
-		for _, c := range s.clusters {
-			if c.Status == "active" {
-				cluster = c
-				break
-			}
-		}
-		if cluster.Region == "" {
-			return nil, fmt.Errorf("no active cluster available")
-		}
-
-		workflowID := fmt.Sprintf("activate-zone-%s", dz.ID)
-		_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-			ID:        workflowID,
-			TaskQueue: TaskQueue,
-		}, ActivateZoneWorkflow, ActivateZoneInput{
-			ZoneID:      dz.ID,
-			Zone:        dz.Zone,
-			Nameservers: s.nameservers,
-			IngressIP:   cluster.IngressIp,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("failed to start zone activation workflow: %w", err)
-		}
-
-		return &VerifyDelegationResult{
-			ZoneID:  dz.ID,
-			Zone:    dz.Zone,
-			Status:  "provisioning",
-			Message: "NS verified! Provisioning zone and wildcard TLS certificate...",
-		}, nil
+	// Retry failed zones
+	if dz.Status == "failed" {
+		return s.startActivation(ctx, dz)
 	}
 
 	return &VerifyDelegationResult{
@@ -254,6 +188,51 @@ func (s *Service) VerifyDelegation(ctx context.Context, params VerifyDelegationP
 		Zone:    dz.Zone,
 		Status:  dz.Status,
 		Message: fmt.Sprintf("Zone is in unexpected status: %s", dz.Status),
+	}, nil
+}
+
+func (s *Service) startActivation(ctx context.Context, dz delegatedzones.DelegatedZone) (*VerifyDelegationResult, error) {
+	dz, err := s.delegatedZonesQ.UpdateProvisioning(ctx, dz.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update zone status: %w", err)
+	}
+
+	var cluster clusters.Cluster
+	for _, c := range s.clusters {
+		if c.Status == "active" {
+			cluster = c
+			break
+		}
+	}
+	if cluster.Region == "" {
+		return nil, fmt.Errorf("no active cluster available")
+	}
+
+	workflowID := fmt.Sprintf("activate-zone-%s", dz.ID)
+	_, err = s.temporalClient.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: TaskQueue,
+	}, ActivateZoneWorkflow, ActivateZoneInput{
+		ZoneID:      dz.ID,
+		Zone:        dz.Zone,
+		Nameservers: s.nameservers,
+		IngressIP:   cluster.IngressIp,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to start zone activation workflow: %w", err)
+	}
+
+	nsList := ""
+	for _, ns := range s.nameservers {
+		nsList += fmt.Sprintf("   %s  NS  %s\n", dz.Zone, ns)
+	}
+
+	return &VerifyDelegationResult{
+		ZoneID:       dz.ID,
+		Zone:         dz.Zone,
+		Status:       "provisioning",
+		Message:      "TXT verified! Provisioning started. Add NS records to complete activation.",
+		Instructions: fmt.Sprintf("Add the following NS records at your registrar:\n\n%s\nThe system will detect them automatically and complete provisioning.", nsList),
 	}, nil
 }
 

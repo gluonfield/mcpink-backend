@@ -9,6 +9,7 @@ func RegisterWorkflowsAndActivities(w worker.Worker, activities *Activities) {
 	w.RegisterWorkflow(DetachSubdomainWorkflow)
 
 	w.RegisterActivity(activities.CreateZone)
+	w.RegisterActivity(activities.WaitForNS)
 	w.RegisterActivity(activities.DeleteZone)
 	w.RegisterActivity(activities.UpsertRecord)
 	w.RegisterActivity(activities.DeleteRecord)

@@ -24,6 +24,10 @@ func VerifyTXT(domain, expectedToken string) (bool, error) {
 	return false, nil
 }
 
+// VerifyNS checks that the zone's NS records resolve to our nameservers.
+// This relies on the zone already existing in PowerDNS (created before
+// NS verification) so that recursive resolvers can follow the delegation
+// chain without getting REFUSED.
 func VerifyNS(zone string, expectedNS []string) (bool, error) {
 	nsRecords, err := net.LookupNS(NormalizeDomain(zone))
 	if err != nil {

@@ -79,6 +79,11 @@ type DeleteRecordInput struct {
 	Type string
 }
 
+type WaitForNSInput struct {
+	Zone       string
+	ExpectedNS []string
+}
+
 type ApplyWildcardCertInput struct {
 	Zone      string
 	Namespace string

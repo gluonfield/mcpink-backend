@@ -159,6 +159,8 @@ type CustomDomainDetails struct {
 }
 
 type GetServiceOutput struct {
+	Deployment   *DeploymentDetails   `json:"deployment,omitempty"`
+	Runtime      *RuntimeDetails      `json:"runtime,omitempty"`
 	ServiceID    string               `json:"service_id"`
 	Name         string               `json:"name"`
 	Project      string               `json:"project"`
@@ -167,8 +169,6 @@ type GetServiceOutput struct {
 	URL          *string              `json:"url,omitempty"`
 	CreatedAt    string               `json:"created_at"`
 	UpdatedAt    string               `json:"updated_at"`
-	Deployment   *DeploymentDetails   `json:"deployment,omitempty"`
-	Runtime      *RuntimeDetails      `json:"runtime,omitempty"`
 	EnvVars      []EnvVarInfo         `json:"env_vars,omitempty"`
 	CustomDomain *CustomDomainDetails `json:"custom_domain,omitempty"`
 }
