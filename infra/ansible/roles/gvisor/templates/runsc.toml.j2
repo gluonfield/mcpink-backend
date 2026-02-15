@@ -1,0 +1,9 @@
+[runsc_config]
+# Fix cgroup placement: sandbox joins kubepods.slice instead of system.slice
+# Without this, memory.max=unlimited and limits are not enforced
+# NOTE: all values must be strings — gVisor config uses string types
+systemd-cgroup = "true"
+
+# Host-backed overlay for root filesystem writes (default, made explicit)
+# "memory" would store overlay data in sandbox memory — avoid that
+overlay2 = "root:self"

@@ -23,7 +23,7 @@ func parsePort(port string) int32 {
 }
 
 var allowedMemory = map[string]bool{
-	"128Mi": true, "256Mi": true, "512Mi": true,
+	"256Mi": true, "512Mi": true,
 	"1024Mi": true, "2048Mi": true, "4096Mi": true,
 }
 
@@ -33,7 +33,7 @@ var allowedVCPUs = map[string]bool{
 
 func validateResourceLimits(memory, vcpus string) error {
 	if !allowedMemory[memory] {
-		return fmt.Errorf("invalid memory limit %q: must be one of 128Mi, 256Mi, 512Mi, 1024Mi, 2048Mi, 4096Mi", memory)
+		return fmt.Errorf("invalid memory limit %q: must be one of 256Mi, 512Mi, 1024Mi, 2048Mi, 4096Mi", memory)
 	}
 	if !allowedVCPUs[vcpus] {
 		return fmt.Errorf("invalid vcpus limit %q: must be one of 0.5, 1, 2, 4", vcpus)

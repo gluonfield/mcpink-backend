@@ -73,7 +73,7 @@ gitea:
   webhookurl: "http://localhost:8081/webhooks/internal-git"
 
 mcpoauth:
-  issuer: "http://localhost:8081"
+  issuer: "http://localhost:8082"
   frontendurl: "http://localhost:5001"
 
 loki:

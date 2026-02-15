@@ -21,6 +21,13 @@ func (r *Resolver) getServicesForProject(ctx context.Context, projectID string) 
 	result := make([]*model.Service, len(dbServices))
 	for i, dbSvc := range dbServices {
 		result[i] = dbServiceToModel(&dbSvc)
+		if dep, err := r.DeployService.GetLatestDeployment(ctx, dbSvc.ID); err == nil {
+			enrichServiceWithDeployment(result[i], dep)
+		}
+		if cd, err := r.CustomDomainQueries.GetByServiceID(ctx, dbSvc.ID); err == nil {
+			result[i].CustomDomain = &cd.Domain
+			result[i].CustomDomainStatus = &cd.Status
+		}
 	}
 	return result, nil
 }

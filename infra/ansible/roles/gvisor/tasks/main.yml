@@ -29,6 +29,15 @@
     group: root
     mode: "0755"
 
+- name: Deploy runsc configuration
+  template:
+    src: runsc.toml.j2
+    dest: /etc/containerd/runsc.toml
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s agent
+
 - name: Render containerd runtime template with runsc handler
   template:
     src: config.toml.tmpl.j2

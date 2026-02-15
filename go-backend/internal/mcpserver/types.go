@@ -26,7 +26,7 @@ type CreateServiceInput struct {
 	Port      *int     `json:"port,omitempty" jsonschema:"description=Port the application listens on"`
 	EnvVars   []EnvVar `json:"env_vars,omitempty" jsonschema:"description=Environment variables"`
 
-	Memory string `json:"memory,omitempty" jsonschema:"description=Memory limit. Use 128Mi for static sites; 256Mi for most apps.,enum=128Mi,enum=256Mi,enum=512Mi,enum=1024Mi,enum=2048Mi,enum=4096Mi,default=256Mi"`
+	Memory string `json:"memory,omitempty" jsonschema:"description=Memory limit. 256Mi for most apps; 512Mi for heavier apps.,enum=256Mi,enum=512Mi,enum=1024Mi,enum=2048Mi,enum=4096Mi,default=256Mi"`
 	VCPUs  string `json:"vcpus,omitempty" jsonschema:"description=vCPUs,enum=0.5,enum=1,enum=2,enum=4,default=0.5"`
 
 	BuildCommand string `json:"build_command,omitempty" jsonschema:"description=Custom build command (overrides auto-detected). Only used with build_pack=railpack."`

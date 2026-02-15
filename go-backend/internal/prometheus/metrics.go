@@ -28,8 +28,12 @@ func (c *Client) GetServiceMetrics(ctx context.Context, namespace, serviceName s
 		`sum(rate(container_cpu_usage_seconds_total{job="kubelet-resource", namespace="%s", pod=~"%s-.*", container!=""}[5m]))`,
 		namespace, serviceName,
 	)
+	// Use cAdvisor (job=kubelet) pod-level cgroup metric instead of CRI stats
+	// (job=kubelet-resource). For gVisor pods, CRI stats include directfs Mapped
+	// page cache (~214Mi) that lives in host page cache and is reclaimable — the
+	// cAdvisor metric reads memory.current from the cgroup which is the real usage.
 	memQuery := fmt.Sprintf(
-		`sum(container_memory_working_set_bytes{job="kubelet-resource", namespace="%s", pod=~"%s-.*", container!=""})`,
+		`max(container_memory_working_set_bytes{job="kubelet", namespace="%s", pod=~"%s-.*", container=""})`,
 		namespace, serviceName,
 	)
 	netRxQuery := fmt.Sprintf(

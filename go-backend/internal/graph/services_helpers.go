@@ -30,12 +30,15 @@ func dbServiceToModel(dbService *services.Service) *model.Service {
 	}
 
 	return &model.Service{
-		ID:          dbService.ID,
-		ProjectID:   dbService.ProjectID,
-		Name:        dbService.Name,
-		Repo:        dbService.Repo,
-		Branch:      dbService.Branch,
-		Status:      "pending",
+		ID:        dbService.ID,
+		ProjectID: dbService.ProjectID,
+		Name:      dbService.Name,
+		Repo:      dbService.Repo,
+		Branch:    dbService.Branch,
+		Status: &model.ServiceStatus{
+			Build:   "none",
+			Runtime: "pending",
+		},
 		EnvVars:     envVars,
 		Fqdn:        dbService.Fqdn,
 		Port:        dbService.Port,
@@ -47,11 +50,32 @@ func dbServiceToModel(dbService *services.Service) *model.Service {
 	}
 }
 
+func deploymentStatusToServiceStatus(depStatus string) *model.ServiceStatus {
+	switch depStatus {
+	case "queued":
+		return &model.ServiceStatus{Build: "queued", Runtime: "pending"}
+	case "building":
+		return &model.ServiceStatus{Build: "building", Runtime: "pending"}
+	case "deploying":
+		return &model.ServiceStatus{Build: "success", Runtime: "deploying"}
+	case "active":
+		return &model.ServiceStatus{Build: "success", Runtime: "running"}
+	case "failed":
+		return &model.ServiceStatus{Build: "failed", Runtime: "stopped"}
+	case "cancelled":
+		return &model.ServiceStatus{Build: "cancelled", Runtime: "stopped"}
+	case "superseded":
+		return &model.ServiceStatus{Build: "success", Runtime: "superseded"}
+	default:
+		return &model.ServiceStatus{Build: depStatus, Runtime: "unknown"}
+	}
+}
+
 func enrichServiceWithDeployment(svc *model.Service, dep *deploymentsdb.Deployment) {
 	if dep == nil {
 		return
 	}
-	svc.Status = dep.Status
+	svc.Status = deploymentStatusToServiceStatus(dep.Status)
 	svc.CommitHash = dep.CommitHash
 	svc.ErrorMessage = dep.ErrorMessage
 }

@@ -99,25 +99,25 @@ type ResourceMetadata struct {
 }
 
 type Service struct {
-	ID                 string    `json:"id"`
-	ProjectID          string    `json:"projectId"`
-	Project            *Project  `json:"project,omitempty"`
-	Name               *string   `json:"name,omitempty"`
-	Repo               string    `json:"repo"`
-	Branch             string    `json:"branch"`
-	Status             string    `json:"status"`
-	ErrorMessage       *string   `json:"errorMessage,omitempty"`
-	EnvVars            []*EnvVar `json:"envVars"`
-	Fqdn               *string   `json:"fqdn,omitempty"`
-	Port               string    `json:"port"`
-	GitProvider        string    `json:"gitProvider"`
-	CommitHash         *string   `json:"commitHash,omitempty"`
-	Memory             string    `json:"memory"`
-	Vcpus              string    `json:"vcpus"`
-	CustomDomain       *string   `json:"customDomain,omitempty"`
-	CustomDomainStatus *string   `json:"customDomainStatus,omitempty"`
-	CreatedAt          time.Time `json:"createdAt"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	ID                 string         `json:"id"`
+	ProjectID          string         `json:"projectId"`
+	Project            *Project       `json:"project,omitempty"`
+	Name               *string        `json:"name,omitempty"`
+	Repo               string         `json:"repo"`
+	Branch             string         `json:"branch"`
+	Status             *ServiceStatus `json:"status"`
+	ErrorMessage       *string        `json:"errorMessage,omitempty"`
+	EnvVars            []*EnvVar      `json:"envVars"`
+	Fqdn               *string        `json:"fqdn,omitempty"`
+	Port               string         `json:"port"`
+	GitProvider        string         `json:"gitProvider"`
+	CommitHash         *string        `json:"commitHash,omitempty"`
+	Memory             string         `json:"memory"`
+	Vcpus              string         `json:"vcpus"`
+	CustomDomain       *string        `json:"customDomain,omitempty"`
+	CustomDomainStatus *string        `json:"customDomainStatus,omitempty"`
+	CreatedAt          time.Time      `json:"createdAt"`
+	UpdatedAt          time.Time      `json:"updatedAt"`
 }
 
 type ServiceConnection struct {
@@ -133,6 +133,11 @@ type ServiceMetrics struct {
 	NetworkTransmitBytesPerSec *MetricSeries `json:"networkTransmitBytesPerSec"`
 	MemoryLimitMb              float64       `json:"memoryLimitMB"`
 	CPULimitVCPUs              float64       `json:"cpuLimitVCPUs"`
+}
+
+type ServiceStatus struct {
+	Build   string `json:"build"`
+	Runtime string `json:"runtime"`
 }
 
 type User struct {
