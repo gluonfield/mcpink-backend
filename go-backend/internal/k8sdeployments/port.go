@@ -6,6 +6,13 @@ import (
 	"strings"
 )
 
+// EffectivePort resolves the K8s Service port for a service, applying
+// buildpack overrides (static → 8080, railpack+publish_directory → 8080).
+func EffectivePort(buildPack, port string, buildConfig []byte) int32 {
+	bc := parseBuildConfig(buildConfig)
+	return ParsePortString(effectiveAppPort(buildPack, port, bc.PublishDirectory))
+}
+
 func effectiveAppPort(buildPack, appPort, publishDir string) string {
 	port := strings.TrimSpace(appPort)
 	if port == "" {

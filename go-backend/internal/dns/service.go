@@ -367,7 +367,7 @@ func (s *Service) AddCustomDomain(ctx context.Context, params AddCustomDomainPar
 
 	namespace := k8sdeployments.NamespaceName(user.ID, proj.Ref)
 	serviceName := k8sdeployments.ServiceName(*svc.Name)
-	port := k8sdeployments.ParsePortString(svc.Port)
+	port := k8sdeployments.EffectivePort(svc.BuildPack, svc.Port, svc.BuildConfig)
 
 	certSecret := ""
 	if dz.WildcardCertSecret != nil {
