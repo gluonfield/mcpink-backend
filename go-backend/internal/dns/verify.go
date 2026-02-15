@@ -8,8 +8,20 @@ import (
 	"strings"
 )
 
-func VerifyTXT(domain, expectedToken string) (bool, error) {
-	host := "_dp-verify." + NormalizeDomain(domain)
+// siblingTXTHost returns the TXT verification hostname placed above the
+// delegation cut so it remains queryable even after NS records are set.
+// Example: zone "dogs.breacher.org" → "dogs._dp-verify.breacher.org"
+func siblingTXTHost(zone string) string {
+	zone = NormalizeDomain(zone)
+	idx := strings.Index(zone, ".")
+	if idx < 0 {
+		return "_dp-verify." + zone
+	}
+	return zone[:idx] + "._dp-verify." + zone[idx+1:]
+}
+
+func VerifyTXT(zone, expectedToken string) (bool, error) {
+	host := siblingTXTHost(zone)
 	records, err := net.LookupTXT(host)
 	if err != nil {
 		return false, fmt.Errorf("TXT lookup failed for %s: %w", host, err)
@@ -90,20 +102,18 @@ func ValidateDelegatedZone(zone, platformDomain string) error {
 }
 
 func DelegationInstructions(zone, token string, nameservers []string) string {
+	txtHost := siblingTXTHost(zone)
 	nsList := ""
 	for _, ns := range nameservers {
 		nsList += fmt.Sprintf("   %s  NS  %s\n", zone, ns)
 	}
 
 	return fmt.Sprintf(
-		"Step 1 — Verify ownership (add this TXT record while you still control the zone):\n\n"+
-			"   Host: _dp-verify.%s\n"+
+		"Add all records at your DNS provider, then call verify_delegation:\n\n"+
+			"   Host: %s\n"+
 			"   Type: TXT\n"+
 			"   Value: dp-verify=%s\n\n"+
-			"After adding the TXT record, call verify_delegation to proceed.\n\n"+
-			"Step 2 — Delegate the zone (you'll be prompted after TXT verification):\n\n"+
-			"%s\n"+
-			"After adding the NS records, call verify_delegation again to activate.",
-		zone, token, nsList,
+			"%s",
+		txtHost, token, nsList,
 	)
 }
