@@ -72,6 +72,19 @@ type Deployment struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type GitToken struct {
+	ID          string             `json:"id"`
+	TokenHash   string             `json:"token_hash"`
+	TokenPrefix string             `json:"token_prefix"`
+	UserID      string             `json:"user_id"`
+	RepoID      *string            `json:"repo_id"`
+	Scopes      []string           `json:"scopes"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
+	RevokedAt   pgtype.Timestamptz `json:"revoked_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
 type GithubCred struct {
 	ID                      string             `json:"id"`
 	UserID                  string             `json:"user_id"`
@@ -94,6 +107,7 @@ type InternalRepo struct {
 	FullName  string             `json:"full_name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	BarePath  *string            `json:"bare_path"`
 }
 
 type Project struct {

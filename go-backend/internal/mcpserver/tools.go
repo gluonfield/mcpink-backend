@@ -275,7 +275,7 @@ func (s *Server) createServiceFromInternalGit(ctx context.Context, userID string
 		BuildPack:        buildPack,
 		Port:             port,
 		EnvVars:          envVars,
-		GitProvider:      "gitea",
+		GitProvider:      "internal",
 		Memory:           input.Memory,
 		VCPUs:            input.VCPUs,
 		BuildCommand:     input.BuildCommand,

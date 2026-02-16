@@ -2,143 +2,109 @@ package internalgit
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"net/url"
 	"time"
 
 	"github.com/augustdev/autoclip/internal/storage/pg"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/gittokens"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/users"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const tokenPrefix = "mlg_"
+
 type Service struct {
-	client      *Client
-	webhookURL  string
+	config      Config
 	repoQueries internalrepos.Querier
+	tokenQ      gittokens.Querier
 	userQueries users.Querier
 }
 
 func NewService(config Config, db *pg.DB) (*Service, error) {
-	client, err := NewClient(config)
-	if err != nil {
-		return nil, fmt.Errorf("internal git client: %w", err)
+	if config.PublicGitURL == "" {
+		return nil, fmt.Errorf("internalgit: PublicGitURL is required")
 	}
 
 	return &Service{
-		client:      client,
-		webhookURL:  config.WebhookURL,
+		config:      config,
 		repoQueries: internalrepos.New(db.Pool),
+		tokenQ:      gittokens.New(db.Pool),
 		userQueries: users.New(db.Pool),
 	}, nil
 }
 
-func (s *Service) Client() *Client {
-	return s.client
-}
-
-// CreateRepo creates a new internal git repository under user's GitHub username.
-// Idempotent: if repo already exists for this user, returns credentials.
+// CreateRepo creates a new internal git repository record and returns a push token.
+// Idempotent: if repo already exists for this user, returns a new token.
 func (s *Service) CreateRepo(ctx context.Context, userID, repoName, description string, private bool) (*CreateRepoResult, error) {
 	user, err := s.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
-	giteaUsername, err := s.ResolveGiteaUsername(ctx, user)
+	gitUsername, err := s.ResolveUsername(ctx, user)
 	if err != nil {
-		return nil, fmt.Errorf("resolve gitea username: %w", err)
+		return nil, fmt.Errorf("resolve username: %w", err)
 	}
 
-	fullName := fmt.Sprintf("%s/%s", giteaUsername, repoName)
+	fullName := fmt.Sprintf("%s/%s", gitUsername, repoName)
 
-	// Check if repo already exists in our database
 	existingRepo, err := s.repoQueries.GetInternalRepoByFullName(ctx, fullName)
 	if err == nil {
 		if existingRepo.UserID != userID {
 			return nil, fmt.Errorf("repo belongs to another user")
 		}
-		userToken, tokenErr := s.client.CreateUserToken(giteaUsername)
-		if tokenErr != nil {
-			return nil, fmt.Errorf("create user token: %w", tokenErr)
+		rawToken, err := s.createToken(ctx, userID, &existingRepo.ID, nil)
+		if err != nil {
+			return nil, fmt.Errorf("create token: %w", err)
 		}
 		return &CreateRepoResult{
-			Repo:      s.client.GetRepoPath(giteaUsername, repoName),
-			GitRemote: s.client.GetHTTPSCloneURL(giteaUsername, repoName, userToken),
+			Repo:      s.repoPath(gitUsername, repoName),
+			GitRemote: s.cloneURL(gitUsername, repoName, rawToken),
+			ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
 			Message:   "Repo already exists. Push your code, then call create_app to deploy",
 		}, nil
 	}
 
-	// Create the repo under user's account (or get existing)
-	repo, err := s.client.CreateRepoForUser(ctx, giteaUsername, repoName, description, private)
-	if err != nil {
-		repo, err = s.client.GetRepo(ctx, giteaUsername, repoName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create repo: %w", err)
-		}
-	}
-
-	// Create webhook for the repo
-	_, err = s.client.CreateRepoWebhook(ctx, giteaUsername, repoName, s.webhookURL, s.client.config.WebhookSecret)
-	if err != nil && !isAlreadyExistsError(err) {
-		fmt.Printf("warning: failed to create webhook for %s/%s: %v\n", giteaUsername, repoName, err)
-	}
-
-	// Store repo in database (upsert)
-	repoIDStr := fmt.Sprintf("%d", repo.ID)
+	// Create DB record (bare repo is created on first push by git-server)
+	barePath := fmt.Sprintf("%s/%s.git", gitUsername, repoName)
 	_, err = s.repoQueries.CreateInternalRepo(ctx, internalrepos.CreateInternalRepoParams{
 		UserID:   userID,
 		Name:     repoName,
-		CloneUrl: repo.CloneURL,
-		Provider: "gitea",
-		RepoID:   &repoIDStr,
-		FullName: repo.FullName,
+		CloneUrl: s.cloneURLWithoutAuth(gitUsername, repoName),
+		Provider: "internal",
+		FullName: fullName,
+		BarePath: &barePath,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to store repo in database: %w", err)
 	}
 
-	// Create a scoped user token for the clone URL
-	userToken, err := s.client.CreateUserToken(giteaUsername)
+	// Re-fetch to get the repo ID for token creation
+	repo, err := s.repoQueries.GetInternalRepoByFullName(ctx, fullName)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create user token: %w", err)
+		return nil, fmt.Errorf("failed to fetch created repo: %w", err)
 	}
 
-	repoPath := s.client.GetRepoPath(giteaUsername, repoName)
-	gitRemote := s.client.GetHTTPSCloneURL(giteaUsername, repoName, userToken)
+	rawToken, err := s.createToken(ctx, userID, &repo.ID, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
+	}
 
 	return &CreateRepoResult{
-		Repo:      repoPath,
-		GitRemote: gitRemote,
+		Repo:      s.repoPath(gitUsername, repoName),
+		GitRemote: s.cloneURL(gitUsername, repoName, rawToken),
 		ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
 		Message:   "Push your code, then call create_app to deploy",
 	}, nil
 }
 
-func isAlreadyExistsError(err error) bool {
-	if err == nil {
-		return false
-	}
-	s := err.Error()
-	return contains(s, "already exist") ||
-		contains(s, "already exists") ||
-		contains(s, "already been added") ||
-		contains(s, "has already been added") ||
-		contains(s, "has already been taken")
-}
-
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsAt(s, substr))
-}
-
-func containsAt(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
-// GetPushToken returns git remote with a per-user scoped token
+// GetPushToken returns git remote with a per-repo scoped token.
 func (s *Service) GetPushToken(ctx context.Context, userID, repoFullName string) (*GetPushTokenResult, error) {
 	repo, err := s.repoQueries.GetInternalRepoByFullName(ctx, repoFullName)
 	if err != nil {
@@ -153,20 +119,19 @@ func (s *Service) GetPushToken(ctx context.Context, userID, repoFullName string)
 		return nil, fmt.Errorf("invalid repo full name: %s", repoFullName)
 	}
 
-	userToken, err := s.client.CreateUserToken(owner)
+	rawToken, err := s.createToken(ctx, userID, &repo.ID, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create user token: %w", err)
+		return nil, fmt.Errorf("create token: %w", err)
 	}
 
-	gitRemote := s.client.GetHTTPSCloneURL(owner, repoName, userToken)
-
 	return &GetPushTokenResult{
-		GitRemote: gitRemote,
+		GitRemote: s.cloneURL(owner, repoName, rawToken),
 		ExpiresAt: time.Now().Add(365 * 24 * time.Hour).Format(time.RFC3339),
 	}, nil
 }
 
-// DeleteRepo deletes an internal git repository
+// DeleteRepo deletes an internal git repository from the database.
+// Bare repo cleanup on disk should be handled separately.
 func (s *Service) DeleteRepo(ctx context.Context, userID, repoFullName string) error {
 	repo, err := s.repoQueries.GetInternalRepoByFullName(ctx, repoFullName)
 	if err != nil {
@@ -176,10 +141,9 @@ func (s *Service) DeleteRepo(ctx context.Context, userID, repoFullName string) e
 		return fmt.Errorf("unauthorized: repo belongs to another user")
 	}
 
-	owner, repoName := splitFullName(repoFullName)
-
-	if err := s.client.DeleteRepo(ctx, owner, repoName); err != nil {
-		return fmt.Errorf("failed to delete repo from gitea: %w", err)
+	repoID := repo.ID
+	if err := s.tokenQ.RevokeTokensByRepoID(ctx, &repoID); err != nil {
+		return fmt.Errorf("failed to revoke tokens: %w", err)
 	}
 
 	if err := s.repoQueries.DeleteInternalRepoByFullName(ctx, repoFullName); err != nil {
@@ -189,9 +153,67 @@ func (s *Service) DeleteRepo(ctx context.Context, userID, repoFullName string) e
 	return nil
 }
 
-// GetRepoByFullName retrieves an internal repo by its full name
+// GetRepoByFullName retrieves an internal repo by its full name.
 func (s *Service) GetRepoByFullName(ctx context.Context, fullName string) (internalrepos.InternalRepo, error) {
 	return s.repoQueries.GetInternalRepoByFullName(ctx, fullName)
+}
+
+// createToken generates a new random token, stores its hash, and returns the raw token.
+func (s *Service) createToken(ctx context.Context, userID string, repoID *string, expiresAt *time.Time) (string, error) {
+	rawBytes := make([]byte, 32)
+	if _, err := rand.Read(rawBytes); err != nil {
+		return "", fmt.Errorf("generate random token: %w", err)
+	}
+	rawToken := tokenPrefix + base64.RawURLEncoding.EncodeToString(rawBytes)
+
+	hash := sha256.Sum256([]byte(rawToken))
+	hashStr := hex.EncodeToString(hash[:])
+
+	prefix := rawToken[:8]
+
+	var expiresAtPg pgtype.Timestamptz
+	if expiresAt != nil {
+		expiresAtPg = pgtype.Timestamptz{Time: *expiresAt, Valid: true}
+	}
+
+	_, err := s.tokenQ.CreateToken(ctx, gittokens.CreateTokenParams{
+		TokenHash:   hashStr,
+		TokenPrefix: prefix,
+		UserID:      userID,
+		RepoID:      repoID,
+		Scopes:      []string{"push", "pull"},
+		ExpiresAt:   expiresAtPg,
+	})
+	if err != nil {
+		return "", fmt.Errorf("store token: %w", err)
+	}
+
+	return rawToken, nil
+}
+
+// cloneURL builds https://x-git-token:{token}@git.ml.ink/{owner}/{repo}.git
+func (s *Service) cloneURL(owner, repoName, token string) string {
+	u, _ := url.Parse(s.config.PublicGitURL)
+	u.User = url.UserPassword("x-git-token", token)
+	u.Path = fmt.Sprintf("/%s/%s.git", owner, repoName)
+	return u.String()
+}
+
+// cloneURLWithoutAuth builds https://git.ml.ink/{owner}/{repo}.git
+func (s *Service) cloneURLWithoutAuth(owner, repoName string) string {
+	u, _ := url.Parse(s.config.PublicGitURL)
+	u.Path = fmt.Sprintf("/%s/%s.git", owner, repoName)
+	return u.String()
+}
+
+// repoPath returns "ml.ink/{owner}/{repo}" (strips "git." prefix).
+func (s *Service) repoPath(owner, repoName string) string {
+	u, _ := url.Parse(s.config.PublicGitURL)
+	host := u.Hostname()
+	if len(host) > 4 && host[:4] == "git." {
+		host = host[4:]
+	}
+	return fmt.Sprintf("%s/%s/%s", host, owner, repoName)
 }
 
 func splitFullName(fullName string) (owner, repo string) {

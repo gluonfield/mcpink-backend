@@ -13,6 +13,7 @@ import (
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/delegatedzones"
 	deploymentsdb "github.com/augustdev/autoclip/internal/storage/pg/generated/deployments"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/githubcreds"
+	"github.com/augustdev/autoclip/internal/storage/pg/generated/gittokens"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/internalrepos"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/projects"
 	"github.com/augustdev/autoclip/internal/storage/pg/generated/resources"
@@ -43,6 +44,7 @@ type DB struct {
 	githubCredsQ     githubcreds.Querier
 	resourceQueries  resources.Querier
 	internalReposQ   internalrepos.Querier
+	gitTokensQ       gittokens.Querier
 	delegatedZonesQ  delegatedzones.Querier
 	zoneRecordsQ     zonerecords.Querier
 	deploymentsQ     deploymentsdb.Querier
@@ -140,6 +142,7 @@ func NewDatabase(lc fx.Lifecycle, config DbConfig, logger *slog.Logger) (*DB, er
 		githubCredsQ:    githubcreds.New(pool),
 		resourceQueries: resources.New(pool),
 		internalReposQ:  internalrepos.New(pool),
+		gitTokensQ:      gittokens.New(pool),
 		delegatedZonesQ: delegatedzones.New(pool),
 		zoneRecordsQ:    zonerecords.New(pool),
 		deploymentsQ:    deploymentsdb.New(pool),
@@ -182,6 +185,10 @@ func NewResourceQueries(database *DB) resources.Querier {
 
 func NewInternalReposQueries(database *DB) internalrepos.Querier {
 	return database.internalReposQ
+}
+
+func NewGitTokenQueries(database *DB) gittokens.Querier {
+	return database.gitTokensQ
 }
 
 func NewDelegatedZoneQueries(database *DB) delegatedzones.Querier {

@@ -66,25 +66,6 @@ spec:
                 secretKeyRef:
                   name: github-app
                   key: private-key
-            # Gitea / internal git (viper: gitea.*)
-            - name: GITEA_BASEURL
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: base-url
-            - name: GITEA_ADMINTOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: admin-token
-            - name: GITEA_WEBHOOKSECRET
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: webhook-secret
-            # Gitea webhook URL (cluster-internal, no DNS roundtrip)
-            - name: GITEA_WEBHOOKURL
-              value: "http://deployer-server.dp-system:8081/webhooks/internal-git"
             # GitHub App webhook verification
             - name: GITHUBAPP_WEBHOOKSECRET
               valueFrom:

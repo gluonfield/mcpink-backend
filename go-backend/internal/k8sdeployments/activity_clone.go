@@ -77,16 +77,13 @@ func (a *Activities) resolveCloneURL(ctx context.Context, input CloneRepoInput) 
 		}
 		return fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", token.Token, input.Repo), nil
 
-	case "gitea":
-		if a.internalGitSvc == nil {
-			return "", fmt.Errorf("internal git service not configured")
-		}
+	case "internal":
 		parts := strings.SplitN(input.Repo, "/", 2)
 		if len(parts) != 2 {
-			return "", fmt.Errorf("invalid gitea repo format: %s", input.Repo)
+			return "", fmt.Errorf("invalid internal repo format: %s", input.Repo)
 		}
-		cfg := a.internalGitSvc.Client().Config()
-		return a.internalGitSvc.Client().GetHTTPSCloneURL(parts[0], parts[1], cfg.AdminToken), nil
+		return fmt.Sprintf("https://x-admin-token:%s@%s/%s/%s.git",
+			a.config.GitServerAdminToken, a.config.GitServerCloneHost, parts[0], parts[1]), nil
 
 	default:
 		return "", fmt.Errorf("unsupported git provider: %s", input.GitProvider)

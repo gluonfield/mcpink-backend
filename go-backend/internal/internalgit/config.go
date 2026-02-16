@@ -3,11 +3,7 @@ package internalgit
 import "time"
 
 type Config struct {
-	BaseURL       string
-	AdminToken    string
-	UserPrefix    string
-	WebhookSecret string
-	WebhookURL    string
+	PublicGitURL string // e.g. https://git.ml.ink
 }
 
 const (

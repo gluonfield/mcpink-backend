@@ -17,10 +17,10 @@ const (
 	suffixLen           = 2
 )
 
-// ResolveGiteaUsername returns the user's Gitea username, generating and
+// ResolveUsername returns the user's git username, generating and
 // persisting one if it doesn't exist yet. The generated name is a two-word
 // petname (e.g. "funky-beaver"). On collision a short random suffix is appended.
-func (s *Service) ResolveGiteaUsername(ctx context.Context, user users.User) (string, error) {
+func (s *Service) ResolveUsername(ctx context.Context, user users.User) (string, error) {
 	if user.GiteaUsername != nil && *user.GiteaUsername != "" {
 		return *user.GiteaUsername, nil
 	}
@@ -40,41 +40,34 @@ func (s *Service) ResolveGiteaUsername(ctx context.Context, user users.User) (st
 		_, err := s.userQueries.GetUserByGiteaUsername(ctx, &name)
 		if err != nil {
 			// Not found — name is available
-			giteaUser, setErr := s.userQueries.SetGiteaUsername(ctx, users.SetGiteaUsernameParams{
+			_, setErr := s.userQueries.SetGiteaUsername(ctx, users.SetGiteaUsernameParams{
 				ID:            user.ID,
 				GiteaUsername: &name,
 			})
 			if setErr != nil {
-				return "", fmt.Errorf("persist gitea username: %w", setErr)
+				return "", fmt.Errorf("persist username: %w", setErr)
 			}
-
-			email := fmt.Sprintf("%s@users.ml.ink", name)
-			if err := s.client.EnsureUser(ctx, name, email); err != nil {
-				return "", fmt.Errorf("ensure gitea user: %w", err)
-			}
-
-			_ = giteaUser
 			return name, nil
 		}
 		// Name taken — retry with suffix
 	}
 
-	return "", fmt.Errorf("failed to find unique gitea username after %d attempts", maxUsernameAttempts)
+	return "", fmt.Errorf("failed to find unique username after %d attempts", maxUsernameAttempts)
 }
 
-// ResolveRepoFullName resolves the user's gitea username and returns "{giteaUsername}/{repoName}".
+// ResolveRepoFullName resolves the user's username and returns "{username}/{repoName}".
 func (s *Service) ResolveRepoFullName(ctx context.Context, userID, repoName string) (string, error) {
 	user, err := s.userQueries.GetUserByID(ctx, userID)
 	if err != nil {
 		return "", fmt.Errorf("get user: %w", err)
 	}
 
-	giteaUsername, err := s.ResolveGiteaUsername(ctx, user)
+	username, err := s.ResolveUsername(ctx, user)
 	if err != nil {
 		return "", err
 	}
 
-	return fmt.Sprintf("%s/%s", giteaUsername, repoName), nil
+	return fmt.Sprintf("%s/%s", username, repoName), nil
 }
 
 func randomSuffix() (string, error) {

@@ -9,9 +9,8 @@ import (
 	"time"
 
 	"github.com/augustdev/autoclip/internal/bootstrap"
-	"github.com/augustdev/autoclip/internal/githubapp"
-	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/dns"
+	"github.com/augustdev/autoclip/internal/githubapp"
 	"github.com/augustdev/autoclip/internal/k8sdeployments"
 	"github.com/augustdev/autoclip/internal/powerdns"
 	"github.com/augustdev/autoclip/internal/storage/pg"
@@ -27,7 +26,6 @@ type config struct {
 	Db        pg.DbConfig
 	Temporal  bootstrap.TemporalClientConfig
 	GitHubApp githubapp.Config
-	Gitea     internalgit.Config
 	K8sWorker k8sdeployments.Config
 	Cluster   bootstrap.ClusterConfig
 	PowerDNS  powerdns.Config
@@ -57,7 +55,6 @@ func main() {
 			powerdns.NewClient,
 			pg.NewClusterMap,
 			githubapp.NewService,
-			internalgit.NewService,
 			k8sdeployments.NewActivities,
 			dns.NewActivities,
 		),

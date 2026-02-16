@@ -30,7 +30,7 @@ type config struct {
 	Auth           auth.Config
 	Temporal       bootstrap.TemporalClientConfig
 	Turso          turso.Config
-	Gitea          internalgit.Config
+	InternalGit    internalgit.Config
 	MCPOAuth       mcp_oauth.Config
 	Firebase       bootstrap.FirebaseConfig
 	Loki           mcpserver.LokiConfig

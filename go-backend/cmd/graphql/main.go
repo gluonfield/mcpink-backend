@@ -29,7 +29,7 @@ type config struct {
 	Auth           auth.Config
 	Temporal       bootstrap.TemporalClientConfig
 	Turso          turso.Config
-	Gitea          internalgit.Config
+	InternalGit    internalgit.Config
 	Firebase       bootstrap.FirebaseConfig
 	Prometheus     prometheus.Config
 	DNS            dns.Config

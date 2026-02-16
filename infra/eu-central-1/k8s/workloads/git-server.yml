@@ -1,0 +1,186 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: git-server
+  namespace: dp-system
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: git-server
+  template:
+    metadata:
+      labels:
+        app: git-server
+    spec:
+      nodeSelector:
+        pool: ops
+      tolerations:
+        - key: pool
+          operator: Equal
+          value: ops
+          effect: NoSchedule
+      imagePullSecrets:
+        - name: ghcr-pull-secret
+      containers:
+        - name: git-server
+          image: ghcr.io/gluonfield/git-server:initial
+          ports:
+            - containerPort: 3000
+          env:
+            # Database (viper: db.*)
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: url
+            # Temporal (viper: temporal.*)
+            - name: TEMPORAL_ADDRESS
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-worker-config
+                  key: temporal-address
+            - name: TEMPORAL_NAMESPACE
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-worker-config
+                  key: temporal-namespace
+            - name: TEMPORAL_CLOUDAPIKEY
+              valueFrom:
+                secretKeyRef:
+                  name: temporal-creds
+                  key: cloud-api-key
+            # Git server config (viper: gitserver.*)
+            - name: GITSERVER_PORT
+              value: "3000"
+            - name: GITSERVER_REPOSROOT
+              value: /mnt/git-repos
+            - name: GITSERVER_ADMINTOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: git-server-config
+                  key: admin-token
+            # Cluster identity
+            - name: CLUSTER_REGION
+              value: "eu-central-1"
+          volumeMounts:
+            - name: git-repos
+              mountPath: /mnt/git-repos
+          resources:
+            requests:
+              cpu: "100m"
+              memory: 128Mi
+            limits:
+              cpu: "500m"
+              memory: 512Mi
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 3
+            failureThreshold: 3
+      volumes:
+        - name: git-repos
+          hostPath:
+            path: /mnt/git-repos
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: git-server
+  namespace: dp-system
+spec:
+  type: ClusterIP
+  selector:
+    app: git-server
+  ports:
+    - port: 3000
+      targetPort: 3000
+      protocol: TCP
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: git-server
+  namespace: dp-system
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    - match: Host(`git.ml.ink`)
+      kind: Rule
+      services:
+        - name: git-server
+          port: 3000
+  tls:
+    certResolver: letsencrypt
+---
+# Daily git gc to prevent loose object accumulation
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: git-gc
+  namespace: dp-system
+spec:
+  schedule: "0 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            pool: ops
+          tolerations:
+            - key: pool
+              operator: Equal
+              value: ops
+              effect: NoSchedule
+          restartPolicy: OnFailure
+          containers:
+            - name: git-gc
+              image: alpine/git:latest
+              command:
+                - /bin/sh
+                - -c
+                - find /mnt/git-repos -maxdepth 2 -name HEAD -execdir git gc --auto \;
+              volumeMounts:
+                - name: git-repos
+                  mountPath: /mnt/git-repos
+              resources:
+                requests:
+                  cpu: "50m"
+                  memory: 64Mi
+                limits:
+                  cpu: "500m"
+                  memory: 256Mi
+          volumes:
+            - name: git-repos
+              hostPath:
+                path: /mnt/git-repos
+                type: DirectoryOrCreate

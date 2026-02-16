@@ -115,22 +115,6 @@ spec:
                 secretKeyRef:
                   name: github-app
                   key: app-id
-            # Gitea / internal git (viper: gitea.*)
-            - name: GITEA_BASEURL
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: base-url
-            - name: GITEA_ADMINTOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: admin-token
-            - name: GITEA_WEBHOOKSECRET
-              valueFrom:
-                secretKeyRef:
-                  name: gitea-creds
-                  key: webhook-secret
             # k8s worker config (viper: k8sworker.*)
             - name: K8SWORKER_BUILDKITHOST
               value: tcp://buildkitd.dp-system:1234
@@ -142,6 +126,13 @@ spec:
               value: http://loki.dp-system:3100/loki/api/v1/push
             - name: K8SWORKER_LOKIQUERYURL
               value: http://loki.dp-system:3100/loki/api/v1/query_range
+            - name: K8SWORKER_GITSERVERADMINTOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: git-server-config
+                  key: admin-token
+            - name: K8SWORKER_GITSERVERCLONEHOST
+              value: git-server.dp-system.svc:3000
             - name: CLUSTER_REGION
               value: "eu-central-1"
             # PowerDNS (viper: powerdns.*)

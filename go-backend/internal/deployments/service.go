@@ -62,7 +62,7 @@ type CreateServiceInput struct {
 	BuildPack        string
 	Port             string
 	EnvVars          []EnvVar
-	GitProvider      string // "github" or "gitea"
+	GitProvider      string // "github" or "internal"
 	Memory           string
 	VCPUs            string
 	BuildCommand     string

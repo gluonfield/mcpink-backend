@@ -9,7 +9,6 @@ import (
 	"github.com/augustdev/autoclip/internal/bootstrap"
 	"github.com/augustdev/autoclip/internal/deployments"
 	"github.com/augustdev/autoclip/internal/githubapp"
-	"github.com/augustdev/autoclip/internal/internalgit"
 	"github.com/augustdev/autoclip/internal/storage/pg"
 	"github.com/augustdev/autoclip/internal/webhooks"
 	"github.com/go-chi/chi/v5"
@@ -22,7 +21,6 @@ type config struct {
 	GraphQLAPI  bootstrap.GraphQLAPIConfig
 	Db          pg.DbConfig
 	GitHubApp   githubapp.Config
-	Gitea       internalgit.Config
 	Temporal    bootstrap.TemporalClientConfig
 }
 
@@ -36,7 +34,6 @@ func main() {
 			pg.NewServiceQueries,
 			pg.NewDeploymentQueries,
 			pg.NewGitHubCredsQueries,
-			pg.NewInternalReposQueries,
 			bootstrap.CreateTemporalClient,
 			githubapp.NewService,
 			pg.NewClusterMap,

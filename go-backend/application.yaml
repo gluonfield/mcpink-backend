@@ -65,12 +65,13 @@ turso:
   apikey: ""
   orgslug: ""
 
-gitea:
-  baseurl: "https://git.ml.ink"
+internalgit:
+  publicgiturl: "https://git.ml.ink"
+
+gitserver:
+  port: "3000"
+  reposroot: "/mnt/git-repos"
   admintoken: ""
-  userprefix: "u"
-  webhooksecret: ""
-  webhookurl: "http://localhost:8081/webhooks/internal-git"
 
 mcpoauth:
   issuer: "http://localhost:8082"
@@ -92,6 +93,8 @@ k8sworker:
   registryaddress: "registry.internal:5000"
   lokipushurl: "http://loki.dp-system.svc.cluster.local:3100/loki/api/v1/push"
   lokiqueryurl: "http://loki.dp-system.svc.cluster.local:3100/loki/api/v1/query_range"
+  gitserveradmintoken: ""
+  gitserverclonehost: "git-server.dp-system.svc:3000"
 
 cluster:
   region: "eu-central-1"
